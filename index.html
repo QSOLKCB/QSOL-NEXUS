@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <meta name="description" content="QSOL NEXUS — deterministic field simulation, model comparison, scientific sonification, and replay-verifiable experiment bundles.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' blob: data:; connect-src 'none'; img-src 'self' blob: data:; media-src 'self' blob: data:; script-src 'self'; style-src 'self'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>QSOL NEXUS 1.0 — Deterministic Field Simulation and Sonification Workbench</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <a class="skip-link" href="#workspace">Skip to laboratory</a>
+  <noscript><div class="fatal-banner">QSOL NEXUS requires JavaScript. All computation remains local to this browser.</div></noscript>
+
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand-glyph" aria-hidden="true"><span>N</span></div>
+      <div>
+        <p class="kicker">QSOL · INTEGRATED LABORATORY</p>
+        <h1>QSOL NEXUS <span id="app-version">1.0.0</span></h1>
+        <p class="subtitle">Theory → Simulation → Observation → Sound → Proof</p>
+      </div>
+    </div>
+    <div class="header-controls" aria-label="Experiment identity">
+      <label>
+        <span>LABORATORY</span>
+        <select id="lab-select">
+          <option value="qutrit">Qutrit Field</option>
+          <option value="tensor">Tensor Resonance</option>
+          <option value="galaxy">Galaxy Models</option>
+        </select>
+      </label>
+      <label>
+        <span>DETERMINISM</span>
+        <select id="mode-select">
+          <option value="canonical_strict">Canonical Strict</option>
+          <option value="replay_safe">Replay Safe</option>
+          <option value="creative">Creative</option>
+        </select>
+      </label>
+      <label class="seed-control">
+        <span>SEED</span>
+        <input id="seed-input" type="text" value="NEXUS-0001" maxlength="128" autocomplete="off" spellcheck="false">
+      </label>
+    </div>
+    <div class="status-stack" aria-label="Runtime status">
+      <span class="status-badge local"><i></i>LOCAL ONLY</span>
+      <span class="status-badge" id="runtime-status">RUNTIME · READY</span>
+      <span class="status-badge" id="storage-status">STORAGE · CHECKING</span>
+      <span class="status-badge clean" id="recipe-status">RECIPE · DIRTY</span>
+    </div>
+  </header>
+
+  <div class="mode-banner strict" id="mode-banner" role="status">
+    <strong>CANONICAL STRICT</strong>
+    <span>Archival identity path · frozen recipe · offline PCM · cross-runtime candidate</span>
+  </div>
+
+  <main id="workspace" class="workspace">
+    <aside class="lab-rail" aria-label="Laboratories and history">
+      <p class="rail-heading">LABORATORIES</p>
+      <button class="lab-nav active" type="button" data-lab="qutrit">
+        <span class="nav-index">01</span><span><strong>Qutrit Field</strong><small>Three-state information dynamics</small></span>
+      </button>
+      <button class="lab-nav" type="button" data-lab="tensor">
+        <span class="nav-index">02</span><span><strong>Tensor Resonance</strong><small>Invariants and eigensystems</small></span>
+      </button>
+      <button class="lab-nav" type="button" data-lab="galaxy">
+        <span class="nav-index">03</span><span><strong>Galaxy Models</strong><small>Rotation-curve comparison</small></span>
+      </button>
+      <div class="rail-divider"></div>
+      <button class="lab-nav utility" type="button" data-view="history">
+        <span class="nav-index">H</span><span><strong>History</strong><small>Completed local experiments</small></span>
+      </button>
+      <button class="lab-nav utility" type="button" id="import-replay-button">
+        <span class="nav-index">R</span><span><strong>Replay</strong><small>Verify a manifest or bundle</small></span>
+      </button>
+      <input id="replay-file" type="file" accept=".json,.zip,application/json,application/zip" hidden>
+
+      <section class="identity-card" aria-labelledby="identity-title">
+        <p class="rail-heading" id="identity-title">ACTIVE ENGINE</p>
+        <dl>
+          <div><dt>ID</dt><dd id="engine-id">qutrit_field</dd></div>
+          <div><dt>VERSION</dt><dd id="engine-version">1.0.0</dd></div>
+          <div><dt>CLASS</dt><dd id="claim-class">CLASSICAL SIMULATION</dd></div>
+        </dl>
+      </section>
+    </aside>
+
+    <section class="stage" aria-label="Laboratory stage">
+      <div class="stage-header">
+        <div>
+          <p class="kicker" id="lab-kicker">CLASSICAL INFORMATION MODEL</p>
+          <h2 id="lab-title">Qutrit Field Laboratory</h2>
+          <p id="lab-description">Seeded three-state field dynamics with inspectable rules, measurements, visualization, and offline sonification.</p>
+        </div>
+        <div class="claim-badges" id="claim-badges">
+          <span class="claim-badge classical">CLASSICAL SIMULATION</span>
+          <span class="claim-badge verified" id="replay-badge" hidden>REPLAY VERIFIED</span>
+        </div>
+      </div>
+
+      <section class="claim-boundary" id="claim-boundary" aria-label="Scientific claim boundary">
+        <strong>CLAIM BOUNDARY</strong>
+        <p>This is a classical three-state information-field simulation. It does not perform physical qutrit execution, quantum measurement, entanglement, or quantum computation.</p>
+      </section>
+
+      <div class="visual-toolbar">
+        <div class="tab-list" role="tablist" aria-label="Main observation view">
+          <button class="tab active" type="button" role="tab" data-stage-tab="primary">FIELD</button>
+          <button class="tab" type="button" role="tab" data-stage-tab="comparison">COMPARISON</button>
+          <button class="tab" type="button" role="tab" data-stage-tab="events">EVENTS</button>
+        </div>
+        <div class="visual-meta">
+          <span id="visual-state">AWAITING EXECUTION</span>
+          <span id="visual-resolution">—</span>
+        </div>
+      </div>
+
+      <div class="canvas-shell">
+        <canvas id="main-canvas" width="1200" height="650" aria-label="Laboratory visualization"></canvas>
+        <div class="canvas-empty" id="canvas-empty">
+          <div class="empty-orbit" aria-hidden="true"><i></i><i></i><i></i></div>
+          <strong>FIELD READY</strong>
+          <span>Configure the frozen recipe, then run the laboratory.</span>
+        </div>
+        <div class="canvas-overlay top-left" id="canvas-overlay-left">SOURCE · SEEDED</div>
+        <div class="canvas-overlay bottom-right" id="canvas-overlay-right">IDENTITY · NOT RENDERED</div>
+      </div>
+
+      <section class="measurement-strip" id="measurement-strip" aria-label="Primary measurements">
+        <div><span>ENTROPY</span><strong>—</strong><small>normalized</small></div>
+        <div><span>TRANSITION RATE</span><strong>—</strong><small>per step</small></div>
+        <div><span>CLUSTERS</span><strong>—</strong><small>connected</small></div>
+        <div><span>COHERENCE</span><strong>—</strong><small>local mean</small></div>
+        <div><span>RECURRENCE</span><strong>—</strong><small>state similarity</small></div>
+      </section>
+    </section>
+
+    <aside class="inspector" aria-label="Experiment inspector">
+      <div class="inspector-head">
+        <div><p class="kicker">FROZEN INPUT</p><h2>Inspector</h2></div>
+        <button class="icon-button" id="reset-controls" type="button" title="Reset laboratory parameters" aria-label="Reset laboratory parameters">↺</button>
+      </div>
+
+      <div class="inspector-tabs" role="tablist">
+        <button class="active" type="button" data-inspector-tab="parameters">PARAMETERS</button>
+        <button type="button" data-inspector-tab="measurements">RESULTS</button>
+        <button type="button" data-inspector-tab="claims">CLAIMS</button>
+        <button type="button" data-inspector-tab="validation">VALIDATION</button>
+      </div>
+
+      <div class="inspector-body" id="inspector-parameters" data-inspector-panel="parameters">
+        <div class="preset-row">
+          <label><span>PRESET</span><select id="preset-select"></select></label>
+          <button id="save-preset-button" type="button">SAVE</button>
+        </div>
+        <div id="dynamic-controls" class="dynamic-controls"></div>
+        <details class="source-panel">
+          <summary>Local source input</summary>
+          <div class="drop-zone" id="drop-zone" tabindex="0" role="button" aria-label="Choose or drop a local source file">
+            <strong>DROP LOCAL SOURCE</strong>
+            <span id="source-label">CSV · JSON · TXT · IMAGE</span>
+            <button type="button" id="choose-source-button">CHOOSE FILE</button>
+            <input id="source-file" type="file" hidden>
+          </div>
+          <textarea id="source-text" rows="7" spellcheck="false" placeholder="Or paste structured input here…"></textarea>
+          <div class="source-actions">
+            <button type="button" id="use-source-text">USE TEXT</button>
+            <button type="button" id="clear-source">CLEAR</button>
+          </div>
+          <p id="source-status">No external source. The engine initializer is identity-bearing.</p>
+        </details>
+      </div>
+
+      <div class="inspector-body" id="inspector-measurements" data-inspector-panel="measurements" hidden>
+        <dl class="result-list" id="result-list"><div><dt>STATUS</dt><dd>Awaiting run</dd></div></dl>
+      </div>
+      <div class="inspector-body" id="inspector-claims" data-inspector-panel="claims" hidden>
+        <div id="claims-detail"></div>
+      </div>
+      <div class="inspector-body" id="inspector-validation" data-inspector-panel="validation" hidden>
+        <ul class="validation-list" id="validation-list"><li class="neutral">No completed experiment.</li></ul>
+      </div>
+    </aside>
+  </main>
+
+  <section class="transport" aria-label="Execution and playback transport">
+    <div class="transport-status">
+      <span class="transport-light" id="transport-light"></span>
+      <div><strong id="execution-status">READY</strong><small id="execution-detail">Recipe values are editable</small></div>
+    </div>
+    <button class="transport-button primary" id="run-button" type="button"><span>▶</span> RUN LAB</button>
+    <button class="transport-button" id="cancel-button" type="button" disabled><span>■</span> CANCEL</button>
+    <button class="transport-button" id="play-button" type="button" disabled><span>▷</span> PLAY</button>
+    <button class="transport-button" id="stop-button" type="button" disabled><span>□</span> STOP</button>
+    <label class="duration-control"><span>DURATION</span><select id="duration-select"><option value="4">4 s</option><option value="8" selected>8 s</option><option value="16">16 s</option><option value="30">30 s</option></select></label>
+    <label class="duration-control"><span>SAMPLE RATE</span><select id="sample-rate-select"><option value="44100">44.1 kHz</option><option value="48000" selected>48 kHz</option></select></label>
+    <div class="progress-area" id="progress-area" hidden><div><i id="progress-bar"></i></div><span id="progress-label">FREEZING RECIPE</span></div>
+    <button class="transport-button export" id="export-button" type="button" disabled><span>⇩</span> EXPORT BUNDLE</button>
+  </section>
+
+  <section class="lower-deck" aria-label="Audio and artifacts">
+    <article class="deck-panel audio-panel">
+      <div class="deck-heading"><div><p class="kicker">OFFLINE PCM OBSERVATION</p><h2>Waveform + Spectrogram</h2></div><span id="audio-meta">PCM16 STEREO · 48 kHz</span></div>
+      <div class="audio-canvases">
+        <div><span>WAVEFORM</span><canvas id="waveform-canvas" width="900" height="170"></canvas></div>
+        <div><span>SPECTROGRAM · LOG Hz</span><canvas id="spectrogram-canvas" width="900" height="220"></canvas></div>
+      </div>
+      <audio id="audio-player" preload="metadata"></audio>
+    </article>
+
+    <article class="deck-panel artifacts-panel">
+      <div class="deck-heading"><div><p class="kicker">PROOF ARTIFACTS</p><h2>Experiment Bundle</h2></div><span class="status-badge" id="bundle-status">NOT BUILT</span></div>
+      <dl class="hash-list" id="hash-list">
+        <div><dt>RECIPE SHA-256</dt><dd>—</dd></div>
+        <div><dt>RESULT SHA-256</dt><dd>—</dd></div>
+        <div><dt>WAV SHA-256</dt><dd>—</dd></div>
+        <div><dt>CONTRACT SHA-256</dt><dd>—</dd></div>
+      </dl>
+      <div class="artifact-buttons" id="artifact-buttons">
+        <button type="button" data-artifact="wav" disabled><span>WAV</span>experiment.wav</button>
+        <button type="button" data-artifact="recipe" disabled><span>JSON</span>experiment.json</button>
+        <button type="button" data-artifact="observations" disabled><span>JSON</span>observations.json</button>
+        <button type="button" data-artifact="manifest" disabled><span>JSON</span>manifest.json</button>
+        <button type="button" data-artifact="contract" disabled><span>JSON</span>contract.json</button>
+        <button type="button" data-artifact="bundle" disabled><span>ZIP</span>full experiment</button>
+      </div>
+    </article>
+
+    <article class="deck-panel receipt-panel">
+      <div class="deck-heading"><div><p class="kicker">INSPECTABLE RECEIPT</p><h2>Manifest</h2></div><button id="copy-receipt" type="button" disabled>COPY</button></div>
+      <pre id="receipt-view">{
+  "status": "awaiting_experiment",
+  "network": "disabled",
+  "trusted_core": "local_only"
+}</pre>
+    </article>
+  </section>
+
+  <footer class="app-footer">
+    <p><strong>QSOL NEXUS 1.0</strong> · Deterministic Field Simulation and Sonification Workbench · Apache-2.0</p>
+    <p>No telemetry · No remote requests · No physical quantum or cosmological validation is implied.</p>
+    <a href="tests/index.html">RUN BROWSER TEST SUITE</a>
+  </footer>
+
+  <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+
+  <script defer src="js/core/namespace.js"></script>
+  <script defer src="js/core/version.js"></script>
+  <script defer src="js/core/canonical.js"></script>
+  <script defer src="js/core/sha256.js"></script>
+  <script defer src="js/core/prng.js"></script>
+  <script defer src="js/core/decimal.js"></script>
+  <script defer src="js/core/scheduler.js"></script>
+  <script defer src="js/core/cancellation.js"></script>
+  <script defer src="js/core/schemas.js"></script>
+  <script defer src="js/core/input.js"></script>
+
+  <script defer src="js/math/matrix.js"></script>
+  <script defer src="js/math/eigen.js"></script>
+  <script defer src="js/math/statistics.js"></script>
+  <script defer src="js/math/interpolation.js"></script>
+  <script defer src="js/math/optimization.js"></script>
+  <script defer src="js/math/graph.js"></script>
+  <script defer src="js/math/entropy.js"></script>
+
+  <script defer src="js/mappings/ternary.js"></script>
+  <script defer src="js/mappings/sexagesimal.js"></script>
+  <script defer src="js/mappings/codon64.js"></script>
+  <script defer src="js/mappings/fibonacci.js"></script>
+  <script defer src="js/mappings/phi.js"></script>
+  <script defer src="js/mappings/music.js"></script>
+
+  <script defer src="js/audio/pcm.js"></script>
+  <script defer src="js/audio/oscillators.js"></script>
+  <script defer src="js/audio/envelopes.js"></script>
+  <script defer src="js/audio/spatial.js"></script>
+  <script defer src="js/audio/quantize.js"></script>
+  <script defer src="js/audio/wav.js"></script>
+  <script defer src="js/audio/fingerprint.js"></script>
+  <script defer src="js/audio/zip.js"></script>
+
+  <script defer src="js/visual/canvas.js"></script>
+  <script defer src="js/visual/plots.js"></script>
+  <script defer src="js/visual/waveform.js"></script>
+  <script defer src="js/visual/spectrogram.js"></script>
+  <script defer src="js/visual/field-grid.js"></script>
+  <script defer src="js/visual/tensor-view.js"></script>
+  <script defer src="js/visual/galaxy-view.js"></script>
+
+  <script defer src="js/engines/registry.js"></script>
+  <script defer src="js/engines/qutrit/rules.js"></script>
+  <script defer src="js/engines/qutrit/metrics.js"></script>
+  <script defer src="js/engines/qutrit/sonification.js"></script>
+  <script defer src="js/engines/qutrit/engine.js"></script>
+  <script defer src="js/engines/tensor/transforms.js"></script>
+  <script defer src="js/engines/tensor/invariants.js"></script>
+  <script defer src="js/engines/tensor/sonification.js"></script>
+  <script defer src="js/engines/tensor/engine.js"></script>
+  <script defer src="js/engines/galaxy/adapters.js"></script>
+  <script defer src="js/engines/galaxy/baryonic.js"></script>
+  <script defer src="js/engines/galaxy/nfw.js"></script>
+  <script defer src="js/engines/galaxy/mond.js"></script>
+  <script defer src="js/engines/galaxy/uff-experimental.js"></script>
+  <script defer src="js/engines/galaxy/fitting.js"></script>
+  <script defer src="js/engines/galaxy/sonification.js"></script>
+  <script defer src="js/engines/galaxy/engine.js"></script>
+
+  <script defer src="js/provenance/claims.js"></script>
+  <script defer src="js/provenance/recipe.js"></script>
+  <script defer src="js/provenance/observation.js"></script>
+  <script defer src="js/provenance/manifest.js"></script>
+  <script defer src="js/provenance/validation.js"></script>
+  <script defer src="js/provenance/lineage.js"></script>
+  <script defer src="js/provenance/bundle.js"></script>
+
+  <script defer src="js/storage/database.js"></script>
+  <script defer src="js/storage/presets.js"></script>
+  <script defer src="js/storage/history.js"></script>
+
+  <script defer src="js/ui/controls.js"></script>
+  <script defer src="js/ui/inspector.js"></script>
+  <script defer src="js/ui/transport.js"></script>
+  <script defer src="js/ui/exports.js"></script>
+  <script defer src="js/ui/qutrit-lab.js"></script>
+  <script defer src="js/ui/tensor-lab.js"></script>
+  <script defer src="js/ui/galaxy-lab.js"></script>
+  <script defer src="js/ui/router.js"></script>
+  <script defer src="js/ui/shell.js"></script>
+  <script defer src="app.js"></script>
+</body>
+</html>
