@@ -1,10 +1,10 @@
-# QSOLNEXUS 1.0
+# QSOL-NEXUS 1.0
 
 **Deterministic Field Simulation and Sonification Workbench**
 
 > Theory → Simulation → Observation → Sound → Proof
 
-QSOLNEXUS is a zero-install browser laboratory for deterministic field simulation, tensor analysis, galaxy rotation-curve comparison, scientific sonification, and replay-verifiable experiment artifacts. It integrates the strongest **contracts and engines** from the QSOL ecosystem behind one runtime; it does not embed or concatenate the source repositories.
+QSOL-NEXUS is a zero-install browser laboratory for deterministic field simulation, tensor analysis, galaxy rotation-curve comparison, scientific sonification, and replay-verifiable experiment artifacts. It integrates the strongest **contracts and engines** from the QSOL ecosystem behind one runtime; it does not embed or concatenate the source repositories.
 
 Open [`index.html`](index.html) directly in a modern browser. NEXUS uses no server, Node runtime, npm package, build pipeline, CDN, cloud service, telemetry, or hidden network request. Source data and generated artifacts remain local.
 
