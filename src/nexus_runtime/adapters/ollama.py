@@ -21,8 +21,8 @@ _BALLOT_SCHEMA = {
 }
 
 # NEXUS owns protocol-level output budgets instead of relying on a Modelfile
-# default. The fixtures intentionally keep a conservative 96-token fallback,
-# but guarded restatements can legitimately need more room than that.
+# default. Free-form hat contributions may be bounded at this limit; sealed
+# ballots remain strict because truncated structured output is not a valid vote.
 _PHASE_OPTIONS = {"num_predict": 192}
 _BALLOT_OPTIONS = {"num_predict": 256, "temperature": 0}
 
@@ -78,6 +78,7 @@ class OllamaTransport:
         *,
         format_schema: dict[str, Any] | None = None,
         options: dict[str, Any] | None = None,
+        require_complete: bool = True,
     ) -> str:
         payload: dict[str, Any] = {"model": model, "prompt": prompt, "stream": False}
         if format_schema is not None:
@@ -93,11 +94,11 @@ class OllamaTransport:
         )
         with self._open(request) as response:
             body = json.loads(response.read().decode("utf-8"))
-        if body.get("done_reason") == "length":
-            raise ValueError("Ollama response truncated by generation limit")
         text = body.get("response")
         if not isinstance(text, str) or not text.strip():
             raise ValueError("Ollama returned no response text")
+        if body.get("done_reason") == "length" and require_complete:
+            raise ValueError("Ollama response truncated by generation limit")
         return text.strip()
 
 
@@ -126,7 +127,15 @@ class OllamaActor:
 
     def respond(self, context: PhaseContext) -> str:
         prompt = self._phase_prompt(context)
-        return self.transport.generate(self.model, prompt, options=_PHASE_OPTIONS)
+        # Hat responses are free-form reasoning contributions. If a small model
+        # reaches the bounded phase budget, the non-empty prefix remains a valid
+        # contribution. Structured ballots do not get this relaxation.
+        return self.transport.generate(
+            self.model,
+            prompt,
+            options=_PHASE_OPTIONS,
+            require_complete=False,
+        )
 
     def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
         prompt = (
