@@ -328,6 +328,8 @@ class ActorFailsafe:
         return state.object_id
 
     def actor_for_run(self, actor: CouncilActor) -> tuple[CouncilActor, dict[str, Any] | None]:
+        if not self.policy.enabled:
+            return actor, None
         state = self.registry.latest_state(actor.member.member_id)
         if (
             state is None

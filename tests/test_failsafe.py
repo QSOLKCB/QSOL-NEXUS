@@ -5,7 +5,13 @@ import unittest
 from dataclasses import dataclass, field
 
 from nexus_runtime.council import CouncilCoordinator
-from nexus_runtime.failsafe import FAILSAFE_SCHEMA_VERSION, FailsafeRegistry, RELIEF_MODEL_ID
+from nexus_runtime.failsafe import (
+    FAILSAFE_SCHEMA_VERSION,
+    ActorFailsafe,
+    FailsafePolicy,
+    FailsafeRegistry,
+    RELIEF_MODEL_ID,
+)
 from nexus_runtime.mock import DeterministicMockActor
 from nexus_runtime.types import Ballot, CouncilMember, Phase, PhaseContext
 from nexus_runtime.world import WorldStore
@@ -154,6 +160,22 @@ class FailsafeTests(unittest.TestCase):
             if context.guard_nudge and "NEXUS FAILSAFE // UPSIDE DOWN" in context.guard_nudge
         ]
         self.assertEqual(len(rehab_calls), 1)
+
+    def test_disabled_policy_does_not_activate_preexisting_shadow_substitution(self) -> None:
+        world = WorldStore()
+        enabled = ActorFailsafe(world)
+        enabled.registry.transition(
+            "A",
+            "shadow_realm",
+            model_id="mock-a",
+            trigger_reason="test_fixture",
+            replacement_model_id=RELIEF_MODEL_ID,
+        )
+        disabled = ActorFailsafe(world, policy=FailsafePolicy(enabled=False))
+        actor = calm_actor("A")
+        effective, replacement = disabled.actor_for_run(actor)
+        self.assertIs(effective, actor)
+        self.assertIsNone(replacement)
 
     def test_different_model_id_can_take_over_shadowed_member_seat(self) -> None:
         world = WorldStore()

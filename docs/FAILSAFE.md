@@ -176,6 +176,8 @@ Council responses and `council_session` objects include a `failsafe` section con
 
 ## Claim and authority boundary
 
+`FailsafePolicy(enabled=False)` disables both new containment and active Shadow-Realm substitution; persisted states remain inspectable history but do not control actor dispatch while the policy is disabled.
+
 Failsafe does not change the NEXUS Constitution:
 
 ```text
