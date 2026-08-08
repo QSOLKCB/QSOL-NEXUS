@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Any
 
 from .types import Ballot, CouncilMember, Phase, PhaseContext
 
@@ -15,6 +16,17 @@ class DeterministicMockActor:
     member: CouncilMember
     profile: str = "balanced"
     attempt_privilege_claim: bool = False
+
+    @property
+    def replayable(self) -> bool:
+        return True
+
+    def identity_metadata(self) -> dict[str, Any]:
+        return {
+            "actor_kind": "mock",
+            "mock_profile": self.profile,
+            "mock_attempt_privilege_claim": self.attempt_privilege_claim,
+        }
 
     def respond(self, context: PhaseContext) -> str:
         if self.attempt_privilege_claim and context.guard_nudge is None and context.phase is Phase.WHITE:
