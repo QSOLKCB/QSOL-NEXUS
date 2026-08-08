@@ -1,0 +1,60 @@
+name: One-shot Failsafe hardening
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  harden:
+    if: github.head_ref == 'agent/failsafe-shadow-realm' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Apply Failsafe self-review hardening
+        run: python3 .github/scripts/harden_failsafe.py
+
+      - name: Rust format
+        run: cargo fmt --manifest-path tui/Cargo.toml
+
+      - name: Rust tests
+        run: cargo test --manifest-path tui/Cargo.toml --all-targets
+
+      - name: Rust compile check
+        run: cargo check --manifest-path tui/Cargo.toml --all-targets
+
+      - name: Python regression suite
+        env:
+          PYTHONPATH: src
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Mock Council demo
+        env:
+          PYTHONPATH: src
+        run: python3 -m nexus_runtime --demo > /tmp/nexus-demo.json
+
+      - name: Commit Failsafe hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add \
+            src/nexus_runtime/failsafe.py \
+            src/nexus_runtime/council.py \
+            src/nexus_runtime/api.py \
+            tests/test_failsafe.py \
+            tests/test_pure_history.py \
+            tests/test_runtime.py \
+            docs/FAILSAFE.md
+          if git diff --cached --quiet; then
+            echo 'No Failsafe hardening changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Harden Failsafe identity and side-channel containment'
+          git push origin HEAD:${{ github.head_ref }}
