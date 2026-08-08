@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Compare two NEXUS adversarial-gauntlet JSON reports.
 
-Exit 1 only when the candidate introduces a newly failing named check.
-This is useful for build-agent iterations where a known failing reproducer is
-intentionally kept red while a fix is being developed.
+Exit 1 when the candidate introduces a newly failing named check or drops a
+check that existed in the baseline. This is useful for build-agent iterations
+where a known failing reproducer is intentionally kept red while a fix is being
+developed, without allowing tests to disappear to obtain a green comparison.
 """
 
 from __future__ import annotations
@@ -79,10 +80,10 @@ def main() -> int:
         for name in missing_checks:
             print(f"  - {name}")
 
-    if new_failures:
-        print("COMPARISON: REGRESSION")
+    if new_failures or missing_checks:
+        print("COMPARISON: REGRESSION OR CHECK LOSS")
         return 1
-    print("COMPARISON: NO NEW NAMED FAILURES")
+    print("COMPARISON: NO NEW FAILURES OR CHECK LOSS")
     return 0
 
 
