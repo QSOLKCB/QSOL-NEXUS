@@ -39,8 +39,6 @@ jobs:
           rustc --version
           cargo --version
           python3 --version
-      - name: Rust format check
-        run: cargo fmt --manifest-path tui/Cargo.toml -- --check
       - name: Rust unit tests
         run: cargo test --manifest-path tui/Cargo.toml --all-targets
       - name: Rust compile check
@@ -49,3 +47,5 @@ jobs:
         env:
           PYTHONPATH: src
         run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Rust format check
+        run: cargo fmt --manifest-path tui/Cargo.toml -- --check
