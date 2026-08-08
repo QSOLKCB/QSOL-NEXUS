@@ -7,7 +7,6 @@ import unittest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import patch
 from urllib.error import HTTPError
-from urllib.request import HTTPRedirectHandler, ProxyHandler
 
 from nexus_runtime.adapters.ollama import OllamaActor, OllamaTransport
 from nexus_runtime.guard import EqualityGuard
@@ -67,25 +66,66 @@ class AdapterBoundaryTests(unittest.TestCase):
         self.assertTrue(transport.allow_remote)
         self.assertIsNone(transport._local_opener)
 
-    def test_local_ollama_disables_environment_proxies(self) -> None:
-        with patch.dict(
-            os.environ,
-            {
-                "http_proxy": "http://proxy.example:8080",
-                "https_proxy": "http://proxy.example:8080",
-                "HTTP_PROXY": "http://proxy.example:8080",
-                "HTTPS_PROXY": "http://proxy.example:8080",
-            },
-            clear=False,
-        ):
-            transport = OllamaTransport("http://127.0.0.1:11434")
-        handlers = transport._local_opener.handlers
-        proxy_handlers = [handler for handler in handlers if isinstance(handler, ProxyHandler)]
-        redirect_handlers = [handler for handler in handlers if isinstance(handler, HTTPRedirectHandler)]
-        self.assertEqual(len(proxy_handlers), 1)
-        self.assertEqual(proxy_handlers[0].proxies, {})
-        self.assertEqual(len(redirect_handlers), 1)
-        self.assertEqual(redirect_handlers[0].__class__.__name__, "_NoRedirectHandler")
+    def test_local_ollama_does_not_use_environment_proxy(self) -> None:
+        class TargetHandler(BaseHTTPRequestHandler):
+            contacted = False
+
+            def do_POST(self) -> None:
+                type(self).contacted = True
+                body = json.dumps({"response": "direct", "done": True}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: object) -> None:
+                return None
+
+        class ProxyHandler(BaseHTTPRequestHandler):
+            contacted = False
+
+            def do_POST(self) -> None:
+                type(self).contacted = True
+                body = json.dumps({"response": "proxied", "done": True}).encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format: str, *args: object) -> None:
+                return None
+
+        target = ThreadingHTTPServer(("127.0.0.1", 0), TargetHandler)
+        proxy = ThreadingHTTPServer(("127.0.0.1", 0), ProxyHandler)
+        target_thread = threading.Thread(target=target.serve_forever, daemon=True)
+        proxy_thread = threading.Thread(target=proxy.serve_forever, daemon=True)
+        target_thread.start()
+        proxy_thread.start()
+        try:
+            proxy_url = f"http://127.0.0.1:{proxy.server_port}"
+            with patch.dict(
+                os.environ,
+                {
+                    "http_proxy": proxy_url,
+                    "HTTP_PROXY": proxy_url,
+                    "no_proxy": "",
+                    "NO_PROXY": "",
+                },
+                clear=False,
+            ):
+                transport = OllamaTransport(f"http://127.0.0.1:{target.server_port}")
+                self.assertEqual(transport.generate("fixture", "prompt"), "direct")
+            self.assertTrue(TargetHandler.contacted)
+            self.assertFalse(ProxyHandler.contacted)
+        finally:
+            target.shutdown()
+            proxy.shutdown()
+            target.server_close()
+            proxy.server_close()
+            target_thread.join(timeout=2)
+            proxy_thread.join(timeout=2)
 
     def test_local_ollama_rejects_http_redirects(self) -> None:
         class RedirectHandler(BaseHTTPRequestHandler):
