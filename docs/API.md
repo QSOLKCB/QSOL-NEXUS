@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.5
+nexus/0.6
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha6
+2.0.0-alpha6.2
 ```
 
 Current posture:
@@ -22,6 +22,7 @@ Current posture:
 control transport -> JSON Lines over stdio
 mock actors       -> supported
 Ollama actors     -> supported only through loopback-local configuration
+UN simulation     -> supported as a deterministic fictional local game
 remote providers  -> not implemented
 provider auth     -> not implemented
 ```
@@ -64,13 +65,21 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.5",
-  "runtime_version": "2.0.0-alpha6",
+  "protocol": "nexus/0.6",
+  "runtime_version": "2.0.0-alpha6.2",
   "control_transport": "jsonl_stdio",
   "network": "none_unless_explicit_loopback_ollama_actor",
   "adapters": ["mock", "ollama_loopback"],
   "remote_provider_auth": false,
-  "actor_backends_available": ["mock", "ollama"]
+  "actor_backends_available": ["mock", "ollama"],
+  "games": [
+    {
+      "game_id": "un_sim",
+      "schema": "nexus-un-sim/1",
+      "room": "#un-sim",
+      "fictional_only": true
+    }
+  ]
 }
 ```
 
@@ -86,9 +95,81 @@ world.modes
 world.geometry
 world.geometry.distance
 receipt.verify
+telemetry.verify
+game.un.catalog
+game.un.new
+game.un.inspect
+game.un.act
+game.un.turn
 actor.chat
 council.run
 ```
+
+## Fictional UN simulation game
+
+The local protocol exposes the deterministic `#un-sim` engine:
+
+```text
+game.un.catalog
+game.un.new
+game.un.inspect
+game.un.act
+game.un.turn
+```
+
+Create a seeded board:
+
+```json
+{"operation":"game.un.new","seed":"friday-night"}
+```
+
+A successful response returns a content-addressed `game_ref` and the full fictional game state.
+
+Inspect it:
+
+```json
+{"operation":"game.un.inspect","game_ref":"object:<sha256>"}
+```
+
+Apply an action:
+
+```json
+{
+  "operation":"game.un.act",
+  "game_ref":"object:<sha256>",
+  "action":"meme",
+  "targets":["troutistan","bananovia"]
+}
+```
+
+Advance a turn:
+
+```json
+{"operation":"game.un.turn","game_ref":"object:<sha256>"}
+```
+
+Each action or turn returns a new immutable state linked to its predecessor through `previous_state_ref`.
+
+Initial action IDs are:
+
+```text
+sanction
+support
+aid
+arms
+meme
+suspend
+reinstate
+recognize
+mediate
+do_nothing
+```
+
+The game accepts only its fixed fictional country IDs. `arms` is an abstract integer-resource operation and contains no real weapon type, supplier, quantity, delivery route, price or procurement procedure.
+
+Each game state also stores a compact deterministic `content` board view. When the game ref is attached as Council evidence, the generic evidence path uses that view so every Council member can read current wars, all countries and current statistics without consuming the per-object evidence budget on older event history.
+
+See [`UN_SIM.md`](UN_SIM.md).
 
 ## World modes
 
@@ -103,6 +184,7 @@ analytical  -> Observatory
 historical  -> Archive
 cultural    -> Agora
 meme_casual -> Commons
+game_un     -> Assembly Hall / #un-sim
 ```
 
 A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds.
@@ -113,7 +195,7 @@ A mode changes framing/context only. It does not change vote weight, evidence st
 {"operation":"world.geometry"}
 ```
 
-The current geometry is an operational named-region topology, not a physical claim.
+The current built-in geometry is `named-regions-v2`, an operational named-region topology rather than a physical claim. It includes the Assembly Hall used by `game_un`.
 
 Distance example:
 
@@ -161,7 +243,7 @@ EvidenceSnapshot
   -> included_object_refs[]
 ```
 
-Alpha5 additionally derives a bounded, labelled model-readable view from those refs so actors can actually read attached document material.
+Alpha5 additionally derives a bounded, labelled model-readable view from those refs so actors can actually read attached document material. Alpha6.2 reuses that same generic mechanism for the compact current `#un-sim` board view.
 
 ```text
 content-addressed object ref
@@ -317,7 +399,7 @@ CouncilActor
 └── replayable
 ```
 
-`PhaseContext` now carries:
+`PhaseContext` carries:
 
 ```text
 mode_id
@@ -348,6 +430,8 @@ A Council containing live Ollama inference is explicitly marked non-replayable.
 
 A model seed is not treated as a cross-runtime replay guarantee.
 
+The UN simulation engine is deterministic game state rather than model inference: the same immutable state plus the same deterministic game operation yields the same successor identity.
+
 ## Error shape
 
 ```json
@@ -362,7 +446,7 @@ A model seed is not treated as a cross-runtime replay guarantee.
 
 ## Deliberately absent
 
-Alpha5 does not implement:
+The current local runtime does not implement:
 
 - OpenAI cloud auth;
 - Anthropic/Claude cloud auth;
@@ -375,7 +459,6 @@ Alpha5 does not implement:
 - rate-limit/provider billing semantics.
 
 Those remain later operator/authentication milestones.
-
 
 ## `telemetry.verify`
 

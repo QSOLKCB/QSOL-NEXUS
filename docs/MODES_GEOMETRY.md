@@ -22,7 +22,7 @@ Neither concept changes Council authority, evidence status, verification, secret
 
 > **The mode can change the vibe. It cannot change the vote.**
 
-## Initial world
+## Current built-in world
 
 ```text
                          ARCHIVE
@@ -30,19 +30,20 @@ Neither concept changes Council authority, evidence status, verification, secret
                          (-2,1)
                         /      \
                        /        \
-                      /          \
                  AGORA ---------- OBSERVATORY
                 Cultural           Analytical
                  (0,2)               (0,0)
-                      \             /
-                       \           /
-                        \         /
-                         COMMONS
-                       Meme/Casual
-                          (2,1)
+                      \             /   |
+                       \           /    |
+                        COMMONS ----+    |
+                      Meme/Casual    \   |
+                         (2,1)        \  |
+                                    ASSEMBLY HALL
+                                    UN Simulation
+                                       (0,-2)
 ```
 
-The map is intentionally tiny. Correct semantics and stable contracts matter more than producing a huge fictional universe in the first pull.
+The map remains intentionally tiny. Correct semantics and stable contracts matter more than producing a huge fictional universe.
 
 ## Modes
 
@@ -110,6 +111,35 @@ meme consensus != factual consensus
 
 The Equality Guard remains active. The Secret Scrubber remains active. Evidence and verification rules remain unchanged.
 
+### UN Simulation Game — Assembly Hall
+
+`game_un` is the first explicit game mode.
+
+It frames a fictional UN-style strategy simulation with invented states, deterministic crises, abstract Risk-like statistics and meme-friendly diplomacy.
+
+Actors may debate:
+
+- sanctions;
+- political/economic support;
+- humanitarian aid;
+- recognition;
+- suspension or reinstatement;
+- mediation;
+- abstract arms-trade game actions;
+- meme campaigns;
+- doing absolutely nothing and blaming the committee process.
+
+The critical separation is:
+
+```text
+Council/model output -> proposals, arguments and role-play
+/game operation       -> authoritative game-state transition
+```
+
+The current game board is shared Council evidence, but narration never mutates the board merely because a model says something happened.
+
+All countries, wars, territory values and arms packages are fictional game objects. See [`UN_SIM.md`](UN_SIM.md).
+
 ## Why runtime modes, not just persona prompts?
 
 NEXUS records the selected mode as protocol state rather than pretending a model prompt can perfectly enforce behavior.
@@ -118,9 +148,11 @@ A compliant adapter receives mode guidance, but the world owns the mode identity
 
 This matters because chat-trained models may retain output and conversational priors even under aggressive prompt-level constraints. NEXUS therefore treats prompt instructions as guidance and keeps procedural rules in the runtime.
 
+The same reasoning applies especially strongly to a game room: a model can role-play an ambassador, but the runtime owns whether a country is actually sanctioned, suspended, at war or holding a territory token.
+
 ## Geometry semantics
 
-The first Geometry Layer is an **operational topology**, not a physical claim.
+The Geometry Layer is an **operational topology**, not a physical claim.
 
 ```text
 WorldRegion
@@ -138,9 +170,10 @@ Properties:
 - adjacency is explicit and symmetric;
 - hop distance is computable;
 - every built-in mode maps to exactly one region;
-- the current geometry has the stable identifier `named-regions-v1`.
+- the current built-in geometry identifier is `named-regions-v2`;
+- the content-derived `topology_ref` remains separate from that human-readable identifier.
 
-NEXUS does **not** claim that culture, history, memes or model cognition literally occupy Euclidean coordinates. The geometry is a computational substrate for placement, relation, navigation and later visualization.
+NEXUS does **not** claim that culture, history, memes, games or model cognition literally occupy Euclidean coordinates. The geometry is a computational substrate for placement, relation, navigation and later visualization.
 
 ## World presence
 
@@ -155,14 +188,17 @@ world_presence
 ├── coordinates
 ├── member_ids[]
 ├── question_ref
-└── geometry_id
+├── geometry_id
+└── geometry_topology_ref
 ```
 
 The Council session then references that presence object.
 
 This means two otherwise identical Councils run in different modes are different sessions with different lineage, while their constitutional voting mechanics remain identical.
 
-## Example
+## Examples
+
+Cultural Council:
 
 ```json
 {
@@ -185,11 +221,27 @@ region: agora
 coordinates: (0,2)
 ```
 
-The same question in `meme_casual` resolves to the Commons and may encourage playful phrasing, but the evidence state and Council vote policy do not change.
+Game Council:
+
+```json
+{
+  "operation":"council.run",
+  "question":"Should the Assembly suspend both belligerents?",
+  "mode":"game_un",
+  "evidence_refs":["object:<current-game-state>"],
+  "members":[
+    {"member_id":"A","model_id":"mock-a"},
+    {"member_id":"B","model_id":"mock-b"},
+    {"member_id":"C","model_id":"mock-c"}
+  ]
+}
+```
+
+resolves to Assembly Hall at `(0,-2)` and keeps exactly the same Council vote mechanics.
 
 ## API
 
-Alpha4 adds:
+World-mode/geometry operations:
 
 ```text
 world.modes
@@ -203,11 +255,13 @@ Example:
 {
   "operation": "world.geometry.distance",
   "source_region_id": "archive",
-  "target_region_id": "commons"
+  "target_region_id": "assembly"
 }
 ```
 
 returns the shortest topological hop distance in the current named-region graph.
+
+The game itself is exposed separately through the `game.un.*` operations documented in [`API.md`](API.md) and [`UN_SIM.md`](UN_SIM.md).
 
 ## Geometry-inspired ideas deliberately deferred
 
@@ -243,5 +297,7 @@ Garden        exploratory hypothesis growth
 ```
 
 Likewise, future user-defined modes may map onto existing or new regions.
+
+Game rooms may also grow into separate deterministic simulations without granting those simulations authority over evidence, verification or Council voting.
 
 The map should grow because useful behavior requires it, not because a large ontology looks impressive.

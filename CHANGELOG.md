@@ -1,5 +1,37 @@
 # Changelog
 
+All notable changes to QSOL NEXUS are documented here.
+
+## 2.0.0-alpha6.2 — `#un-sim` fictional game room
+
+- add `game_un` World Mode and the Assembly Hall region;
+- add a deterministic content-addressed fictional UN simulation engine;
+- add six invented countries with abstract Risk-like economy, military, stability, influence, reputation and territory state;
+- add sanctions, support, aid, abstract arms trade, meme campaigns, suspension, reinstatement, recognition, mediation and inaction;
+- add deterministic war turns, bounded event history and immutable predecessor lineage;
+- add a compact current-board `content` view so all Council members can read the same board within the bounded evidence budget;
+- add local JSONL `game.un.catalog`, `game.un.new`, `game.un.inspect`, `game.un.act` and `game.un.turn` operations;
+- add the Rust `#un-sim` room and `/game` command family;
+- bump the local protocol to `nexus/0.6` and the built-in geometry to `named-regions-v2`;
+- explicitly keep real-country action, real-world policy claims and real weapons procurement outside the game contract.
+
+Core invariant:
+
+> **Debate is cognition. Game state is substrate.**
+
+## 2.0.0-alpha6.1 — Ordered parallel Council execution
+
+- add bounded same-hat Council concurrency with hard barriers between White, Red, Black, Yellow, Green and Blue;
+- collect sealed ballots in parallel only after the Blue barrier completes;
+- preserve canonical roster-order commits regardless of thread completion order;
+- adopt the QEC v170.2.x exact bounded worker contract and scalar/parallel acceptance philosophy;
+- require byte-identical deterministic Council/session/receipt artifacts between scalar and ordered-parallel execution;
+- preserve Equality Guard, evidence, vote and telemetry semantics under concurrency;
+- measure the live Ollama acceptance path without treating speed as correctness or authority.
+
+Core invariant:
+
+> **Execution order may vary. Canonical Council order may not.**
 
 ## 2.0.0-alpha6 — Council information telemetry
 
@@ -10,8 +42,6 @@
 - render observational telemetry in the Rust IRC-style TUI;
 - explicitly prohibit telemetry from affecting votes, consensus, evidence, or verification;
 - defer semantic entropy and geometry-flavoured labels until they have explicit measurement rules.
-
-All notable changes to QSOL NEXUS are documented here.
 
 ## [2.0.0-alpha5] — IRC-style Rust operator TUI
 

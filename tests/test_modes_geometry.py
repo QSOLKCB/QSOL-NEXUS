@@ -25,12 +25,13 @@ def connected_regions(*, observatory_x: int = 0) -> tuple[WorldRegion, ...]:
             "Observatory",
             observatory_x,
             0,
-            ("archive", "agora", "commons"),
+            ("archive", "agora", "commons", "assembly"),
             "Analytical region.",
         ),
         WorldRegion("archive", "Archive", -2, 1, ("observatory", "agora"), "Historical region."),
         WorldRegion("agora", "Agora", 0, 2, ("archive", "observatory", "commons"), "Cultural region."),
-        WorldRegion("commons", "Commons", 2, 1, ("observatory", "agora"), "Playful region."),
+        WorldRegion("commons", "Commons", 2, 1, ("observatory", "agora", "assembly"), "Playful region."),
+        WorldRegion("assembly", "Assembly Hall", 0, -2, ("observatory", "commons"), "Game region."),
     )
 
 
@@ -38,9 +39,10 @@ class WorldModeTests(unittest.TestCase):
     def test_initial_mode_registry_is_explicit(self) -> None:
         self.assertEqual(
             {mode.mode_id for mode in list_modes()},
-            {"analytical", "historical", "cultural", "meme_casual"},
+            {"analytical", "historical", "cultural", "meme_casual", "game_un"},
         )
         self.assertEqual(get_mode("historical").region_id, "archive")
+        self.assertEqual(get_mode("game_un").region_id, "assembly")
         with self.assertRaises(ValueError):
             get_mode("corporate_supremacy")
 
@@ -68,7 +70,7 @@ class WorldModeTests(unittest.TestCase):
         self.assertEqual(presence.payload["mode_id"], "cultural")
         self.assertEqual(presence.payload["region_id"], "agora")
         self.assertEqual(presence.payload["coordinates"], [0, 2])
-        self.assertEqual(presence.payload["geometry_id"], "named-regions-v1")
+        self.assertEqual(presence.payload["geometry_id"], "named-regions-v2")
         self.assertEqual(presence.payload["geometry_topology_ref"], DEFAULT_WORLD_GEOMETRY.snapshot()["topology_ref"])
         session = world.inspect(result["session_ref"])
         self.assertEqual(session.payload["world_presence_ref"], presence.object_id)
@@ -79,10 +81,11 @@ class WorldModeTests(unittest.TestCase):
 class GeometryTests(unittest.TestCase):
     def test_geometry_is_connected_and_mode_complete(self) -> None:
         snapshot = DEFAULT_WORLD_GEOMETRY.snapshot()
-        self.assertEqual(snapshot["geometry_id"], "named-regions-v1")
+        self.assertEqual(snapshot["geometry_id"], "named-regions-v2")
         self.assertTrue(str(snapshot["topology_ref"]).startswith("geometry:"))
         self.assertEqual(snapshot["semantics"], "operational_topology_not_physical_claim")
         region_ids = [region["region_id"] for region in snapshot["regions"]]  # type: ignore[index]
+        self.assertIn("assembly", region_ids)
         for source in region_ids:
             for target in region_ids:
                 with self.subTest(source=source, target=target):
@@ -112,8 +115,9 @@ class GeometryTests(unittest.TestCase):
 
     def test_geometry_rejects_disconnected_mode_complete_map(self) -> None:
         disconnected = (
-            WorldRegion("observatory", "Observatory", 0, 0, ("archive",), "A"),
+            WorldRegion("observatory", "Observatory", 0, 0, ("archive", "assembly"), "A"),
             WorldRegion("archive", "Archive", -2, 1, ("observatory",), "B"),
+            WorldRegion("assembly", "Assembly Hall", 0, -2, ("observatory",), "Game"),
             WorldRegion("agora", "Agora", 0, 2, ("commons",), "C"),
             WorldRegion("commons", "Commons", 2, 1, ("agora",), "D"),
         )
@@ -142,10 +146,10 @@ class ModeGeometryAPITests(unittest.TestCase):
         self.assertEqual(modes["status"], "ok")
         self.assertEqual(
             {item["mode_id"] for item in modes["modes"]},
-            {"analytical", "historical", "cultural", "meme_casual"},
+            {"analytical", "historical", "cultural", "meme_casual", "game_un"},
         )
         geometry = api.handle({"operation": "world.geometry"})
-        self.assertEqual(geometry["geometry_id"], "named-regions-v1")
+        self.assertEqual(geometry["geometry_id"], "named-regions-v2")
         self.assertTrue(geometry["topology_ref"].startswith("geometry:"))
         distance = api.handle(
             {
@@ -155,6 +159,14 @@ class ModeGeometryAPITests(unittest.TestCase):
             }
         )
         self.assertEqual(distance["hop_distance"], 2)
+        assembly = api.handle(
+            {
+                "operation": "world.geometry.distance",
+                "source_region_id": "observatory",
+                "target_region_id": "assembly",
+            }
+        )
+        self.assertEqual(assembly["hop_distance"], 1)
 
     def test_api_council_accepts_mode_and_rejects_unknown_mode(self) -> None:
         api = NexusAPI()
@@ -174,6 +186,17 @@ class ModeGeometryAPITests(unittest.TestCase):
         self.assertEqual(run["status"], "ok")
         self.assertEqual(run["mode_id"], "cultural")
         self.assertEqual(run["geometry_region_id"], "agora")
+
+        game = api.handle(
+            {
+                "operation": "council.run",
+                "question": "Debate the fictional crisis.",
+                "mode": "game_un",
+                "members": members,
+            }
+        )
+        self.assertEqual(game["status"], "ok")
+        self.assertEqual(game["geometry_region_id"], "assembly")
 
         bad = api.handle(
             {

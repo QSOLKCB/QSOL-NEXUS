@@ -10,8 +10,8 @@ use crossterm::{execute, queue};
 use nexus_irc_tui::scripting::{expand_identifiers, IdentifierContext, VariableBook};
 use nexus_irc_tui::{
     command_completions, load_document, normalize_action, parse_input, room_from_name,
-    sanitize_terminal_text, AliasBook, DccCommand, DccKind, DccSession, InputCommand, RoomSpec,
-    ROOMS,
+    sanitize_terminal_text, AliasBook, DccCommand, DccKind, DccSession, GameCommand, InputCommand,
+    RoomSpec, ROOMS,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -196,6 +196,7 @@ struct App {
     topics: BTreeMap<String, String>,
     members: Vec<MemberConfig>,
     room_evidence: BTreeMap<String, Vec<String>>,
+    game_refs: BTreeMap<String, String>,
     targeted_evidence: BTreeMap<String, Vec<String>>,
     dcc_sessions: Vec<DccSession>,
     private_target: Option<String>,
@@ -222,6 +223,7 @@ impl App {
                 MemberConfig::mock("Gamma", "exploratory"),
             ],
             room_evidence: BTreeMap::new(),
+            game_refs: BTreeMap::new(),
             targeted_evidence: BTreeMap::new(),
             dcc_sessions: Vec::new(),
             private_target: None,
@@ -236,7 +238,7 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS 2.0 alpha5 IRC/TUI — local room, no IRC server");
+        app.append("*** NEXUS 2.0 alpha6.2 IRC/TUI — local room, no IRC server");
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );
@@ -399,6 +401,7 @@ impl App {
                 }
                 self.run_council(nexus, &question)?;
             }
+            InputCommand::Game(command) => self.execute_game(nexus, command)?,
             InputCommand::Say(text) => {
                 if let Some(target) = self.private_target.clone() {
                     self.direct_message(nexus, &target, &text)?;
@@ -572,6 +575,187 @@ impl App {
                 self.scroll_offset = 0;
             }
             InputCommand::Quit => self.running = false,
+        }
+        Ok(())
+    }
+
+    fn current_game_ref(&self) -> Option<&str> {
+        let channel = self.room.channel;
+        let game_ref = self.game_refs.get(channel).map(String::as_str)?;
+        let in_evidence = self
+            .room_evidence
+            .get(channel)
+            .map(|refs| refs.iter().any(|value| value == game_ref))
+            .unwrap_or(false);
+        if in_evidence {
+            Some(game_ref)
+        } else {
+            None
+        }
+    }
+
+    fn set_game_ref(&mut self, game_ref: String) {
+        let channel = self.room.channel.to_string();
+        if let Some(previous) = self.game_refs.insert(channel.clone(), game_ref.clone()) {
+            if let Some(refs) = self.room_evidence.get_mut(&channel) {
+                refs.retain(|value| value != &previous);
+            }
+        }
+        self.add_room_evidence(&channel, game_ref);
+    }
+
+    fn require_game_room(&self) -> Result<(), String> {
+        if self.room.mode_id != "game_un" {
+            return Err("/game commands are available in #un-sim; use /join #un-sim".to_string());
+        }
+        Ok(())
+    }
+
+    fn execute_game(
+        &mut self,
+        nexus: &mut NexusProcess,
+        command: GameCommand,
+    ) -> Result<(), String> {
+        self.require_game_room()?;
+        match command {
+            GameCommand::Help => {
+                for line in [
+                    "*** UN SIM: /game new [seed] | /game status | /game turn",
+                    "*** ACTION: /game act <sanction|support|aid|arms|meme|suspend|reinstate|recognize> <country-id ...>",
+                    "*** PEACE: /game act mediate <country-a> <country-b> | /game act do_nothing",
+                    "*** The current board is shared Council evidence. Debate never mutates it; /game does.",
+                ] {
+                    self.append(line);
+                }
+            }
+            GameCommand::New { seed } => {
+                let mut request = json!({"operation": "game.un.new"});
+                if !seed.trim().is_empty() {
+                    request["seed"] = json!(seed);
+                }
+                let response = nexus.request(request)?;
+                let game_ref = response.get("game_ref").and_then(Value::as_str)
+                    .ok_or_else(|| "game response missing game_ref".to_string())?.to_string();
+                self.set_game_ref(game_ref.clone());
+                self.append(&format!("*** New fictional UN simulation: {game_ref}"));
+                self.render_game_state(&response)?;
+            }
+            GameCommand::Status => {
+                let game_ref = self.current_game_ref()
+                    .ok_or_else(|| "no game in #un-sim; use /game new [seed]".to_string())?.to_string();
+                let response = nexus.request(json!({"operation": "game.un.inspect", "game_ref": game_ref}))?;
+                self.render_game_state(&response)?;
+            }
+            GameCommand::Act { action, targets } => {
+                let game_ref = self.current_game_ref()
+                    .ok_or_else(|| "no game in #un-sim; use /game new [seed]".to_string())?.to_string();
+                let response = nexus.request(json!({"operation": "game.un.act", "game_ref": game_ref, "action": action, "targets": targets}))?;
+                let next_ref = response.get("game_ref").and_then(Value::as_str)
+                    .ok_or_else(|| "game response missing game_ref".to_string())?.to_string();
+                self.set_game_ref(next_ref);
+                self.render_game_state(&response)?;
+            }
+            GameCommand::Turn => {
+                let game_ref = self.current_game_ref()
+                    .ok_or_else(|| "no game in #un-sim; use /game new [seed]".to_string())?.to_string();
+                let response = nexus.request(json!({"operation": "game.un.turn", "game_ref": game_ref}))?;
+                let next_ref = response.get("game_ref").and_then(Value::as_str)
+                    .ok_or_else(|| "game response missing game_ref".to_string())?.to_string();
+                self.set_game_ref(next_ref);
+                self.render_game_state(&response)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn render_game_state(&mut self, response: &Value) -> Result<(), String> {
+        let game = response
+            .get("game")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "game response missing game object".to_string())?;
+        let turn = game.get("turn").and_then(Value::as_u64).unwrap_or(0);
+        let tension = game
+            .get("world_tension")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        let legitimacy = game
+            .get("un_legitimacy")
+            .and_then(Value::as_u64)
+            .unwrap_or(0);
+        self.append(&format!(
+            "--- UN SIM TURN {turn} | tension={tension} | UN legitimacy={legitimacy} ---"
+        ));
+        if let Some(wars) = game.get("wars").and_then(Value::as_array) {
+            if wars.is_empty() {
+                self.append("*** WARS: none. This is presumably temporary.");
+            }
+            for war in wars {
+                let a = war.get("a").and_then(Value::as_str).unwrap_or("?");
+                let b = war.get("b").and_then(Value::as_str).unwrap_or("?");
+                let sa = war.get("score_a").and_then(Value::as_u64).unwrap_or(0);
+                let sb = war.get("score_b").and_then(Value::as_u64).unwrap_or(0);
+                self.append(&format!("*** WAR: {a} vs {b} | score {sa}-{sb}"));
+            }
+        }
+        if let Some(countries) = game.get("countries").and_then(Value::as_object) {
+            let mut ids: Vec<&String> = countries.keys().collect();
+            ids.sort();
+            for id in ids {
+                let country = &countries[id];
+                let name = country.get("name").and_then(Value::as_str).unwrap_or(id);
+                let e = country.get("economy").and_then(Value::as_u64).unwrap_or(0);
+                let m = country.get("military").and_then(Value::as_u64).unwrap_or(0);
+                let s = country
+                    .get("stability")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let i = country
+                    .get("influence")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let r = country
+                    .get("reputation")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let t = country
+                    .get("territory")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let sanctions = country
+                    .get("sanctions")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let arms = country
+                    .get("arms_imports")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let memes = country
+                    .get("meme_heat")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                let suspended = if country
+                    .get("suspended")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+                {
+                    " SUSPENDED"
+                } else {
+                    ""
+                };
+                self.append(&format!("*** {id}: {name} | E{e} M{m} S{s} I{i} R{r} T{t} | sanctions={sanctions} arms={arms} memes={memes}{suspended}"));
+            }
+        }
+        if let Some(event) = game
+            .get("event_log")
+            .and_then(Value::as_array)
+            .and_then(|events| events.last())
+        {
+            if let Some(text) = event.get("text").and_then(Value::as_str) {
+                self.append(&format!("*** LATEST: {text}"));
+            }
+        }
+        if let Some(game_ref) = response.get("game_ref").and_then(Value::as_str) {
+            self.append(&format!("*** BOARD: {game_ref}"));
         }
         Ok(())
     }
@@ -949,6 +1133,7 @@ impl App {
     fn show_help(&mut self) {
         for line in [
             "*** Core: /join #room | /mode mode | /topic text | /ask text | plain text = Council question",
+            "*** Game: /join #un-sim | /game new [seed] | /game status | /game act ... | /game turn",
             "*** IRC: /me action | /msg nick text | /nick name | /who | /search text | /save file | /clear | /quit",
             "*** Models: /addmock nick [profile] | /addollama nick model | /kick nick",
             "*** Evidence: /upload file | /ref object:... | /unref object:... | /evidence",
@@ -1330,5 +1515,23 @@ mod tests {
             "/alias slap /me slaps $1 with $2-"
         );
         assert_eq!(app.preprocess("/unset %weapon"), "/unset %weapon");
+    }
+
+    #[test]
+    fn current_game_ref_requires_board_to_remain_shared_evidence() {
+        let mut app = App::new(
+            "Trent".to_string(),
+            PathBuf::from("/definitely/not/a/state/file"),
+        );
+        app.room = room_from_name("#un-sim").expect("UN sim room");
+        let game_ref = "object:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        app.set_game_ref(game_ref.to_string());
+        assert_eq!(app.current_game_ref(), Some(game_ref));
+
+        app.room_evidence
+            .get_mut("#un-sim")
+            .expect("room evidence")
+            .retain(|value| value != game_ref);
+        assert_eq!(app.current_game_ref(), None);
     }
 }

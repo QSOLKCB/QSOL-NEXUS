@@ -19,7 +19,7 @@ pub struct RoomSpec {
     pub label: &'static str,
 }
 
-pub const ROOMS: [RoomSpec; 4] = [
+pub const ROOMS: [RoomSpec; 5] = [
     RoomSpec {
         channel: "#observatory",
         mode_id: "analytical",
@@ -44,15 +44,22 @@ pub const ROOMS: [RoomSpec; 4] = [
         region_id: "commons",
         label: "Commons / Meme-Casual",
     },
+    RoomSpec {
+        channel: "#un-sim",
+        mode_id: "game_un",
+        region_id: "assembly",
+        label: "Assembly Hall / UN Simulation Game",
+    },
 ];
 
-pub const COMMANDS: [&str; 28] = [
+pub const COMMANDS: [&str; 29] = [
     "/help",
     "/join",
     "/mode",
     "/topic",
     "/ask",
     "/council",
+    "/game",
     "/me",
     "/msg",
     "/nick",
@@ -86,6 +93,20 @@ pub enum DccCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GameCommand {
+    Help,
+    New {
+        seed: String,
+    },
+    Status,
+    Act {
+        action: String,
+        targets: Vec<String>,
+    },
+    Turn,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputCommand {
     Noop,
     Help,
@@ -93,6 +114,7 @@ pub enum InputCommand {
     Mode(String),
     Topic(String),
     Ask(String),
+    Game(GameCommand),
     Me(String),
     Msg { target: String, text: String },
     Nick(String),
@@ -139,6 +161,7 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/mode" => require(rest, "/mode <mode>").map(InputCommand::Mode),
         "/topic" => require(rest, "/topic <question>").map(InputCommand::Topic),
         "/ask" | "/council" => Ok(InputCommand::Ask(rest.to_string())),
+        "/game" => parse_game(rest).map(InputCommand::Game),
         "/me" => require(rest, "/me <action>").map(InputCommand::Me),
         "/nick" => require(rest, "/nick <name>").map(InputCommand::Nick),
         "/ref" => require(rest, "/ref <object:sha256>").map(InputCommand::Ref),
@@ -249,6 +272,32 @@ fn parse_dcc(rest: &str) -> Result<DccCommand, String> {
             })
         }
         _ => Err("usage: /dcc <send|chat|close|list> ...".to_string()),
+    }
+}
+
+fn parse_game(rest: &str) -> Result<GameCommand, String> {
+    let trimmed = rest.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("help") {
+        return Ok(GameCommand::Help);
+    }
+    let (sub, tail) = split_first(trimmed).expect("non-empty game command");
+    match sub.to_ascii_lowercase().as_str() {
+        "new" => Ok(GameCommand::New {
+            seed: unquote(tail),
+        }),
+        "status" if tail.is_empty() => Ok(GameCommand::Status),
+        "turn" if tail.is_empty() => Ok(GameCommand::Turn),
+        "act" => {
+            let (action, targets) = split_first(tail)
+                .ok_or_else(|| "usage: /game act <action> [country-id ...]".to_string())?;
+            Ok(GameCommand::Act {
+                action: action.to_string(),
+                targets: targets.split_whitespace().map(str::to_string).collect(),
+            })
+        }
+        _ => Err(
+            "usage: /game <new [seed]|status|act <action> [country-id ...]|turn|help>".to_string(),
+        ),
     }
 }
 

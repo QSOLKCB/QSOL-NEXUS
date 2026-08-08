@@ -198,7 +198,8 @@ class APITests(unittest.TestCase):
     def test_health_reports_local_stdio_plus_explicit_loopback_ollama(self) -> None:
         api = NexusAPI()
         result = api.handle({"operation": "system.health"})
-        self.assertEqual(result["protocol"], "nexus/0.5")
+        self.assertEqual(result["protocol"], "nexus/0.6")
+        self.assertEqual(result["runtime_version"], "2.0.0-alpha6.2")
         self.assertEqual(result["control_transport"], "jsonl_stdio")
         self.assertEqual(result["network"], "none_unless_explicit_loopback_ollama_actor")
         self.assertEqual(result["adapters"], ["mock", "ollama_loopback"])

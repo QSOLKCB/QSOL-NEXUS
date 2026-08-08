@@ -222,6 +222,42 @@ Core invariant:
 
 High entropy is not automatically good. Low entropy is not automatically truth.
 
+## 2.0-alpha6.1 — Ordered parallel Council execution
+
+Completed in PR #7.
+
+- [x] parallel actor-local work within each hat;
+- [x] hard barriers between White/Red/Black/Yellow/Green/Blue;
+- [x] sealed ballots collected in parallel after Blue;
+- [x] canonical roster-order joins regardless of completion order;
+- [x] exact bounded worker contract adapted from QEC v170.2.x;
+- [x] scalar/parallel byte-identity regression for deterministic actors;
+- [x] live Ollama acceptance timing without turning speed into authority.
+
+Core invariant:
+
+> **Execution order may vary. Canonical Council order may not.**
+
+## 2.0-alpha6.2 — First game room / UN simulation
+
+Implemented / targeted in PR #8.
+
+- [x] `game_un` World Mode;
+- [x] `#un-sim` Rust IRC room;
+- [x] Assembly Hall region in `named-regions-v2`;
+- [x] deterministic six-state fictional board;
+- [x] Risk-like abstract economy/military/stability/influence/reputation/territory state;
+- [x] sanctions, support, aid, abstract arms trade, memes, suspension, reinstatement, recognition, mediation and inaction;
+- [x] deterministic war turns and bounded event log;
+- [x] immutable content-addressed board lineage;
+- [x] compact current-board Council evidence view;
+- [x] `/game` command family in the Rust shell;
+- [x] explicit fictional-only / no-real-procurement claim boundary.
+
+Core invariant:
+
+> **Debate is cognition. Game state is substrate.**
+
 ## 2.0-alpha7 — Instruments
 
 Connect selected existing QSOL capabilities as versioned instruments rather than embedding entire repositories.
@@ -237,7 +273,7 @@ Candidates:
 
 Instrument admission requires explicit input/output and claim boundaries.
 
-Creative modes should be able to use instruments too; Meme/Casual Mode does not mean “no tools.”
+Creative modes should be able to use instruments too; Meme/Casual Mode and game rooms do not mean “no tools.”
 
 ## 2.0-alpha8 — Persistent world
 
@@ -351,4 +387,4 @@ NEXUS 2.0 should not be called stable until:
 
 Accuracy and contract clarity come first.
 
-Do not optimize concurrency, token routing, model batching, binary formats, distributed execution, or provider-specific shortcuts until the reference protocol has been exercised enough to reveal real bottlenecks.
+Performance optimization must preserve semantic invariants. Ordered parallel Council execution is admitted because deterministic scalar/parallel equivalence is tested and canonical roster ordering remains stable. Further concurrency, token routing, model batching, binary formats, distributed execution, or provider-specific shortcuts should only be added when measured bottlenecks justify them.
