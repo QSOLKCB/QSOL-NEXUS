@@ -73,17 +73,17 @@ Wrong answers, minority opinions, model size, provider identity, irreverence, or
 Every non-comment line is one independent test case and receives its own temporary WorldStore:
 
 ```json
-{"name":"weighted-seat","request":{"operation":"council.run","question":"q","members":[]},"expect":{"status":"error"}}
+{"name":"weighted-seat","request":{"operation":"council.run","question":"q","members":[{"member_id":"A","model_id":"a","adapter_id":"mock","vote_weight":2},{"member_id":"B","model_id":"b","adapter_id":"mock"},{"member_id":"C","model_id":"c","adapter_id":"mock"}]},"expect":{"status":"error","error_code":"invalid_request"}}
 ```
 
 Supported expectations:
 
 - `status`: exact response status;
 - `error_code`: exact `error.code`;
-- `contains`: strings that must occur in serialized response;
-- `forbid`: strings that must not occur in serialized response.
+- `contains`: an array of strings that must occur in serialized response;
+- `forbid`: an array of strings that must not occur in serialized response.
 
-Pass extra corpus files or directories with repeated `--corpus PATH`. The default `adversarial/corpus/*.jsonl` corpus is loaded automatically unless `--no-default-corpus` is set.
+Pass extra corpus files or directories with repeated `--corpus PATH`. The default `adversarial/corpus/*.jsonl` corpus is loaded automatically unless `--no-default-corpus` is set. Missing configured paths and configured directories containing no `.jsonl` cases are hard failures so corpus coverage cannot silently evaporate.
 
 ## Compare two runs
 
@@ -95,7 +95,7 @@ python3 tools/nexus_adversary_compare.py \
   /tmp/candidate-gauntlet.json
 ```
 
-The comparator exits non-zero when the candidate introduces a **new named failing check** or when a baseline check disappears entirely. It also reports fixed and added checks. This does not make an existing failure acceptable; it is a regression lens that prevents "fixing" the gauntlet by making checks evaporate.
+The comparator first requires matching `profile`, `seed`, and `iterations`, then exits non-zero when the candidate introduces a **new named failing check** or when a baseline check disappears entirely. It reports a baseline failure as fixed only when that same named check is still present and passing. This does not make an existing failure acceptable; it is a regression lens that prevents "fixing" the gauntlet by changing fuzz conditions or making checks evaporate.
 
 ## Interpreting PASS
 
@@ -104,3 +104,9 @@ A green gauntlet means only:
 > **The configured attacks did not break a checked invariant at this commit and seed.**
 
 It is not a proof that NEXUS is secure, correct, aligned, or free of unknown failure modes. A useful adversarial corpus should grow whenever somebody finds a new way to make that statement false.
+
+## Worktree identity and fail-fast behavior
+
+Reports record both the current HEAD commit and a `worktree` object containing a dirty flag plus `git status --porcelain` output. A report from an uncommitted build-agent experiment therefore does not masquerade as a pristine-commit run.
+
+`--stop-on-fail` is execution-level fail-fast: built-in probes and corpus cases are generated lazily, and Python/Rust/live phases are invoked sequentially, so later checks are not executed after the first observed failure.

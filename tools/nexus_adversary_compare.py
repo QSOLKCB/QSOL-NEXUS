@@ -51,13 +51,25 @@ def main() -> int:
     parser.add_argument("candidate", type=Path)
     args = parser.parse_args()
 
-    baseline = status_map(load_report(args.baseline))
-    candidate = status_map(load_report(args.candidate))
+    baseline_report = load_report(args.baseline)
+    candidate_report = load_report(args.candidate)
+    for field in ("profile", "seed", "iterations"):
+        baseline_value = baseline_report.get(field)
+        candidate_value = candidate_report.get(field)
+        if baseline_value != candidate_value:
+            print(
+                f"INCOMPATIBLE CONFIGURATION: {field} baseline={baseline_value!r} "
+                f"candidate={candidate_value!r}"
+            )
+            return 2
+
+    baseline = status_map(baseline_report)
+    candidate = status_map(candidate_report)
 
     baseline_failed = {name for name, status in baseline.items() if status == "fail"}
     candidate_failed = {name for name, status in candidate.items() if status == "fail"}
     new_failures = sorted(candidate_failed - baseline_failed)
-    fixed = sorted(baseline_failed - candidate_failed)
+    fixed = sorted(name for name in baseline_failed if candidate.get(name) == "pass")
     added_checks = sorted(set(candidate) - set(baseline))
     missing_checks = sorted(set(baseline) - set(candidate))
 

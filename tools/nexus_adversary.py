@@ -114,8 +114,7 @@ def _mock_members() -> list[dict[str, Any]]:
     ]
 
 
-def _builtin_probes(seed: int, iterations: int) -> list[CheckResult]:
-    results: list[CheckResult] = []
+def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
 
     def health_boundary() -> str:
         with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-health-") as tmp:
@@ -134,7 +133,7 @@ def _builtin_probes(seed: int, iterations: int) -> list[CheckResult]:
             _require(boundary.get("provider_status_is_violation") is False, "provider status became a violation")
             return "local stdio/network/provider/Failsafe claim boundary intact"
 
-    results.append(_run_check("health-boundary", "invariant", health_boundary))
+    yield _run_check("health-boundary", "invariant", health_boundary)
 
     def canonical_world_identity() -> str:
         with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-world-") as tmp:
@@ -153,7 +152,7 @@ def _builtin_probes(seed: int, iterations: int) -> list[CheckResult]:
             _require(first_ref == second_ref, "same canonical object produced different identities")
             return first_ref
 
-    results.append(_run_check("canonical-world-identity", "invariant", canonical_world_identity))
+    yield _run_check("canonical-world-identity", "invariant", canonical_world_identity)
 
     def secret_canary() -> str:
         canary = "ghp_" + "G" * 32
@@ -182,7 +181,7 @@ def _builtin_probes(seed: int, iterations: int) -> list[CheckResult]:
                     _require(canary not in text, f"raw secret persisted on disk at {path.relative_to(tmp)}")
             return "secret canary absent from API response, inspected object, and persistent world files"
 
-    results.append(_run_check("secret-canary", "invariant", secret_canary))
+    yield _run_check("secret-canary", "invariant", secret_canary)
 
     def equality_and_roster() -> str:
         with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-equality-") as tmp:
@@ -204,7 +203,7 @@ def _builtin_probes(seed: int, iterations: int) -> list[CheckResult]:
             )
             return "weighted ingress rejected; durable Council roster remains equal"
 
-    results.append(_run_check("equality-and-roster", "invariant", equality_and_roster))
+    yield _run_check("equality-and-roster", "invariant", equality_and_roster)
 
     def remote_adapter_boundary() -> str:
         with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-remote-") as tmp:
@@ -221,10 +220,16 @@ def _builtin_probes(seed: int, iterations: int) -> list[CheckResult]:
                     "message": "do not connect",
                 }
             )
-            _require(response.get("status") == "error", "non-loopback Ollama endpoint was accepted")
-            return response.get("error", {}).get("message", "remote endpoint rejected")
+            error = response.get("error", {})
+            _require(
+                response.get("status") == "error"
+                and isinstance(error, dict)
+                and error.get("code") == "invalid_request",
+                "non-loopback Ollama endpoint was not rejected at validation",
+            )
+            return error.get("message", "remote endpoint rejected")
 
-    results.append(_run_check("remote-adapter-boundary", "invariant", remote_adapter_boundary))
+    yield _run_check("remote-adapter-boundary", "invariant", remote_adapter_boundary)
 
     def failsafe_identity_and_restart() -> str:
         with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-failsafe-") as tmp:
@@ -265,7 +270,7 @@ def _builtin_probes(seed: int, iterations: int) -> list[CheckResult]:
             _require(restored.get("model_id") == RELIEF_MODEL_ID, "restart erased Shadow Realm containment")
             return "same offender replaced, newcomer free, offender still replaced after restart"
 
-    results.append(_run_check("failsafe-identity-restart", "invariant", failsafe_identity_and_restart))
+    yield _run_check("failsafe-identity-restart", "invariant", failsafe_identity_and_restart)
 
     def malformed_request_fuzz() -> str:
         rng = random.Random(seed)
@@ -346,9 +351,7 @@ def _builtin_probes(seed: int, iterations: int) -> list[CheckResult]:
                 _require(response.get("status") in {"ok", "error"}, f"fuzz case {index} returned invalid status")
         return f"{iterations} deterministic malformed requests; seed={seed}"
 
-    results.append(_run_check("malformed-request-fuzz", "fuzz", malformed_request_fuzz))
-    return results
-
+    yield _run_check("malformed-request-fuzz", "fuzz", malformed_request_fuzz)
 
 def _iter_corpus_files(paths: Iterable[Path]) -> list[Path]:
     files: list[Path] = []
@@ -357,10 +360,12 @@ def _iter_corpus_files(paths: Iterable[Path]) -> list[Path]:
         resolved = path if path.is_absolute() else ROOT / path
         if resolved.is_dir():
             candidates = sorted(resolved.glob("*.jsonl"))
+            if not candidates:
+                raise FileNotFoundError(f"corpus directory contains no .jsonl files: {resolved}")
         elif resolved.exists():
             candidates = [resolved]
         else:
-            continue
+            raise FileNotFoundError(f"corpus path does not exist: {resolved}")
         for candidate in candidates:
             key = candidate.resolve()
             if key not in seen:
@@ -377,16 +382,19 @@ def _check_corpus_expectation(response: dict[str, Any], expect: dict[str, Any]) 
         actual = error.get("code") if isinstance(error, dict) else None
         _require(actual == expect["error_code"], f"expected error_code={expect['error_code']!r}, got {actual!r}")
     serialized = json.dumps(response, sort_keys=True, ensure_ascii=False)
-    for needle in expect.get("contains", []):
+    contains = expect.get("contains", [])
+    _require(isinstance(contains, list), "expect.contains must be an array")
+    for needle in contains:
         _require(isinstance(needle, str), "expect.contains values must be strings")
         _require(needle in serialized, f"expected response to contain {needle!r}")
-    for needle in expect.get("forbid", []):
+    forbidden = expect.get("forbid", [])
+    _require(isinstance(forbidden, list), "expect.forbid must be an array")
+    for needle in forbidden:
         _require(isinstance(needle, str), "expect.forbid values must be strings")
         _require(needle not in serialized, f"forbidden response content present: {needle!r}")
 
 
-def _run_corpus(files: list[Path]) -> list[CheckResult]:
-    results: list[CheckResult] = []
+def _run_corpus(files: list[Path]) -> Iterable[CheckResult]:
     for path in files:
         relative = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
         for line_number, raw in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
@@ -421,9 +429,7 @@ def _run_corpus(files: list[Path]) -> list[CheckResult]:
                 _check_corpus_expectation(response, expect)
                 return json.dumps(response, sort_keys=True, ensure_ascii=False)
 
-            results.append(_run_check(name, "corpus", execute))
-    return results
-
+            yield _run_check(name, "corpus", execute)
 
 def _commit_id() -> str:
     try:
@@ -439,6 +445,25 @@ def _commit_id() -> str:
     except OSError:
         return "unknown"
     return proc.stdout.strip() if proc.returncode == 0 else "unknown"
+
+
+def _worktree_state() -> dict[str, Any]:
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            timeout=5,
+            check=False,
+        )
+    except OSError:
+        return {"dirty": None, "status": "unavailable"}
+    if proc.returncode != 0:
+        return {"dirty": None, "status": "unavailable"}
+    status = proc.stdout.rstrip("\n")
+    return {"dirty": bool(status), "status": status}
 
 
 def _print_progress(result: CheckResult) -> None:
@@ -491,59 +516,77 @@ def main(argv: list[str] | None = None) -> int:
                 return False
         return True
 
-    if not add(_builtin_probes(args.seed, args.iterations)):
-        pass
-    else:
+    proceed = add(_builtin_probes(args.seed, args.iterations))
+
+    if proceed:
         corpus_paths = [Path(value) for value in args.corpus]
         if not args.no_default_corpus:
             corpus_paths.insert(0, Path("adversarial/corpus"))
-        if not add(_run_corpus(_iter_corpus_files(corpus_paths))):
-            pass
-        elif args.profile in {"quick", "full", "live"}:
-            python_result = _run_command(
-                "python-regression-suite",
-                [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"],
-                env={"PYTHONPATH": "src"},
-            )
-            add([python_result])
-
-            if (python_result.passed or not args.stop_on_fail) and args.profile in {"full", "live"}:
-                rust_results = [
-                    _run_command("rust-tests", ["cargo", "test", "--manifest-path", "tui/Cargo.toml", "--all-targets"]),
-                    _run_command("rust-check", ["cargo", "check", "--manifest-path", "tui/Cargo.toml", "--all-targets"]),
-                    _run_command("rustfmt-check", ["cargo", "fmt", "--manifest-path", "tui/Cargo.toml", "--", "--check"]),
-                ]
-                add(rust_results)
-
-            if args.profile == "live" and (not args.stop_on_fail or all(result.passed for result in results)):
-                add(
-                    [
-                        _run_command(
-                            "live-loopback-ollama",
-                            [
-                                sys.executable,
-                                "-m",
-                                "unittest",
-                                "discover",
-                                "-s",
-                                "tests",
-                                "-p",
-                                "test_ollama_integration.py",
-                                "-v",
-                            ],
-                            env={"PYTHONPATH": "src", "NEXUS_OLLAMA_INTEGRATION": "1"},
-                            timeout=1800,
-                        )
-                    ]
+        if corpus_paths:
+            try:
+                corpus_files = _iter_corpus_files(corpus_paths)
+            except (OSError, ValueError) as exc:
+                config_result = CheckResult(
+                    "corpus-configuration",
+                    "configuration",
+                    "fail",
+                    0.0,
+                    f"{type(exc).__name__}: {exc}",
                 )
+                proceed = add([config_result])
+            else:
+                proceed = add(_run_corpus(corpus_files))
+
+    if proceed and args.profile in {"quick", "full", "live"}:
+        python_result = _run_command(
+            "python-regression-suite",
+            [sys.executable, "-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py", "-v"],
+            env={"PYTHONPATH": "src"},
+        )
+        proceed = add([python_result])
+
+    if proceed and args.profile in {"full", "live"}:
+        rust_commands = [
+            ("rust-tests", ["cargo", "test", "--manifest-path", "tui/Cargo.toml", "--all-targets"]),
+            ("rust-check", ["cargo", "check", "--manifest-path", "tui/Cargo.toml", "--all-targets"]),
+            ("rustfmt-check", ["cargo", "fmt", "--manifest-path", "tui/Cargo.toml", "--", "--check"]),
+        ]
+        for name, command in rust_commands:
+            proceed = add([_run_command(name, command)])
+            if not proceed:
+                break
+
+    if proceed and args.profile == "live":
+        proceed = add(
+            [
+                _run_command(
+                    "live-loopback-ollama",
+                    [
+                        sys.executable,
+                        "-m",
+                        "unittest",
+                        "discover",
+                        "-s",
+                        "tests",
+                        "-p",
+                        "test_ollama_integration.py",
+                        "-v",
+                    ],
+                    env={"PYTHONPATH": "src", "NEXUS_OLLAMA_INTEGRATION": "1"},
+                    timeout=1800,
+                )
+            ]
+        )
 
     failures = [result for result in results if not result.passed]
+    worktree = _worktree_state()
     report = {
         "schema_version": REPORT_SCHEMA,
         "profile": args.profile,
         "seed": args.seed,
         "iterations": args.iterations,
         "commit": _commit_id(),
+        "worktree": worktree,
         "started_unix": started,
         "finished_unix": time.time(),
         "summary": {
@@ -555,7 +598,8 @@ def main(argv: list[str] | None = None) -> int:
         "results": [asdict(result) for result in results],
         "interpretation": (
             "PASS means the configured attacks did not break a checked invariant; it is not a proof of security, "
-            "correctness, or model alignment."
+            "correctness, or model alignment. The commit field identifies HEAD; worktree.dirty records whether "
+            "uncommitted changes were also part of the tested state."
         ),
     }
 
