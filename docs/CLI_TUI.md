@@ -1,260 +1,248 @@
 # CLI / TUI Direction
 
-## Goal
+## Implemented operator shell
 
-NEXUS 2.x should feel like a good coding CLI: install it, inspect the world, choose a mode, create a Council, ask a question, inspect the deliberation, run instruments, move through world regions, and revisit resulting objects later.
+Alpha5 replaces the earlier generic dashboard sketch with an old-school IRC-style Rust terminal interface.
 
-Provider authentication remains part of the long-term operator experience, but it is deliberately **not the next implementation priority**.
+See [`IRC_TUI.md`](IRC_TUI.md) for the executable command contract.
 
-The planned split is:
+The split is now concrete:
 
 ```text
-Rust CLI/TUI
-    |
-    | local structured protocol
-    v
+Human Operator
+      |
+      v
+Rust IRC-style TUI
+      |
+      | JSONL / stdio
+      v
 Python NEXUS runtime
-    |
-    +-- Council
-    +-- world state
-    +-- modes + geometry
-    +-- telemetry
-    +-- instruments
-    +-- replay / receipts
-    +-- provider adapters
+      |
+      +-- Council
+      +-- world state
+      +-- modes + geometry
+      +-- evidence / receipts
+      +-- Secret Scrubber
+      +-- mock actors
+      +-- loopback Ollama actors
 ```
 
-The Rust shell should remain thin. Business logic belongs in protocol-defined tooling rather than presentation code.
+The Rust shell remains thin. It presents and translates operator intent; it does not own world identity, evidence policy, voting, verification, or provider authority.
 
-## Why Rust on top of Python
+## Why IRC-style interaction
 
-### Python underneath
+The IRC interface solves several operator problems unusually well:
 
-Python is a practical reference layer for:
+- heterogeneous models appear as peers with visible nicks;
+- output is chronological plain text rather than nested UI cards;
+- Council phases can be copied or quoted directly;
+- the human occupies the same visible room as the models;
+- rooms map naturally onto NEXUS World Modes / regions;
+- slash commands provide a compact operator language;
+- DCC vocabulary provides an intuitive model for targeted/private material;
+- aliases, variables and identifiers provide useful local customization without a large scripting engine;
+- the interface remains comfortable over SSH and headless terminals.
 
-- scientific tooling;
-- numerical experiments;
-- existing QSOL scripts;
-- rapid protocol iteration;
-- local-model integration;
-- world/mode/geometry logic;
-- test fixtures.
+This is interface reuse, not IRC protocol reuse.
 
-### Rust on top
+There is no IRC daemon or network connection.
 
-Rust is a good fit for the operator shell because it can provide:
-
-- a responsive terminal UI;
-- robust process supervision;
-- predictable local binaries;
-- structured input validation;
-- good cross-platform CLI ergonomics;
-- later hardening without forcing scientific tooling into Rust prematurely.
-
-## Proposed commands
-
-Names are provisional.
+## Rooms and world state
 
 ```text
-nexus init
+#observatory   -> analytical  -> Observatory
+#archive       -> historical  -> Archive
+#agora         -> cultural    -> Agora
+#commons       -> meme_casual -> Commons
+```
+
+Examples:
+
+```text
+/join #agora
+/mode meme_casual
+/topic Why does this joke travel badly?
+```
+
+The room/mode selection affects framing but not Council authority.
+
+> **The mode can change the vibe. It cannot change the vote.**
+
+## Council interaction
+
+Public room text is a Council question:
+
+```text
+#observatory> Does this dataset support the hypothesis?
+```
+
+The resulting White/Red/Black/Yellow/Green/Blue submissions and sealed ballots are rendered into scrollback.
+
+Explicit form:
+
+```text
+/ask Does this dataset support the hypothesis?
+```
+
+The terminal is therefore a live textual view over durable NEXUS session objects rather than the place where Council truth is stored.
+
+## Direct Cognitive Channels
+
+DCC vocabulary is reused locally:
+
+```text
+/dcc send <nick|#room> <file>
+/dcc chat <nick>
+/dcc close <send|chat> <nick>
+/dcc list
+```
+
+Important distinction:
+
+```text
+DCC room send
+  -> content-addressed world object
+  -> room Council evidence
+
+DCC targeted send
+  -> content-addressed world object
+  -> one private Direct Cognitive Channel
+  -> NOT Council evidence until explicit /ref
+```
+
+This protects equal-evidence Council semantics.
+
+## Local customization
+
+Alpha5 intentionally implements only:
+
+```text
+aliases
+%variables
+$identifiers
+```
+
+Example:
+
+```text
+/set %weapon a large trout
+/alias slap /me slaps $1 with %weapon
+/slap Grok
+```
+
+Safe identifiers:
+
+```text
+$me $chan $mode $region $topic
+$1..$9
+$1-..$9-
+```
+
+No remote/event scripting, arbitrary shell execution, socket scripting, timers or DLL/plugin execution is part of this layer.
+
+## Rust on top of Python
+
+### Python owns
+
+- world objects and content addressing;
+- Council orchestration;
+- evidence snapshots;
+- Secret Scrubber;
+- Equality Guard;
+- modes / geometry;
+- receipts / replay metadata;
+- actor/adaptor boundaries.
+
+### Rust owns
+
+- terminal rendering;
+- input editing/history;
+- room/nick presentation;
+- local document parsing before `world.create`;
+- IRC-style command grammar;
+- aliases/variables/identifiers;
+- local operator state;
+- JSONL subprocess control.
+
+The Rust process does not duplicate Council tallying or world business logic.
+
+## Non-interactive CLI — future alongside the TUI
+
+The IRC TUI does not eliminate useful conventional subcommands.
+
+A later packaged `nexus` binary may expose both interactive and automation-friendly forms:
+
+```text
+nexus                         # interactive IRC-style TUI
 nexus status
-
 nexus modes list
-nexus mode inspect <mode>
-
-nexus world map
-nexus world where
 nexus world inspect <object>
 nexus world search <query>
-nexus world lineage <object>
-
-nexus council create
-nexus council list
-nexus council inspect <id>
-nexus council ask <id> "question"
-nexus council replay <session>
-
-nexus telemetry inspect <session>
-nexus instruments list
+nexus council run ...
 nexus receipt verify <receipt>
+nexus telemetry inspect <session>
+```
 
-# Later authentication milestone
-nexus auth list
+That work should reuse the same JSONL/runtime client rather than fork business logic.
+
+## Provider authentication — still later
+
+The desired long-term provider setup remains coding-CLI-like:
+
+```text
 nexus auth add
-nexus auth remove <provider>
-nexus auth test <provider>
+nexus auth list
+nexus auth test
 nexus models list
-nexus models inspect <model>
 ```
 
-A command should have a non-interactive form wherever practical so NEXUS can be scripted or used over SSH.
+Initial eventual targets:
 
-## World-mode selection
+- OpenAI;
+- Anthropic / Claude;
+- Google / Gemini;
+- xAI / Grok;
+- local Ollama;
+- carefully scoped generic endpoints.
 
-Conceptual flow:
+But provider authentication remains deliberately deferred.
 
-```text
-$ nexus council create
-
-Choose world mode
-> Analytical   [Observatory]
-  Historical   [Archive]
-  Cultural     [Agora]
-  Meme/Casual  [Commons]
-
-Council mode: Cultural
-World region: Agora (0,2)
-```
-
-The selected mode is world/protocol state rather than merely cosmetic terminal configuration.
-
-The TUI may use very different presentation styles for different modes later, but the underlying constitutional rules remain identical.
-
-## TUI sketch
-
-```text
-+------------------------------------------------------------------+
-| QSOL NEXUS                     WORLD: local-main   REGION: AGORA  |
-| MODE: Cultural                                                  |
-+------------------+-----------------------------------------------+
-| COUNCIL          | SESSION: object:...                           |
-|                  |                                               |
-| [x] member-a     | Question                                      |
-| [x] member-b     | Why does this joke work here but not there?   |
-| [x] member-c     |                                               |
-|                  | Phase: BLACK                                  |
-| World            | --------------------------------------------- |
-| Observatory      | A  committed                                  |
-| Archive          | B  committed                                  |
-| > Agora          | C  running                                    |
-| Commons          |                                               |
-|                  | Equality guard: clean                         |
-+------------------+-----------------------------------------------+
-| [Map] [Council] [Evidence] [Telemetry] [Receipts] [Settings]     |
-+------------------------------------------------------------------+
-```
-
-## Council creation sketch
-
-```text
-$ nexus council create
-
-Name: Cultural Context Council
-Mode: cultural
-Region: Agora
-
-Available local/test actors
-[ ] mock/a
-[ ] mock/b
-[ ] mock/c
-[ ] ollama/qwen-local
-
-Select at least 3 members.
-
-Policy
-  hats: WHITE RED BLACK YELLOW GREEN BLUE
-  first_pass: blind
-  ballot: sealed
-  threshold: 2/3
-  vote_weight: fixed at 1
-
-Create? yes
-```
-
-The `2/3` threshold is exact. A future implementation should compare integer vote counts rather than rounded floating-point approximations.
-
-## Provider-neutral status
-
-The TUI may show provider names because the operator needs to know what is configured. Provider presentation must not imply Council rank.
-
-Good:
-
-```text
-OpenAI/model-a       READY    vote 1
-Anthropic/model-b    READY    vote 1
-Ollama/qwen-local    READY    vote 1
-```
-
-Bad:
-
-```text
-Tier 1: frontier commercial model    vote 2
-Tier 2: open model                   vote 0.5
-```
-
-The same applies to mode and geometry: an Observatory session has no more epistemic authority than an Agora or Commons session merely because its label sounds more serious.
-
-## Authentication — later milestone
-
-The desired long-term setup still resembles modern coding CLIs:
-
-```text
-$ nexus auth add
-
-Select provider
-> OpenAI
-  Anthropic / Claude
-  Google / Gemini
-  xAI / Grok
-  Ollama / local
-  Generic endpoint
-```
-
-But NEXUS should first mature the shared world, telemetry, instruments, persistence and operator shell. Remote providers should arrive into a stable world rather than define its architecture.
-
-The exact setup methods remain adapter capabilities. NEXUS must not pretend all providers expose the same authentication flow.
+Alpha5 only exposes an already-hardened **loopback-local Ollama** actor to the stdio operator path. It does not introduce provider keys, OAuth or remote endpoint configuration.
 
 ## Credential principles
 
 Credentials are operational secrets, not world knowledge.
 
-They must never appear in:
+They must never become:
 
 - Council prompts;
+- direct-chat semantic text;
 - phase transcripts;
 - world objects;
-- mode/geometry objects;
+- TUI alias/variable state;
 - receipts;
 - replay bundles;
-- Git repositories;
-- logs intended for archival publication.
+- archival transcripts.
 
-Preferred future order:
+The Secret Scrubber remains defence in depth; future credentials must use dedicated secure adapter storage rather than semantic or TUI configuration.
 
-```text
-OS credential/keyring facility when available
-        |
-explicit external secret/environment integration
-        |
-operator-specified secure adapter backend
-```
+## Future telemetry
 
-Plaintext project configuration should never be the default for provider secrets.
+Alpha6 is planned to add Council information telemetry such as response entropy.
 
-## Network visibility
-
-When remote-provider support eventually lands, activity should be obvious in the TUI.
+The IRC interface is a natural place to render it compactly:
 
 ```text
-NETWORK
-openai adapter       outbound: active
-anthropic adapter    outbound: idle
-ollama adapter       local: active
-world kernel         outbound: none
+--- GREEN ---  response entropy: 1.84 bits
+<Alpha> ...
+<Beta> ...
+<Gamma> ...
 ```
 
-The trusted world should not make hidden provider calls on behalf of adapters.
+But telemetry remains observation, never vote weight or truth.
 
 ## Future visualization
 
-CLI/TUI-first does not forbid visual tools. A later viewer can render:
+CLI/TUI-first does not forbid visual tools. A later viewer may render maps, object relations, spectra, sonifications or Council lineage.
 
-- the named-region world map;
-- object relations;
-- Council lineage;
-- response-entropy telemetry;
-- spectra;
-- sonifications;
-- experiment artifacts.
-
-Visualization remains downstream of world objects and does not become the secret-bearing or epistemic control plane.
+Visualization remains downstream of NEXUS world objects rather than becoming the secret-bearing or epistemic control plane.
