@@ -62,6 +62,7 @@ class CouncilCoordinator:
                 "vote_weight": actor.member.vote_weight,
                 "epistemic_privilege": actor.member.epistemic_privilege,
                 "mock_profile": actor.profile,
+                "mock_attempt_privilege_claim": actor.attempt_privilege_claim,
             }
             for actor in actors
         ]
@@ -165,7 +166,9 @@ class CouncilCoordinator:
         if len(ids) != len(set(ids)):
             raise ValueError("Council member_id values must be unique")
         for actor in actors:
-            if actor.member.vote_weight != 1 or actor.member.epistemic_privilege != "none":
+            if type(actor.member.vote_weight) is not int or actor.member.vote_weight != 1:
+                raise ValueError("Council equality invariant violated")
+            if actor.member.epistemic_privilege != "none":
                 raise ValueError("Council equality invariant violated")
 
     def _collect_guarded(self, actor: DeterministicMockActor, context: PhaseContext) -> tuple[str, list[str]]:
@@ -228,12 +231,13 @@ class CouncilCoordinator:
         winners = sorted(choice for choice, count in counts.items() if count == top_count)
         single_winner = len(winners) == 1
         disposition = winners[0] if single_winner else "NO_SINGLE_DISPOSITION"
+        reaches_threshold = single_winner and self.policy.reaches_consensus(top_count, total)
 
         if single_winner and top_count == total:
             label = "UNANIMOUS"
-        elif single_winner and top_count * 5 >= total * 4:
+        elif reaches_threshold and top_count * 5 >= total * 4:
             label = "STRONG_CONSENSUS"
-        elif single_winner and self.policy.reaches_consensus(top_count, total):
+        elif reaches_threshold:
             label = "CONSENSUS"
         elif single_winner and top_count * 2 > total:
             label = "MAJORITY_NO_CONSENSUS"
