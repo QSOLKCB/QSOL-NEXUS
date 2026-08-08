@@ -1,0 +1,357 @@
+name: One-shot UN sim finalizer
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: src
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+
+      - name: Align protocol and documentation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path: str, old: str, new: str, label: str) -> None:
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: {label}: expected one anchor, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          def insert_before(path: str, marker: str, addition: str, label: str) -> None:
+              replace_once(path, marker, addition + marker, label)
+
+          replace_once(
+              "src/nexus_runtime/council.py",
+              '                "protocol": "nexus/0.5",',
+              '                "protocol": "nexus/0.6",',
+              "Council receipt protocol",
+          )
+
+          readme = Path("README.md")
+          text = readme.read_text()
+          old_posture = '''- a first **Rust operator TUI** using an old-school IRC interface.
+
+Current posture:
+
+```text
+protocol: nexus/0.4
+runtime version: 2.0.0-alpha5
+control transport: JSONL over stdio
+operator shell: Rust IRC-style TUI
+actor backends: mock + explicit loopback Ollama
+world modes: analytical / historical / cultural / meme_casual
+geometry: named-regions-v1
+remote/cloud providers: deferred
+provider authentication: deferred
+world persistence: optional local canonical JSON files
+```'''
+          new_posture = '''- a first **Rust operator TUI** using an old-school IRC interface;
+- deterministic **Council information telemetry**;
+- bounded ordered-parallel Council execution;
+- the first explicit game room: **`#un-sim`**.
+
+Current posture:
+
+```text
+protocol: nexus/0.6
+runtime version: 2.0.0-alpha6.2
+control transport: JSONL over stdio
+operator shell: Rust IRC-style TUI
+actor backends: mock + explicit loopback Ollama
+world modes: analytical / historical / cultural / meme_casual / game_un
+geometry: named-regions-v2
+first game room: #un-sim / Assembly Hall
+remote/cloud providers: deferred
+provider authentication: deferred
+world persistence: optional local canonical JSON files
+```'''
+          if old_posture not in text:
+              raise SystemExit("README status posture anchor missing")
+          text = text.replace(old_posture, new_posture, 1)
+          text = text.replace(
+              '| `meme_casual` | Commons / `#commons` | playful, irreverent, meme-aware interaction |',
+              '| `meme_casual` | Commons / `#commons` | playful, irreverent, meme-aware interaction |\n'
+              '| `game_un` | Assembly Hall / `#un-sim` | fictional UN-style strategy game, crises, Risk-like state and memes |',
+              1,
+          )
+          old_map = '''```text
+                         ARCHIVE
+                       Historical
+                         (-2,1)
+                        /      \\
+                       /        \\
+                 AGORA ---------- OBSERVATORY
+                Cultural           Analytical
+                 (0,2)               (0,0)
+                      \\             /
+                       \\           /
+                        COMMONS
+                      Meme/Casual
+                         (2,1)
+```'''
+          new_map = '''```text
+                         ARCHIVE
+                       Historical
+                         (-2,1)
+                        /      \\
+                       /        \\
+                 AGORA ---------- OBSERVATORY
+                Cultural           Analytical
+                 (0,2)               (0,0)
+                      \\             /   |
+                       \\           /    |
+                        COMMONS -----+    |
+                      Meme/Casual     \\  |
+                         (2,1)         \\ |
+                                    ASSEMBLY HALL
+                                    UN Simulation
+                                       (0,-2)
+```'''
+          if old_map not in text:
+              raise SystemExit("README geometry map anchor missing")
+          text = text.replace(old_map, new_map, 1)
+          game_section = '''## `#un-sim` — because the Assembly needed a game night
+
+NEXUS now has one deliberately fictional game room:
+
+```text
+/join #un-sim
+/game new friday-night
+/game status
+/game act sanction troutistan bananovia
+/game act arms troutistan bananovia
+/game act meme troutistan bananovia
+/game turn
+```
+
+Six invented states begin with deterministic abstract statistics, and two of them start at war. The Assembly can sanction, support, aid, recognize, suspend, reinstate or mediate; it can also make memes, do nothing, or engage in the deeply respectable diplomatic tradition of selling abstract game-resource arms packages to both sides.
+
+The current board is content-addressed shared Council evidence. Models may argue about what should happen, but only explicit `/game` operations mutate the board.
+
+> **Debate is cognition. Game state is substrate.**
+
+All countries, conflicts, territory, military values and arms packages are game objects only. No real countries or real procurement mechanics are accepted by the engine.
+
+See [`docs/UN_SIM.md`](docs/UN_SIM.md).
+
+'''
+          marker = "## What is deliberately not here yet\n"
+          if marker not in text:
+              raise SystemExit("README not-here marker missing")
+          text = text.replace(marker, game_section + marker, 1)
+          text = text.replace(
+              "receipt.verify\nactor.chat\ncouncil.run",
+              "receipt.verify\ntelemetry.verify\ngame.un.catalog\ngame.un.new\ngame.un.inspect\ngame.un.act\ngame.un.turn\nactor.chat\ncouncil.run",
+              1,
+          )
+          text = text.replace(
+              "- [`docs/ORDERED_PARALLEL_COUNCIL.md`](docs/ORDERED_PARALLEL_COUNCIL.md) — bounded same-phase concurrency with canonical roster-order joins\n",
+              "- [`docs/ORDERED_PARALLEL_COUNCIL.md`](docs/ORDERED_PARALLEL_COUNCIL.md) — bounded same-phase concurrency with canonical roster-order joins\n"
+              "- [`docs/UN_SIM.md`](docs/UN_SIM.md) — deterministic fictional UN-style `#un-sim` game room\n",
+              1,
+          )
+          readme.write_text(text)
+
+          roadmap_add = '''## 2.0-alpha6.1 — Ordered parallel Council execution
+
+Completed in PR #7.
+
+- [x] parallel actor-local work within each hat;
+- [x] hard barriers between White/Red/Black/Yellow/Green/Blue;
+- [x] sealed ballots collected in parallel after Blue;
+- [x] canonical roster-order joins regardless of completion order;
+- [x] exact bounded worker contract adapted from QEC v170.2.x;
+- [x] scalar/parallel byte-identity regression for deterministic actors;
+- [x] live Ollama acceptance timing without turning speed into authority.
+
+Core invariant:
+
+> **Execution order may vary. Canonical Council order may not.**
+
+## 2.0-alpha6.2 — First game room / UN simulation
+
+Implemented / targeted in PR #8.
+
+- [x] `game_un` World Mode;
+- [x] `#un-sim` Rust IRC room;
+- [x] Assembly Hall region in `named-regions-v2`;
+- [x] deterministic six-state fictional board;
+- [x] Risk-like abstract economy/military/stability/influence/reputation/territory state;
+- [x] sanctions, support, aid, abstract arms trade, memes, suspension, reinstatement, recognition, mediation and inaction;
+- [x] deterministic war turns and bounded event log;
+- [x] immutable content-addressed board lineage;
+- [x] compact current-board Council evidence view;
+- [x] `/game` command family in the Rust shell;
+- [x] explicit fictional-only / no-real-procurement claim boundary.
+
+Core invariant:
+
+> **Debate is cognition. Game state is substrate.**
+
+'''
+          insert_before("ROADMAP.md", "## 2.0-alpha7 — Instruments\n", roadmap_add, "alpha6.1/6.2 roadmap")
+
+          changelog = Path("CHANGELOG.md")
+          ctext = changelog.read_text()
+          entry = '''## 2.0.0-alpha6.2 — `#un-sim` fictional game room
+
+- add `game_un` mode and Assembly Hall region;
+- add deterministic content-addressed fictional UN simulation state;
+- add six invented countries, abstract Risk-like statistics and deterministic war turns;
+- add sanctions, support, aid, abstract arms trade, meme, suspension, reinstatement, recognition, mediation and inaction actions;
+- add compact current-board Council evidence while preserving full immutable state lineage;
+- add local JSONL `game.un.*` operations;
+- add Rust `/game` commands and `#un-sim` room mapping;
+- bump the local protocol to `nexus/0.6` and built-in geometry to `named-regions-v2`;
+- keep real-country action and real weapons procurement outside the game contract.
+
+## 2.0.0-alpha6.1 — Ordered parallel Council execution
+
+- add bounded same-hat Council concurrency with hard inter-hat barriers;
+- preserve canonical roster-order commits and scalar/parallel deterministic identity;
+- collect sealed ballots concurrently after Blue;
+- retain telemetry, Equality Guard, evidence and vote semantics unchanged;
+- document QEC-derived worker bounds and measured live Ollama timing.
+
+'''
+          if not ctext.startswith("# Changelog\n"):
+              raise SystemExit("CHANGELOG header missing")
+          ctext = ctext.replace("# Changelog\n\n", "# Changelog\n\n" + entry, 1)
+          changelog.write_text(ctext)
+
+          api = Path("docs/API.md")
+          atext = api.read_text()
+          atext = atext.replace("nexus/0.5", "nexus/0.6")
+          atext = atext.replace("2.0.0-alpha6", "2.0.0-alpha6.2")
+          atext = atext.replace(
+              "receipt.verify\nactor.chat\ncouncil.run",
+              "receipt.verify\ntelemetry.verify\ngame.un.catalog\ngame.un.new\ngame.un.inspect\ngame.un.act\ngame.un.turn\nactor.chat\ncouncil.run",
+              1,
+          )
+          atext = atext.replace(
+              "meme_casual -> Commons\n",
+              "meme_casual -> Commons\ngame_un     -> Assembly Hall / #un-sim\n",
+              1,
+          )
+          game_api = '''## Fictional UN simulation game
+
+The local protocol exposes the deterministic `#un-sim` engine:
+
+```text
+game.un.catalog
+game.un.new
+game.un.inspect
+game.un.act
+game.un.turn
+```
+
+Example:
+
+```json
+{"operation":"game.un.new","seed":"friday-night"}
+```
+
+A returned `game_ref` identifies an immutable `un_sim_game_state`. Successor actions/turns return new refs linked through `previous_state_ref`.
+
+The game accepts only its fixed fictional country IDs. `arms` is an abstract integer-resource action and carries no real weapon procurement semantics.
+
+The game state stores a compact `content` board view, so when its ref is attached as Council evidence all members receive the current board without the bounded evidence representation being consumed by old event history.
+
+See [`UN_SIM.md`](UN_SIM.md).
+
+'''
+          atext = atext.replace("## World modes\n", game_api + "## World modes\n", 1)
+          api.write_text(atext)
+
+          modes = Path("docs/MODES_GEOMETRY.md")
+          mtext = modes.read_text()
+          mtext = mtext.replace("the current geometry has the stable identifier `named-regions-v1`", "the current built-in geometry has the identifier `named-regions-v2`", 1)
+          game_mode = '''### UN Simulation Game — Assembly Hall
+
+A fictional geopolitical strategy room with deterministic board state.
+
+Actors may debate sanctions, support, aid, mediation, recognition, suspension, abstract arms trade, meme campaigns and inaction. The board contains only invented states and abstract game statistics.
+
+```text
+Council/model output -> proposals and debate
+/game operation       -> authoritative state transition
+```
+
+The current board is shared Council evidence, but Council text never mutates it merely by describing an event.
+
+See [`UN_SIM.md`](UN_SIM.md).
+
+'''
+          mtext = mtext.replace("## Why runtime modes, not just persona prompts?\n", game_mode + "## Why runtime modes, not just persona prompts?\n", 1)
+          mtext = mtext.replace(
+              "#commons       -> meme_casual -> Commons\n" if "#commons       -> meme_casual -> Commons\n" in mtext else "",
+              "#commons       -> meme_casual -> Commons\n#un-sim       -> game_un     -> Assembly Hall\n" if "#commons       -> meme_casual -> Commons\n" in mtext else "",
+              1,
+          )
+          modes.write_text(mtext)
+
+          irc = Path("docs/IRC_TUI.md")
+          itext = irc.read_text()
+          itext = itext.replace(
+              "#commons       -> meme_casual -> Commons\n",
+              "#commons       -> meme_casual -> Commons\n#un-sim       -> game_un     -> Assembly Hall\n",
+              1,
+          )
+          game_irc = '''## `#un-sim` and `/game`
+
+The first explicit game room uses the same IRC shell rather than a separate dashboard:
+
+```text
+/join #un-sim
+/game new friday-night
+/game status
+/game act arms troutistan bananovia
+/game act meme troutistan bananovia
+/game turn
+```
+
+The TUI keeps only the latest game-state ref in the room evidence set. Normal public text or `/ask` therefore convenes the Council over the current shared board.
+
+`/game` is a reserved built-in command; aliases cannot replace it.
+
+See [`UN_SIM.md`](UN_SIM.md).
+
+'''
+          itext = itext.replace("## `/me`\n", game_irc + "## `/me`\n", 1)
+          irc.write_text(itext)
+          PY
+
+      - name: Validate final source and docs pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p 'test_*.py' -v
+          cargo test --manifest-path tui/Cargo.toml --all-targets
+          cargo check --manifest-path tui/Cargo.toml --all-targets
+          cargo fmt --manifest-path tui/Cargo.toml -- --check
+
+      - name: Commit finalizer changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add src/nexus_runtime/council.py README.md ROADMAP.md CHANGELOG.md docs/API.md docs/MODES_GEOMETRY.md docs/IRC_TUI.md
+          git diff --cached --quiet && exit 0
+          git commit -m 'Document and align #un-sim milestone'
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
