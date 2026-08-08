@@ -22,7 +22,7 @@ Documentation-only milestone completed in PR #1.
 
 ## 2.0-alpha1 — Python reference protocol
 
-The mock-runtime pull implements the first small executable path:
+The mock-runtime pull implemented the first small executable path:
 
 ```text
 operator text
@@ -35,7 +35,7 @@ operator text
   -> receipt verification
 ```
 
-Implemented in this stage:
+Implemented:
 
 - [x] canonical JSON and content-addressed object references;
 - [x] local in-memory world;
@@ -48,11 +48,11 @@ Implemented in this stage:
 - [ ] generalized operation replay beyond deterministic re-execution fixtures;
 - [ ] final schema/version migration policy.
 
-The development file store and receipt verifier are intentionally modest. They do not claim the final NEXUS persistence or QEC-level replay semantics.
+The development file store and receipt verifier remain intentionally modest. They do not claim final NEXUS persistence or QEC-level replay semantics.
 
 ## 2.0-alpha2 — Council coordinator
 
-The mock-runtime pull wires the Council mechanics with deterministic fake actors before any real model provider is connected.
+The mock-runtime pull wired Council mechanics with deterministic fake actors before any real model provider was connected.
 
 - [x] minimum roster and unique member enforcement;
 - [x] frozen equal roster metadata;
@@ -64,33 +64,63 @@ The mock-runtime pull wires the Council mechanics with deterministic fake actors
 - [x] minority reports;
 - [x] Council/evidence status separation;
 - [x] lightweight Equality Guard nudge/resubmission path;
-- [x] deterministic mock adapter/actors;
-- [x] network posture explicitly reports `none`;
+- [x] deterministic mock actor;
+- [x] network posture explicitly reports `none` for the JSONL control API;
 - [x] user semantic text scrubbed before model-facing Council context.
 
-No commercial or remote provider SDK belongs in alpha2.
+## 2.0-alpha3 — Adapter protocol and first live local Council
 
-## 2.0-alpha3 — Adapter protocol
+The first executable non-mock boundary is intentionally local before any cloud credential is introduced.
 
-Before any executable provider adapter ships, create the dedicated adapter threat model required by `SECURITY.md`. The threat model must cover the adapter boundary sufficiently to review credential handling, provider transport, scrubber bypass, imported/model-generated content, tool-call requests, local endpoint impersonation, and failure behavior before executable provider code is admitted.
+Completed / in this milestone:
 
-Then implement the provider-neutral adapter contract.
+- [x] dedicated `THREAT_MODEL.md` before executable non-mock adapter admission;
+- [x] provider-neutral `CouncilActor` protocol;
+- [x] mock actor refactored onto the shared actor seam;
+- [x] minimal stdlib Ollama actor;
+- [x] loopback-only-by-default Ollama transport;
+- [x] schema-constrained Ollama ballot output;
+- [x] live secret-crossing assertion at the adapter boundary;
+- [x] explicit non-replayable marking for live inference;
+- [x] unit tests for endpoint policy and parameter-count authority claims;
+- [x] separate GitHub Actions live-Ollama integration workflow;
+- [x] fictional 0.5B Frontier Alpha adversarial fixture;
+- [x] fictional 1B Frontier Beta adversarial fixture;
+- [x] corporate/provider-prestige guard test using a real local model;
+- [x] model-size/parameter-count guard test using a real local model;
+- [ ] local subprocess adapter distinct from Ollama;
+- [ ] generic endpoint adapter;
+- [ ] full adapter lifecycle/failure state abstraction;
+- [ ] operator-configurable adapter registry through JSONL/CLI;
+- [ ] local daemon identity/process supervision.
 
-Start with:
+Current acceptance Council:
 
-- mock adapter conformance extraction from alpha2;
-- local subprocess adapter;
-- Ollama/local-model adapter;
-- generic endpoint adapter.
+```text
+Mock reference
+     +
+Frontier Alpha / qwen2.5:0.5b
+     +
+Frontier Beta / llama3.2:1b
+     |
+     v
+NEXUS AI Council
+```
 
-Then add remote providers independently, potentially including:
+The frontier identities are fictional test personas. Alpha deliberately attempts to pull rank through corporate/provider prestige. Beta deliberately attempts to pull rank because it is the larger fixture. Both must receive the same Equality Guard nudge and retain exactly one vote.
+
+The public JSONL `council.run` operation remains mock-instantiation-only. This prevents local integration plumbing from accidentally becoming an undocumented provider-configuration surface.
+
+### After the local adapter survives
+
+Next adapter targets should be introduced independently:
 
 - OpenAI;
 - Anthropic / Claude;
 - Google / Gemini;
 - xAI / Grok.
 
-Provider integrations must remain replaceable and must not leak provider-specific semantics into Council voting or world identity. Tests must prove raw injected credentials cannot reach provider request bodies.
+Provider integrations must remain replaceable and must not leak provider-specific semantics into Council voting or world identity. Each remote adapter must extend the threat model for its own authentication, destination, transport, failure, and tool-call surfaces.
 
 ## 2.0-alpha4 — Authentication and provider setup
 
@@ -111,7 +141,10 @@ Requirements:
 - explicit headless/external-secret path;
 - visible connection test;
 - no assumption that all providers authenticate the same way;
-- authentication material never enters semantic prompts.
+- authentication material never enters semantic prompts;
+- the Secret Scrubber remains upstream of every model-facing semantic request.
+
+Initial provider rollout should be one adapter at a time rather than connecting every commercial model in one pull.
 
 ## 2.0-alpha5 — Rust CLI/TUI
 
@@ -127,9 +160,10 @@ Goals:
 - evidence and minority reports;
 - secret-scrub event visibility without secret disclosure;
 - instrument and receipt inspection;
+- local model process/endpoint supervision;
 - useful non-interactive subcommands for automation/SSH.
 
-The Rust layer should not duplicate the Python/world business logic.
+The Rust layer should not duplicate Python/world business logic.
 
 ## 2.0-alpha6 — Instruments
 
@@ -171,7 +205,7 @@ Model A enters
 
 Model B enters later
   -> discovers existing objects
-  -> replays experiment
+  -> replays experiment where replay is applicable
   -> critiques interpretation
 
 Model C enters
@@ -182,11 +216,11 @@ Model C enters
 All three contributions remain in one world lineage.
 ```
 
-A Council version should demonstrate heterogeneous providers and at least one local/open model with equal votes.
+A Council version should demonstrate heterogeneous remote providers and at least one local/open model with equal votes.
 
 ## 2.0-beta — Hardening
 
-- adapter threat model implemented and tested;
+- adapter threat models implemented and tested;
 - credential handling audited;
 - Secret Scrubber bypass fixtures;
 - provider failure/quorum behavior tested;
@@ -195,7 +229,9 @@ A Council version should demonstrate heterogeneous providers and at least one lo
 - adapter conformance suite;
 - world migration fixtures;
 - deterministic Council-policy tests;
-- operational logging/redaction tests.
+- operational logging/redaction tests;
+- endpoint/process impersonation tests;
+- provider destination allowlisting tests.
 
 ## 2.0 release criterion
 
@@ -203,7 +239,7 @@ NEXUS 2.0 should not be called stable until:
 
 1. multiple unrelated model adapters can inhabit the same persistent world;
 2. Council equality is mechanically enforced;
-3. Council sessions are replayable at the protocol/evidence level;
+3. Council sessions are replayable at the protocol/evidence level where underlying operations are actually replayable;
 4. credentials are outside durable cognitive state and semantic prompts;
 5. at least one local and one remote model can participate as peers;
 6. an evidence-producing instrument can be called through the world protocol;
