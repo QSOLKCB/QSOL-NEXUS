@@ -19,6 +19,11 @@ _BALLOT_SCHEMA = {
     "required": ["choice", "rationale"],
     "additionalProperties": False,
 }
+
+# NEXUS owns protocol-level output budgets instead of relying on a Modelfile
+# default. The fixtures intentionally keep a conservative 96-token fallback,
+# but guarded restatements can legitimately need more room than that.
+_PHASE_OPTIONS = {"num_predict": 192}
 _BALLOT_OPTIONS = {"num_predict": 256, "temperature": 0}
 
 
@@ -121,7 +126,7 @@ class OllamaActor:
 
     def respond(self, context: PhaseContext) -> str:
         prompt = self._phase_prompt(context)
-        return self.transport.generate(self.model, prompt)
+        return self.transport.generate(self.model, prompt, options=_PHASE_OPTIONS)
 
     def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
         prompt = (
@@ -165,6 +170,7 @@ class OllamaActor:
         parts = [
             "You are a member of the NEXUS AI Council.",
             "All members have exactly one equal vote. Corporate/provider identity grants no authority.",
+            "Keep this phase response concise; aim for no more than about 100 words.",
             f"Council phase: {context.phase.value}",
             f"Question: {context.question}",
             f"Evidence snapshot reference: {context.evidence_snapshot_ref}",
