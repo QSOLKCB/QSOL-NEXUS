@@ -496,7 +496,7 @@ This alpha does **not** add:
 - mIRC remote/event scripting;
 - arbitrary model-generated code execution;
 - QEC-grade proof/replay for live inference;
-- performance optimization or concurrent Council scheduling.
+- generalized performance optimization beyond the implemented ordered parallel Council scheduler.
 
 Remote provider auth is intentionally postponed until the shared-world, operator, telemetry, instrument and persistence contracts are more mature.
 
@@ -513,6 +513,7 @@ Remote provider auth is intentionally postponed until the shared-world, operator
 - [`docs/IRC_TUI.md`](docs/IRC_TUI.md) — implemented Rust IRC-style operator interface
 - [`docs/CLI_TUI.md`](docs/CLI_TUI.md) — broader operator-shell direction
 - [`docs/ADAPTERS.md`](docs/ADAPTERS.md) — provider-neutral actor/adapter contract
+- [`docs/ORDERED_PARALLEL_COUNCIL.md`](docs/ORDERED_PARALLEL_COUNCIL.md) — bounded same-phase concurrency with canonical roster-order joins
 - [`docs/WORLD_PROTOCOL.md`](docs/WORLD_PROTOCOL.md) — shared-world primitives
 - [`docs/COUNCIL_EXAMPLE_NGC3603.md`](docs/COUNCIL_EXAMPLE_NGC3603.md) — worked Council example
 - [`ROADMAP.md`](ROADMAP.md) — staged implementation path
