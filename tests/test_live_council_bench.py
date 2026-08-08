@@ -6,6 +6,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools" / "nexus_live_council_bench.py"
@@ -108,6 +109,24 @@ class LiveCouncilBenchToolTests(unittest.TestCase):
             path.write_text(json.dumps(manifest), encoding="utf-8")
             with self.assertRaises(bench.BenchError):
                 bench.load_seat_manifest(path, question="q", mode="analytical")
+
+    def test_run_rejects_remote_endpoint_before_hardware_probe(self) -> None:
+        with mock.patch.object(bench, "_hardware_snapshot", side_effect=AssertionError("must not probe")):
+            rc = bench.main(["run", "--endpoint", "http://example.com:11435"])
+        self.assertEqual(rc, 2)
+
+    def test_sealed_seat_cannot_be_combined_with_question_mutating_secret_probe(self) -> None:
+        rc = bench.main(["run", "--seat-file", "unused.json", "--secret-probe"])
+        self.assertEqual(rc, 2)
+
+    def test_secret_tree_scan_finds_only_actual_canary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            (root / "a").mkdir()
+            (root / "a" / "object.json").write_text('{"safe":"value"}', encoding="utf-8")
+            self.assertIsNone(bench._tree_contains_secret(root, "ghp_CANARY"))
+            (root / "a" / "object.json").write_text('{"secret":"ghp_CANARY"}', encoding="utf-8")
+            self.assertEqual(bench._tree_contains_secret(root, "ghp_CANARY"), "a/object.json")
 
     def test_session_validation_requires_equal_three_member_council(self) -> None:
         session = {
