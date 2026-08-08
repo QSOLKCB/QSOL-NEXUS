@@ -1,0 +1,27 @@
+name: Python mock runtime tests
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Python version
+        run: python3 --version
+      - name: Unit tests
+        env:
+          PYTHONPATH: src
+        run: python3 -m unittest discover -s tests -v
+      - name: Mock Council demo
+        env:
+          PYTHONPATH: src
+        run: python3 -m nexus_runtime --demo > /tmp/nexus-demo.json
