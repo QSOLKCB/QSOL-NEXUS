@@ -3,8 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from typing import Sequence
 
 from .api import NexusAPI
+from .auth import AuthBroker, AuthError, ensure_disjoint_auth_world_roots
+from .auth_cli import configure_auth_parser, emit_auth_error, run_auth_command
 
 
 def _demo_request() -> dict:
@@ -22,13 +25,25 @@ def _demo_request() -> dict:
     }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="QSOL NEXUS mock Council reference runtime")
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="QSOL NEXUS Council reference runtime")
     parser.add_argument("--world", default=None, help="optional file-backed development world directory")
+    parser.add_argument("--auth-root", default=None, help="absolute operational auth directory outside the world store")
     parser.add_argument("--demo", action="store_true", help="run one deterministic mock Council demo and exit")
-    args = parser.parse_args()
+    subparsers = parser.add_subparsers(dest="command")
+    configure_auth_parser(subparsers)
+    args = parser.parse_args(argv)
 
-    api = NexusAPI(args.world)
+    if args.command == "auth":
+        try:
+            broker = AuthBroker(args.auth_root)
+            if args.world is not None:
+                ensure_disjoint_auth_world_roots(broker.root, args.world)
+        except (AuthError, EOFError, OSError) as exc:
+            return emit_auth_error(exc)
+        return run_auth_command(args, broker)
+
+    api = NexusAPI(args.world, auth_root=args.auth_root)
     if args.demo:
         print(json.dumps(api.handle(_demo_request()), indent=2, sort_keys=True))
         return 0

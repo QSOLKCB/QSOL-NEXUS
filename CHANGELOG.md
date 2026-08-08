@@ -2,6 +2,19 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## Unreleased — Provider-neutral authentication foundation
+
+- add adapter-owned authentication descriptors with no Council authority fields;
+- add browser authorization-code login with PKCE `S256`, loopback callback state validation, fixed provider destinations, and redirect rejection;
+- add RFC 8628 device authorization with separate verification-URL allowlists;
+- add refresh-token rotation plus hidden-prompt API-key, environment, and no-shell external-helper sources;
+- serialize profile mutations and refresh rotation across processes, preserve omitted OAuth scopes, and reject credential-bearing helper options;
+- prefer an optional OS keyring and fall back to owner-only `0700` / `0600` private storage;
+- keep auth storage disjoint from WorldStore state and remove all secret material and credential handles from public results;
+- add `nexus auth adapters|add|list|test|logout` and safe JSONL inspection/test/logout operations;
+- add an adversarial local OAuth fixture covering state mismatch, redirects, refresh, device polling, file permissions, public redaction, and world-store isolation;
+- keep remote inference adapters, provider client registration, model discovery, and xAI / Grok transport for a separate provider-specific PR.
+
 ## 2.0.0-alpha6.6 — Actor Failsafe / Upside Down / Shadow Realm
 
 - add bounded containment only for registered procedural guard violations repeated after the ordinary nudge;

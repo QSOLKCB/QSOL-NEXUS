@@ -26,7 +26,7 @@ UN simulation     -> supported as a deterministic fictional local game
 HERESY MUD        -> supported as a deterministic fictional multi-avatar local game
 Failsafe          -> bounded repeated-guard containment + deterministic relief actor
 remote providers  -> not implemented
-provider auth     -> not implemented
+provider auth     -> neutral broker foundation; no remote adapter admitted
 ```
 
 The public stdio API exposes no `allow_remote` override for Ollama.
@@ -54,6 +54,8 @@ python -m pip install -e .
 python -m nexus_runtime --world .nexus-world
 ```
 
+The installed package also exposes `nexus`. Add the optional OS-keyring integration with `python -m pip install -e '.[keyring]'`.
+
 ## Health
 
 Request:
@@ -70,9 +72,15 @@ Current response fields include:
   "protocol": "nexus/0.9",
   "runtime_version": "2.0.0-alpha6.6",
   "control_transport": "jsonl_stdio",
-  "network": "none_unless_explicit_loopback_ollama_actor",
+  "network": "none_unless_explicit_loopback_ollama_or_registered_auth_operation",
   "adapters": ["mock", "ollama_loopback"],
   "remote_provider_auth": false,
+  "auth_broker": {
+    "schema_version": "nexus-auth/1",
+    "browser_pkce": true,
+    "device_code": true,
+    "remote_adapters_admitted": false
+  },
   "actor_backends_available": ["mock", "ollama"],
   "failsafe": {
     "schema_version": "nexus-failsafe/1",
@@ -100,6 +108,10 @@ Current response fields include:
 ```text
 system.health
 system.operations
+auth.adapters
+auth.list
+auth.test
+auth.logout
 security.scrub_preview
 world.create
 world.inspect
@@ -121,6 +133,49 @@ game.mud.act
 actor.chat
 council.run
 ```
+
+## Authentication operations
+
+Authentication profiles are operational state outside the WorldStore. The JSONL protocol never accepts or returns a raw API key, access token, refresh token, authorization code, PKCE verifier, device code, or credential handle.
+
+List adapter-declared auth methods:
+
+```json
+{"operation":"auth.adapters"}
+```
+
+List non-secret profiles:
+
+```json
+{"operation":"auth.list"}
+```
+
+Resolve a profile and, when the adapter registers one, run its bounded provider connection test:
+
+```json
+{"operation":"auth.test","adapter_id":"provider","profile_name":"personal"}
+```
+
+If the auth substrate can resolve the profile but no provider-specific connection tester is registered, the response is explicit:
+
+```json
+{
+  "status": "ready",
+  "adapter_id": "provider",
+  "profile_name": "personal",
+  "credential": "available",
+  "remote_verified": false,
+  "code": "provider_test_not_registered"
+}
+```
+
+Explicitly remove a profile and any broker-stored credential:
+
+```json
+{"operation":"auth.logout","adapter_id":"provider","profile_name":"personal"}
+```
+
+Enrollment is intentionally absent from JSONL so raw keys cannot be placed into request lines or runtime transcripts. Use the direct `nexus auth add ...` CLI described in [`AUTH.md`](AUTH.md). The current runtime registers only `mock` and loopback `ollama`; the first remote descriptor/transport remains a separate provider-specific change.
 
 ## Failsafe status
 
@@ -375,7 +430,7 @@ Example with an explicit loopback Ollama member:
 
 A non-loopback Ollama endpoint is rejected by this public path.
 
-No remote-provider credentials or cloud auth are accepted.
+`council.run` accepts no credential fields and still admits no cloud adapter. Future remote actors will reference an opaque auth profile name; raw material will remain broker-internal.
 
 ## `actor.chat`
 
@@ -520,17 +575,17 @@ The UN simulation engine is deterministic game state rather than model inference
 
 The current local runtime does not implement:
 
-- OpenAI cloud auth;
-- Anthropic/Claude cloud auth;
-- Google/Gemini cloud auth;
-- xAI/Grok cloud auth;
+- provider-specific OpenAI cloud auth/transport;
+- provider-specific Anthropic/Claude cloud auth/transport;
+- provider-specific Google/Gemini cloud auth/transport;
+- provider-specific xAI/Grok cloud auth/transport;
 - generic remote endpoints;
-- API-key storage;
-- OAuth;
+- provider model discovery;
+- provider OAuth client registration and OIDC identity validation;
 - account discovery;
 - rate-limit/provider billing semantics.
 
-Those remain later operator/authentication milestones.
+The neutral auth broker, API-key/keyring storage, browser PKCE, device code, and headless credential sources are implemented without implying that any provider is admitted. See [`AUTH.md`](AUTH.md).
 
 ## `telemetry.verify`
 

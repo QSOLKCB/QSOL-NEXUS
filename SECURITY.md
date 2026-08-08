@@ -21,7 +21,7 @@ Remote model traffic should occur only inside explicitly configured adapters. Th
 
 A terminal architecture reduces several avoidable risks:
 
-- no browser credential storage requirement;
+- no NEXUS browser application or browser-local credential store;
 - no CORS-driven architecture;
 - no extension-injected DOM as a control surface;
 - no front-end framework dependency in the trusted path;
@@ -45,7 +45,7 @@ This does not make a CLI automatically secure. It makes the intended trust bound
 +-------------v---------------+
 | Python NEXUS runtime        |
 | scrubber / world / Council  |
-| receipts / equality policy  |
+| receipts / auth broker      |
 +-------------+---------------+
               |
         actor/adapter seam
@@ -58,6 +58,8 @@ This does not make a CLI automatically secure. It makes the intended trust bound
               |
        model runtime/API
 ```
+
+The auth broker may transiently open the system browser for a provider-supported authorization flow. The browser is an authorization user agent, not a NEXUS control surface or credential store.
 
 ## Credential boundary
 
@@ -78,6 +80,36 @@ They must never be written to:
 Authentication material belongs only in adapter authentication or transport fields and must never become semantic prompt content exposed to a model.
 
 The first Ollama integration requires no provider credential.
+
+## Authentication broker boundary
+
+PR #16 adds a provider-neutral auth broker without admitting a remote inference adapter.
+
+The broker owns:
+
+- non-secret auth profile metadata;
+- credential-source selection;
+- OS-keyring/private-file routing;
+- browser PKCE and device-code state;
+- refresh-token exchange;
+- bounded public readiness/connection-test state.
+
+Only adapter transport code may resolve a profile into secret material. JSONL requests cannot add raw credentials. Normal CLI/API output omits access tokens, refresh tokens, API keys, authorization codes, PKCE verifiers, device codes, provider response bodies, helper output, and internal credential handles.
+
+Browser authorization uses an ephemeral `127.0.0.1` callback, state comparison, PKCE `S256`, provider-descriptor endpoint allowlists, HTTPS outside loopback fixtures, and token-endpoint redirect rejection. Device authorization separately allowlists the provider-returned verification URL. These controls follow the provider-neutral substrate; every provider still requires its own supported client-registration and threat-model decision.
+
+Credential storage order is:
+
+```text
+usable OS keyring -> preferred and attempted first
+write unavailable -> reported owner-only private_file fallback
+otherwise         -> owner-only private_file fallback
+headless option   -> environment reference or no-shell external helper
+```
+
+On POSIX the fallback auth directories are `0700` and files are `0600`. Loose permissions, symbolic-link traversal, unknown schema fields, duplicate profiles, and unsupported schema versions fail closed. One owner-only interprocess lock serializes profile mutations and refresh-token rotation across CLI/runtime instances. The fallback does not protect bearer tokens from the same compromised account, privileged malware, or an unencrypted stolen disk.
+
+Auth and world directories must be disjoint. Neither may contain the other. NEXUS does not import another CLI's token file, consumer-browser cookies, or another application's OAuth identity.
 
 ## Deterministic pre-model Secret Scrubber
 
@@ -212,10 +244,12 @@ receipt service          outbound: none
 Secret Scrubber          outbound: none
 JSONL mock control API   outbound: none
 Ollama actor             loopback by default
+auth browser/device flow explicit provider descriptor only
+auth external helper     explicit operator configuration only
 remote providers         not implemented
 ```
 
-The JSONL `system.health` operation still reports `network: none` because it exposes only mock member creation. The package-level Ollama actor is exercised separately by integration code.
+The JSONL control transport itself remains stdio. `auth.list` is local-only; `auth.test` can perform network I/O only after a provider-specific connection tester is registered. Browser/device enrollment is a direct `nexus auth add` operator action rather than a raw-secret JSONL operation. Remote inference remains unimplemented.
 
 ## Logging
 
@@ -230,12 +264,18 @@ phase transitions
 world object refs
 receipt refs
 secret scrub event classes/placeholders
+auth adapter/profile/method/source kind
+bounded auth status/error codes
 non-secret error classes
 
 DO NOT ARCHIVE
 raw credentials
 authorization headers
 provider refresh secrets
+authorization codes and PKCE verifiers
+device codes
+credential handles
+external-helper stdout/stderr
 secret-store payloads
 pre-scrub semantic text containing a detected secret
 private local paths unless intentionally included
@@ -257,14 +297,17 @@ It addresses:
 - local endpoint impersonation;
 - resource exhaustion.
 
+The same threat model now also covers the neutral auth substrate: callback CSRF/code interception, destination redirects, device verification phishing, credential-store permissions, external-helper isolation, public-output redaction, and auth/world crossover.
+
 Remote/cloud adapters will require additional threat-model work covering credentials, destination validation, provider response spoofing, rate limits, account/session handling, and provider-specific tool surfaces before admission.
 
 ## Current claims boundary
 
-Alpha3 does **not** claim:
+The current runtime does **not** claim:
 
 - complete DLP;
-- remote-provider authentication security;
+- that a neutral OAuth substrate makes any unreviewed provider flow secure or supported;
+- protection of fallback bearer-token files from the same compromised OS account;
 - strong local process authentication;
 - cryptographic ballot sealing;
 - QEC-grade replay for live inference;

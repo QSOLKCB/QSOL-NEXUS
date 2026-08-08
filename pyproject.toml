@@ -11,7 +11,11 @@ license = {text = "Apache-2.0"}
 dependencies = []
 
 [project.scripts]
+nexus = "nexus_runtime.__main__:main"
 nexus-runtime = "nexus_runtime.__main__:main"
+
+[project.optional-dependencies]
+keyring = ["keyring>=25,<26"]
 
 [tool.setuptools]
 package-dir = {"" = "src"}

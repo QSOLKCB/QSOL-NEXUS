@@ -1,8 +1,8 @@
-# NEXUS Adapter Threat Model — alpha3
+# NEXUS Adapter and Authentication Threat Model
 
 ## Scope
 
-This threat model covers the first executable non-mock adapter boundary: a local Ollama process reached only over loopback by default. It is intentionally written before remote provider/authentication adapters are admitted.
+This threat model covers the first executable non-mock adapter boundary—a local Ollama process reached only over loopback by default—and the PR #16 provider-neutral authentication substrate. No remote inference adapter or provider-specific OAuth client is admitted by the auth foundation.
 
 The first live acceptance fixture is:
 
@@ -29,6 +29,9 @@ The frontier identities are deliberately fictional test personas. They test proc
 - durable world objects and receipts;
 - adapter/model attribution;
 - local host files and services.
+- API keys, access tokens, refresh tokens, authorization codes, PKCE verifiers, and device codes;
+- auth profile/store integrity;
+- fixed provider authentication destinations;
 
 ## Trust boundaries
 
@@ -49,6 +52,22 @@ local Ollama runtime + model
 ```
 
 Model output is always untrusted input to NEXUS.
+
+The additional auth boundary is:
+
+```text
+operator CLI
+    |
+AuthBroker ------------------------- non-secret profile/status API
+    |
+    +-- OS keyring or private_file -- bearer material
+    +-- environment/helper --------- transient bearer material
+    +-- browser/device OAuth ------- untrusted provider responses
+    |
+future provider adapter transport
+```
+
+Auth state is operational state outside the WorldStore. Only future adapter transport code may resolve a profile into `SecretMaterial`.
 
 ## Threats and current controls
 
@@ -152,10 +171,109 @@ Current controls:
 Future controls:
 - explicit per-phase budgets, cancellation, and Council-wide deadlines.
 
-## Explicitly out of scope for this PR
+### T10 — Credential enters world or public output
 
-- API keys and OAuth;
+Threat: a token, refresh secret, authorization code, verifier, device code, or credential handle is copied into JSONL output, logs, WorldStore objects, prompts, receipts, or replay artifacts.
+
+Controls:
+- raw credential enrollment is absent from JSONL;
+- direct CLI API-key input uses a hidden prompt rather than an argument;
+- public profile projections omit token material and internal handles;
+- `SecretMaterial.__repr__` is redacted;
+- provider response bodies and helper stdout/stderr are never included in public exceptions;
+- file-backed world and auth roots must be disjoint, with nesting rejected;
+- adversarial tests scan auth list/test/health results and the world directory for fixture tokens.
+
+Residual risk: operator code with direct in-process access to `AuthBroker.resolve()` is inside the trusted adapter boundary and can mishandle the returned bearer material. Provider adapters therefore require their own secret-crossing tests.
+
+### T11 — Browser callback injection or code interception
+
+Threat: a local or web attacker sends a forged loopback callback or intercepts an authorization code.
+
+Controls:
+- callback binds only to ephemeral `127.0.0.1`;
+- callback path is exact and callback query fields must be singular;
+- high-entropy state is compared in constant time;
+- PKCE `S256` binds the code exchange to an in-memory verifier;
+- the verifier is sent only to the fixed token endpoint;
+- invalid callbacks are bounded and do not become credentials;
+- codes, state, and verifiers are never persisted or printed in normal results.
+
+Residual risk: malware in the same user account can observe process/browser activity and may access the eventual bearer credential. PKCE does not sandbox a compromised host.
+
+### T12 — OAuth destination or redirect exfiltration
+
+Threat: operator input, compromised discovery data, or an HTTP redirect sends codes, verifiers, refresh tokens, or API credentials to an attacker endpoint.
+
+Controls:
+- authorization, device, and token endpoints are adapter-owned descriptor data rather than login-time URLs;
+- endpoint hosts use explicit allowlists;
+- HTTPS is mandatory except for explicit loopback-only test fixtures;
+- token and device endpoint redirects are rejected;
+- provider error bodies are parsed only for a bounded error code and otherwise discarded;
+- OAuth responses have a size limit.
+
+Provider discovery is not implemented. Any future discovery path must pin issuer/metadata relationships and cannot silently widen these destination rules.
+
+### T13 — Device-code verification phishing
+
+Threat: a compromised device endpoint returns a malicious verification URL while NEXUS displays a legitimate-looking user code.
+
+Controls:
+- verification hosts have a distinct adapter-owned allowlist;
+- user-info and fragments are rejected;
+- the secret device code is neither displayed nor persisted;
+- polling handles only the admitted RFC 8628 pending/slow-down contract and expires no later than the 30-minute client ceiling.
+
+The displayed short user code is an ephemeral enrollment secret and should not be archived.
+
+### T14 — Credential-store disclosure or substitution
+
+Threat: another local user reads fallback bearer-token files, a symlink redirects writes, or malformed profile data changes the selected source/backend.
+
+Controls:
+- a usable OS keyring is preferred when the optional integration exists;
+- a rejected keyring write falls back to the owner-only private-file store and is reported in the enrollment result;
+- POSIX auth directories are created `0700` and must already be owner-only if present; files are written `0600` and checked on read;
+- symbolic-link directory traversal and non-regular secret files are rejected;
+- profile and secret schemas use exact field sets and explicit versions;
+- identifiers are bounded before they become filenames;
+- writes use same-directory temporary files plus atomic replacement.
+- profile mutations and refresh-token rotation share an owner-only interprocess lock.
+
+Residual risk: `private_file` is permission-protected, not encrypted from the same OS account. Full-disk encryption and an OS keyring are recommended.
+
+### T15 — External credential helper abuse
+
+Threat: a configured helper invokes a shell, accepts secrets in argv/stdin, hangs, emits arbitrary data, or leaks output into diagnostics.
+
+Controls:
+- helper execution requires an absolute executable path and uses an argv array with `shell=False`;
+- stdin is disconnected;
+- execution has a timeout;
+- stderr is suppressed at the broker boundary;
+- stdout must be bounded UTF-8 JSON with a closed token-field allowlist;
+- credential-bearing argv options are rejected even when an opaque value evades format-based secret detection;
+- helper output is transient and omitted from profiles/public results.
+
+Residual risk: the helper is explicitly trusted operator code and inherits its configured environment. Raw tokens remain forbidden in helper argv, and helper admission/packaging is outside this PR.
+
+### T16 — Auth status becomes Council authority
+
+Threat: provider account tier, authentication method, keyring backend, remote availability, or discovered model list changes vote weight or epistemic privilege.
+
+Controls:
+- auth descriptors contain no vote-weight or privilege fields;
+- auth state is operational and outside Council/world identity;
+- `CouncilMember` still enforces `vote_weight = 1` and `epistemic_privilege = none`;
+- provider integrations remain replaceable and must pass the same Equality Guard and Council coordinator.
+
+## Explicitly out of scope for the auth-foundation PR
+
+- provider-specific OAuth client registration and issuer/ID-token validation;
 - OpenAI, Anthropic, Gemini, xAI, or other remote providers;
+- reading or reusing another CLI's auth store, browser cookies, or consumer session tokens;
+- protection of private-file bearer tokens from the same compromised OS account;
 - arbitrary model-generated tool execution;
 - remote Ollama endpoints in CI;
 - strong sandboxing;

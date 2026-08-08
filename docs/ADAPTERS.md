@@ -18,7 +18,7 @@ provider API / local runtime
 
 The adapter is a transport and capability boundary. It does not gain authority over Council policy.
 
-## Alpha3 implementation status
+## Actor and authentication implementation status
 
 The coordinator now consumes a provider-neutral Python `CouncilActor` protocol rather than a concrete mock type:
 
@@ -53,7 +53,9 @@ Frontier Beta  -> llama3.2:1b
 
 The frontier identities are fictional test personas. Alpha deliberately attempts a corporate/provider prestige claim and Beta deliberately attempts a model-size/parameter-count prestige claim so the Equality Guard, secret boundary, Council flow, ballot path, and persistence path are exercised together.
 
-The public JSONL `council.run` operation still creates mock actors only. Ollama is currently an integration/runtime actor seam, not yet an operator-configured provider. Provider setup belongs in the later CLI/TUI/authentication work.
+The public JSONL `council.run` operation supports mock actors and explicit loopback-only Ollama actors. Remote provider actors are not admitted.
+
+PR #16 adds a provider-neutral `AuthBroker` beside the actor seam. It manages operational profiles and credential sources outside the WorldStore, but it does not itself create a remote actor. A provider adapter must separately register its descriptor, connection test, model transport, and threat-model extension.
 
 ## Provider neutrality
 
@@ -90,9 +92,9 @@ The coordinator owns:
 
 The adapter supplies model content through the normalized actor contract.
 
-## Planned capability descriptors
+## Capability and authentication descriptors
 
-A later operator-configurable adapter should declare a descriptor similar to:
+A later operator-configurable adapter should declare a capability descriptor similar to:
 
 ```text
 AdapterDescriptor
@@ -113,12 +115,31 @@ AdapterDescriptor
 
 The descriptor reports what an adapter can do. It must not contain a vote multiplier.
 
-## Authentication abstraction
-
-NEXUS should later support an operator command such as:
+The implemented auth-specific descriptor is deliberately smaller:
 
 ```text
-nexus auth add <adapter>
+AdapterAuthDescriptor
+├── adapter_id
+├── provider_name
+├── local_or_remote
+├── auth_methods[]
+├── auth_flows[]
+├── provider-owned OAuth config?
+└── implementation_status
+```
+
+OAuth destinations and verification-URL allowlists belong to adapter code. They are not arbitrary login-time operator input.
+
+## Authentication abstraction
+
+NEXUS now exposes operator commands such as:
+
+```text
+nexus auth adapters
+nexus auth add <adapter> --method browser
+nexus auth list
+nexus auth test <adapter>
+nexus auth logout <adapter>
 ```
 
 The adapter reports the authentication methods it actually supports.
@@ -133,13 +154,17 @@ local_endpoint
 no_auth_required
 ```
 
-These are protocol categories, not claims about what any particular provider currently supports.
+These are protocol categories, not claims about what any particular provider currently supports. Concrete admitted flows are `api_key`, `browser_pkce`, `device_code`, `environment`, `external_command`, `local_endpoint`, and `none`.
 
 The first Ollama fixture requires no provider credential and is restricted to loopback by default.
 
+The browser flow uses an ephemeral `127.0.0.1` callback, high-entropy state, PKCE `S256`, fixed HTTPS provider destinations, and redirect rejection. Device flow uses separate endpoint and verification-URL allowlists. Stored tokens refresh through the same descriptor-owned token endpoint. Headless profiles may reference an environment variable or a no-shell external helper.
+
+The currently registered production descriptors are only `mock` and `ollama`. Browser/device machinery is exercised against a fake loopback provider in tests; xAI / Grok registration and transport belong to the next provider-specific PR.
+
 ## Secret boundary
 
-Adapters may eventually read credentials from an approved secret source. They must expose only non-secret connection state to NEXUS.
+Adapters may read credentials from the `AuthBroker` only inside their transport boundary. They expose only non-secret connection state to NEXUS.
 
 ```text
 secret store
@@ -161,6 +186,8 @@ NEXUS does NOT see:
 ```
 
 No credential is part of Council evidence or world identity.
+
+The optional `keyring` integration is preferred when an OS backend is available. The fallback store requires owner-only directories/files on POSIX and identifies itself as `private_file`; it does not pretend a bearer token is encrypted from the same OS account. Environment profiles persist only a variable name. Public profile state omits both token material and internal credential handles.
 
 The live Ollama acceptance fixture injects a fake token into the human question and fails if that raw token appears in any prompt crossing the Ollama transport boundary.
 
@@ -259,7 +286,7 @@ The executable local adapter boundary is covered by [`../THREAT_MODEL.md`](../TH
 - resource exhaustion;
 - replay-status overclaiming.
 
-Remote/cloud providers will require their own additional authentication and destination controls before admission.
+The neutral auth substrate is documented in [`AUTH.md`](AUTH.md). Remote/cloud providers still require their own authentication/client-registration decision, destination controls, response budgets, connection test, and threat-model extension before admission.
 
 ## Generic adapters
 
