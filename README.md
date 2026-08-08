@@ -24,19 +24,19 @@ NEXUS now has:
 - a first **Rust operator TUI** using an old-school IRC interface;
 - deterministic **Council information telemetry**;
 - bounded ordered-parallel Council execution;
-- the first explicit game room: **`#un-sim`**.
+- explicit game rooms: **`#un-sim`** and the cursed multi-avatar **`#mud`**.
 
 Current posture:
 
 ```text
-protocol: nexus/0.6
-runtime version: 2.0.0-alpha6.2
+protocol: nexus/0.7
+runtime version: 2.0.0-alpha6.3
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
 actor backends: mock + explicit loopback Ollama
-world modes: analytical / historical / cultural / meme_casual / game_un
-geometry: named-regions-v2
-first game room: #un-sim / Assembly Hall
+world modes: analytical / historical / cultural / meme_casual / game_un / game_mud
+geometry: named-regions-v3
+game rooms: #un-sim / Assembly Hall + #mud / Dungeon
 remote/cloud providers: deferred
 provider authentication: deferred
 world persistence: optional local canonical JSON files
@@ -54,7 +54,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
             | RUST IRC-STYLE TUI  |
             | room / nicks / DCC  |
             | aliases / evidence  |
-            | /game               |
+            | /game + /mud        |
             +----------+----------+
                        |
                   JSONL / stdio
@@ -525,6 +525,22 @@ The current board is content-addressed shared Council evidence. Models may argue
 All countries, conflicts, territory, military values and arms packages are game objects only. No real countries or real procurement mechanics are accepted by the engine.
 
 See [`docs/UN_SIM.md`](docs/UN_SIM.md).
+
+## `#mud` — HERESY MUD
+
+The second explicit game room is a deterministic multi-avatar dungeon built from old BBS/MUD interaction grammar plus DORK/HERESY satire:
+
+```text
+/join #mud
+/mud new beige-night
+/mud n
+/mud take large_trout
+/mud as Grok shitpost yaml_necromancer
+```
+
+The human operator and current model roster become avatars in one immutable shared dungeon state. Models may narrate and advise, but only validated `/mud` / `game.mud.*` operations mutate the substrate. Item discovery score is awarded once per item, defeated avatars drop inventory into their room, and the final quest completes only when the Zero-Dependency Crown is actually recovered after the Dependency Dragon falls.
+
+See [`docs/MUD.md`](docs/MUD.md).
 
 ## What is deliberately not here yet
 

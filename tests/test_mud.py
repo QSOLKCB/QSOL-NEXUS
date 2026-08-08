@@ -5,7 +5,7 @@ import tempfile
 import unittest
 
 from nexus_runtime.api import NexusAPI
-from nexus_runtime.game_mud import MUD_SCHEMA, apply_action, inspect_mud, new_mud, player_view
+from nexus_runtime.game_mud import MUD_SCHEMA, _board_content, apply_action, inspect_mud, new_mud, player_view
 from nexus_runtime.world import WorldStore
 
 
@@ -45,6 +45,70 @@ class CursedMUDEngineTests(unittest.TestCase):
         view = player_view(dropped.payload, "Trent")
         self.assertEqual(view["inventory"], [])
         self.assertEqual([item["item_id"] for item in view["room_items"]], ["large_trout"])
+
+    def test_item_score_is_awarded_only_once_across_drop_and_transfer(self) -> None:
+        game = new_mud(self.world, "trout-economy", ["Trent", "Grok"])
+        game = apply_action(self.world, game.object_id, "Trent", "go", ["east"])
+        game = apply_action(self.world, game.object_id, "Grok", "go", ["east"])
+        game = apply_action(self.world, game.object_id, "Trent", "take", ["large_trout"])
+        self.assertEqual(game.payload["players"]["Trent"]["score"], 1)
+        self.assertTrue(game.payload["items"]["large_trout"]["score_awarded"])
+        game = apply_action(self.world, game.object_id, "Trent", "drop", ["large_trout"])
+        game = apply_action(self.world, game.object_id, "Grok", "take", ["large_trout"])
+        self.assertEqual(game.payload["players"]["Trent"]["score"], 1)
+        self.assertEqual(game.payload["players"]["Grok"]["score"], 0)
+
+    def test_defeated_avatar_drops_unique_inventory_into_current_room(self) -> None:
+        game = new_mud(self.world, "death-drop", ["Trent", "Grok"])
+        payload = deepcopy(game.payload)
+        payload["players"]["Trent"]["room_id"] = "dependency_cache"
+        payload["players"]["Trent"]["hp"] = 1
+        payload["items"]["punch_card"]["location"] = {"kind": "player", "id": "Trent"}
+        payload["content"] = _board_content(payload)
+        fixture = self.world.create_object("mud_game_state", payload, {"actor": "test_fixture"})
+        defeated = apply_action(self.world, fixture.object_id, "Trent", "attack", ["dependency_dragon"])
+        self.assertFalse(defeated.payload["players"]["Trent"]["alive"])
+        self.assertEqual(
+            defeated.payload["items"]["punch_card"]["location"],
+            {"kind": "room", "id": "dependency_cache"},
+        )
+
+    def test_dragon_defeat_is_progress_until_crown_is_recovered(self) -> None:
+        game = new_mud(self.world, "crown-objective", ["Trent"])
+        payload = deepcopy(game.payload)
+        payload["players"]["Trent"]["room_id"] = "dependency_cache"
+        payload["items"]["punch_card"]["location"] = {"kind": "player", "id": "Trent"}
+        payload["npcs"]["dependency_dragon"]["hp"] = 1
+        payload["content"] = _board_content(payload)
+        fixture = self.world.create_object("mud_game_state", payload, {"actor": "test_fixture"})
+        defeated = apply_action(self.world, fixture.object_id, "Trent", "attack", ["dependency_dragon"])
+        self.assertEqual(defeated.payload["quest"]["status"], "open")
+        self.assertIsNone(defeated.payload["quest"]["completed_by"])
+        self.assertEqual(
+            defeated.payload["items"]["zero_dependency_crown"]["location"],
+            {"kind": "room", "id": "dependency_cache"},
+        )
+        recovered = apply_action(self.world, defeated.object_id, "Trent", "take", ["zero_dependency_crown"])
+        self.assertEqual(recovered.payload["quest"]["status"], "complete")
+        self.assertEqual(recovered.payload["quest"]["completed_by"], "Trent")
+        self.assertEqual(
+            recovered.payload["players"]["Trent"]["clout"],
+            defeated.payload["players"]["Trent"]["clout"] + 10,
+        )
+
+    def test_shitpost_dragon_defeat_event_reports_shitpost_not_ratio(self) -> None:
+        game = new_mud(self.world, "shitpost-dragon", ["Trent"])
+        payload = deepcopy(game.payload)
+        payload["players"]["Trent"]["room_id"] = "dependency_cache"
+        payload["items"]["punch_card"]["location"] = {"kind": "player", "id": "Trent"}
+        payload["npcs"]["dependency_dragon"]["hp"] = 1
+        payload["content"] = _board_content(payload)
+        fixture = self.world.create_object("mud_game_state", payload, {"actor": "test_fixture"})
+        result = apply_action(self.world, fixture.object_id, "Trent", "shitpost", ["dependency_dragon"])
+        progress = [event for event in result.payload["event_log"] if event["kind"] == "quest_progress"]
+        self.assertTrue(progress)
+        self.assertIn("shitposts", progress[-1]["text"])
+        self.assertNotIn("ratioed", progress[-1]["text"])
 
     def test_same_state_same_combat_action_is_content_address_identical(self) -> None:
         game = new_mud(self.world, "combat", ["Trent"])

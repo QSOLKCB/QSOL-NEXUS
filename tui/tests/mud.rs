@@ -37,6 +37,14 @@ fn mud_commands_parse_classic_and_proxy_syntax() {
         })
     );
     assert_eq!(
+        parse_input("/mud as Grok n").unwrap(),
+        InputCommand::Mud(MudCommand::Act {
+            player: Some("Grok".to_string()),
+            action: "go".to_string(),
+            args: vec!["n".to_string()],
+        })
+    );
+    assert_eq!(
         parse_input("/mud shitpost content_moderator_troll").unwrap(),
         InputCommand::Mud(MudCommand::Act {
             player: None,

@@ -72,7 +72,7 @@ score
 alive
 ```
 
-Items have exactly one authoritative location at a time: room, player, NPC, or consumed.
+Items have exactly one authoritative location at a time: room, player, NPC, or consumed. Item score is awarded only on the first acquisition globally; dropping or transferring an already-discovered item cannot mint additional score.
 
 The initial TUI lets the human operator proxy any registered avatar:
 
@@ -163,7 +163,9 @@ dependency_dragon
     final hostile; guards the Zero-Dependency Crown
 ```
 
-Attacking a non-hostile NPC costs clout. Hostile surviving NPCs may retaliate.
+Attacking a non-hostile NPC costs clout. Hostile surviving NPCs may retaliate. A defeated avatar drops all held inventory into its current room, preventing unique quest items from being permanently stranded on an unusable avatar.
+
+Defeating the Dependency Dragon drops the Zero-Dependency Crown but does **not** complete the quest. The quest completes only when an avatar subsequently takes the Crown.
 
 ## Deterministic action resolution
 

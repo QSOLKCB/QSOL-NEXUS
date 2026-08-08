@@ -33,14 +33,16 @@ Neither concept changes Council authority, evidence status, verification, secret
                  AGORA ---------- OBSERVATORY
                 Cultural           Analytical
                  (0,2)               (0,0)
-                      \             /   |
-                       \           /    |
-                        COMMONS ----+    |
-                      Meme/Casual    \   |
-                         (2,1)        \  |
-                                    ASSEMBLY HALL
-                                    UN Simulation
-                                       (0,-2)
+                      \             /  |  \
+                       \           /   |   \
+                        COMMONS ----+   |   DUNGEON
+                      Meme/Casual       |   HERESY MUD
+                         (2,1)           |     (2,-2)
+                            \           |      /
+                             \          |     /
+                              ASSEMBLY HALL ---+
+                               UN Simulation
+                                  (0,-2)
 ```
 
 The map remains intentionally tiny. Correct semantics and stable contracts matter more than producing a huge fictional universe.
@@ -140,6 +142,19 @@ The current game board is shared Council evidence, but narration never mutates t
 
 All countries, wars, territory values and arms packages are fictional game objects. See [`UN_SIM.md`](UN_SIM.md).
 
+### Cursed MUD — Dungeon
+
+`game_mud` situates HERESY MUD in the NEXUS `dungeon` region. The MUD's internal room graph is a separate game topology contained inside the current content-addressed `mud_game_state`.
+
+Actors may role-play avatars, propose moves, joke, shitpost or discuss tactics, but only explicit validated `/mud` / `game.mud.*` operations change authoritative dungeon state.
+
+```text
+Council/model output -> narration, proposals and role-play
+/mud operation        -> authoritative MUD-state transition
+```
+
+See [`MUD.md`](MUD.md).
+
 ## Why runtime modes, not just persona prompts?
 
 NEXUS records the selected mode as protocol state rather than pretending a model prompt can perfectly enforce behavior.
@@ -170,7 +185,7 @@ Properties:
 - adjacency is explicit and symmetric;
 - hop distance is computable;
 - every built-in mode maps to exactly one region;
-- the current built-in geometry identifier is `named-regions-v2`;
+- the current built-in geometry identifier is `named-regions-v3`;
 - the content-derived `topology_ref` remains separate from that human-readable identifier.
 
 NEXUS does **not** claim that culture, history, memes, games or model cognition literally occupy Euclidean coordinates. The geometry is a computational substrate for placement, relation, navigation and later visualization.

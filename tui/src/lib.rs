@@ -383,6 +383,7 @@ fn parse_mud(rest: &str) -> Result<MudCommand, String> {
 fn normalize_mud_action(action: &str) -> String {
     match action.to_ascii_lowercase().as_str() {
         "get" => "take".to_string(),
+        "n" | "s" | "e" | "w" | "north" | "south" | "east" | "west" => "go".to_string(),
         other => other.to_string(),
     }
 }

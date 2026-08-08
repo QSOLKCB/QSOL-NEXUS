@@ -241,6 +241,7 @@ def _items() -> dict[str, dict[str, Any]]:
             "kind": spec["kind"],
             "power": spec["power"],
             "score": spec["score"],
+            "score_awarded": False,
             "location": deepcopy(spec["initial_location"]),
         }
         for spec in _ITEM_SPECS
@@ -449,6 +450,8 @@ def _validate_state(state: dict[str, Any]) -> None:
         for field in ("item_id", "name", "description", "kind", "power", "score"):
             if item.get(field) != spec[field]:
                 raise ValueError(f"cursed MUD item immutable field mismatch: {item_id}.{field}")
+        if type(item.get("score_awarded")) is not bool:
+            raise ValueError(f"cursed MUD item score_awarded must be boolean: {item_id}")
         location = item.get("location")
         if not isinstance(location, dict) or set(location) != {"kind", "id"}:
             raise ValueError("cursed MUD item location must contain kind and id")
@@ -594,6 +597,19 @@ def _drop_npc_items(state: dict[str, Any], npc_id: str, room_id: str) -> None:
             _event(state, "drop", f"{item['name']} drops into {state['rooms'][room_id]['name']}.", item_id=item["item_id"])
 
 
+def _drop_player_items(state: dict[str, Any], player_id: str, room_id: str) -> None:
+    for item in state["items"].values():
+        if item["location"] == {"kind": "player", "id": player_id}:
+            item["location"] = {"kind": "room", "id": room_id}
+            _event(
+                state,
+                "death_drop",
+                f"{player_id} drops {item['name']} in {state['rooms'][room_id]['name']} after defeat.",
+                player_id=player_id,
+                item_id=item["item_id"],
+            )
+
+
 def _retaliate(state: dict[str, Any], prior: dict[str, Any], player: dict[str, Any], npc: dict[str, Any], label: str) -> None:
     if not npc["alive"] or not npc["hostile"]:
         return
@@ -602,7 +618,8 @@ def _retaliate(state: dict[str, Any], prior: dict[str, Any], player: dict[str, A
     player["alive"] = player["hp"] > 0
     _event(state, "retaliation", f"{npc['name']} hits {player['player_id']} for {damage} HP.", damage=damage)
     if not player["alive"]:
-        _event(state, "defeat", f"{player['player_id']} has been defeated by legacy infrastructure.")
+        _drop_player_items(state, player["player_id"], player["room_id"])
+        _event(state, "defeat", f"{player['player_id']} has been defeated by legacy infrastructure; inventory dropped into the room.")
 
 
 def apply_action(
@@ -647,9 +664,23 @@ def apply_action(
         item = state["items"].get(item_id)
         if not isinstance(item, dict) or item["location"] != {"kind": "room", "id": player["room_id"]}:
             raise ValueError(f"item is not available here: {item_id}")
+        if item_id == "zero_dependency_crown" and state["npcs"]["dependency_dragon"]["alive"]:
+            raise ValueError("the Zero-Dependency Crown cannot be recovered while the Dependency Dragon is alive")
         item["location"] = {"kind": "player", "id": player_id}
-        player["score"] += item["score"]
+        if not item["score_awarded"]:
+            player["score"] += item["score"]
+            item["score_awarded"] = True
         _event(state, "take", f"{player_id} takes {item['name']}.", player_id=player_id, item_id=item_id)
+        if item_id == "zero_dependency_crown" and state["quest"]["status"] == "open":
+            state["quest"]["status"] = "complete"
+            state["quest"]["completed_by"] = player_id
+            player["clout"] += 10
+            _event(
+                state,
+                "quest_complete",
+                f"{player_id} recovers the Zero-Dependency Crown. Small is beautiful; bloat is unholy.",
+                player_id=player_id,
+            )
 
     elif action_id == "drop":
         if len(raw_args) != 1:
@@ -700,10 +731,12 @@ def apply_action(
             _event(state, "npc_defeated", f"{npc['name']} is defeated by {player_id}.", npc_id=npc_id)
             _drop_npc_items(state, npc_id, npc["room_id"])
             if npc_id == "dependency_dragon":
-                state["quest"]["status"] = "complete"
-                state["quest"]["completed_by"] = player_id
-                player["clout"] += 10
-                _event(state, "quest_complete", f"{player_id} has defeated the Dependency Dragon. Small is beautiful; bloat is unholy.")
+                _event(
+                    state,
+                    "quest_progress",
+                    f"{player_id} defeats the Dependency Dragon. The Zero-Dependency Crown drops and must still be recovered.",
+                    player_id=player_id,
+                )
         else:
             _retaliate(state, prior, player, npc, f"attack:{player_id}:{npc_id}:{weapon_label}")
 
@@ -735,10 +768,12 @@ def apply_action(
                 _event(state, "npc_defeated", f"{npc['name']} has been posted through the floor.", npc_id=npc_id)
                 _drop_npc_items(state, npc_id, npc["room_id"])
                 if npc_id == "dependency_dragon":
-                    state["quest"]["status"] = "complete"
-                    state["quest"]["completed_by"] = player_id
-                    player["clout"] += 10
-                    _event(state, "quest_complete", f"{player_id} ratioed the Dependency Dragon out of production.")
+                    _event(
+                        state,
+                        "quest_progress",
+                        f"{player_id} shitposts the Dependency Dragon out of production. The Zero-Dependency Crown drops and must still be recovered.",
+                        player_id=player_id,
+                    )
             else:
                 _retaliate(state, prior, player, npc, f"shitpost:{player_id}:{npc_id}")
 
@@ -760,10 +795,12 @@ def apply_action(
                 _event(state, "npc_defeated", f"{npc['name']} has lost the argument and all remaining HP.", npc_id=npc_id)
                 _drop_npc_items(state, npc_id, npc["room_id"])
                 if npc_id == "dependency_dragon":
-                    state["quest"]["status"] = "complete"
-                    state["quest"]["completed_by"] = player_id
-                    player["clout"] += 10
-                    _event(state, "quest_complete", f"{player_id} has ratioed the Dependency Dragon into a single static binary.")
+                    _event(
+                        state,
+                        "quest_progress",
+                        f"{player_id} ratios the Dependency Dragon into a single static binary. The Zero-Dependency Crown drops and must still be recovered.",
+                        player_id=player_id,
+                    )
             else:
                 _retaliate(state, prior, player, npc, f"ratio:{player_id}:{npc_id}")
         else:
