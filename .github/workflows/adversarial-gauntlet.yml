@@ -1,0 +1,71 @@
+name: NEXUS adversarial gauntlet
+
+on:
+  workflow_dispatch:
+    inputs:
+      seed:
+        description: Deterministic fuzz seed (decimal or 0x...)
+        required: false
+        default: '0x4E45585553'
+      iterations:
+        description: Malformed-request fuzz iterations
+        required: false
+        default: '512'
+  pull_request:
+    paths:
+      - '.github/workflows/adversarial-gauntlet.yml'
+      - 'adversarial/**'
+      - 'tools/nexus_adversary.py'
+      - 'src/nexus_runtime/**'
+      - 'tests/**'
+      - 'tui/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: adversarial-gauntlet-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  gauntlet:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Toolchain versions
+        run: |
+          python3 --version
+          cargo --version
+          rustc --version
+
+      - name: Run hostile full gauntlet
+        shell: bash
+        env:
+          GAUNTLET_SEED: ${{ inputs.seed || '0x4E45585553' }}
+          GAUNTLET_ITERATIONS: ${{ inputs.iterations || '512' }}
+        run: |
+          set -euo pipefail
+          python3 tools/nexus_adversary.py \
+            --profile full \
+            --seed "$GAUNTLET_SEED" \
+            --iterations "$GAUNTLET_ITERATIONS" \
+            --json-out /tmp/nexus-adversarial-gauntlet.json
+
+      - name: Show machine-readable summary
+        if: always()
+        shell: bash
+        run: |
+          if test -f /tmp/nexus-adversarial-gauntlet.json; then
+            python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('/tmp/nexus-adversarial-gauntlet.json').read_text())
+          print(json.dumps(report['summary'], indent=2, sort_keys=True))
+          failed = [row for row in report['results'] if row['status'] != 'pass']
+          for row in failed:
+              print(f"FAIL: {row['name']}: {row['detail']}")
+          PY
+          fi
