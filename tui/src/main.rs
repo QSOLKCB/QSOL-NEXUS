@@ -414,10 +414,6 @@ impl App {
     }
 
     fn apply_go64_action(&mut self, action: Go64Action) {
-        if action.clear_scrollback {
-            self.scrollback.clear();
-            self.scroll_offset = 0;
-        }
         for line in action.lines {
             self.append(&line);
         }

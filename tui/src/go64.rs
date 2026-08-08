@@ -51,7 +51,6 @@ pub struct Go64Action {
     pub lines: Vec<String>,
     pub exit_alias: bool,
     pub quit_app: bool,
-    pub clear_scrollback: bool,
 }
 
 impl Go64Action {
@@ -60,7 +59,6 @@ impl Go64Action {
             lines,
             exit_alias: false,
             quit_app: false,
-            clear_scrollback: false,
         }
     }
 }
@@ -117,7 +115,8 @@ impl Go64Session {
     }
 
     pub fn status_label(&self) -> String {
-        let phase = match phase_for_elapsed(self.started_at.elapsed()) {
+        let elapsed = self.started_at.elapsed();
+        let phase = match phase_for_elapsed(elapsed) {
             Go64Phase::Classic => "CLASSIC",
             Go64Phase::Brainrot => "BRAINROT",
             Go64Phase::GrassReady => "GRASS READY",
@@ -127,7 +126,8 @@ impl Go64Session {
             Go64Program::Retro => "RETRO.PRG",
             Go64Program::Doctor => "SBAITSO.PRG",
         };
-        format!("GO64 {program} // {phase}")
+        let raster = (elapsed.as_millis() / 250) % 312;
+        format!("GO64 {program} // {phase} // RASTER {raster:03}")
     }
 
     pub fn tick(&mut self) -> Vec<String> {
@@ -169,7 +169,6 @@ impl Go64Session {
                 lines: prefix,
                 exit_alias: false,
                 quit_app: true,
-                clear_scrollback: false,
             };
         }
 
@@ -184,7 +183,6 @@ impl Go64Session {
                     lines: prefix,
                     exit_alias: true,
                     quit_app: false,
-                    clear_scrollback: false,
                 };
             }
             let remaining = GRASS_AFTER.saturating_sub(elapsed);
@@ -243,14 +241,10 @@ impl Go64Session {
                     "READY.".to_string(),
                 ]
             }
-            _ if trimmed.eq_ignore_ascii_case("/clear") => {
-                return Go64Action {
-                    lines: vec!["READY.".to_string()],
-                    exit_alias: false,
-                    quit_app: false,
-                    clear_scrollback: true,
-                };
-            }
+            _ if trimmed.eq_ignore_ascii_case("/clear") => vec![
+                "GO64 VIRTUAL SCREEN CLEARED. NEXUS SCROLLBACK PRESERVED.".to_string(),
+                "READY.".to_string(),
+            ],
             _ if trimmed.eq_ignore_ascii_case("/mute") => {
                 vec!["VOICE DEVICE: NONE. TEXT-ONLY MODE WAS ALREADY MUTED IN 1982.".to_string()]
             }
