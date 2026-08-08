@@ -85,6 +85,18 @@ Supported expectations:
 
 Pass extra corpus files or directories with repeated `--corpus PATH`. The default `adversarial/corpus/*.jsonl` corpus is loaded automatically unless `--no-default-corpus` is set.
 
+## Compare two runs
+
+During red-team work a known failing reproducer may intentionally remain red while the agent tests a candidate fix. Compare named checks without losing that context:
+
+```bash
+python3 tools/nexus_adversary_compare.py \
+  /tmp/baseline-gauntlet.json \
+  /tmp/candidate-gauntlet.json
+```
+
+The comparator exits non-zero only when the candidate introduces a **new named failing check**. It also reports fixed, added, and missing checks. This does not make an existing failure acceptable; it is simply a regression lens for iterative adversarial work.
+
 ## Interpreting PASS
 
 A green gauntlet means only:
