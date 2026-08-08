@@ -20,18 +20,53 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: agent/rust-irc-tui
+      - name: Add decompressed archive-member bound
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('tui/src/lib.rs')
+          text = path.read_text()
+
+          constant = 'pub const MAX_UPLOAD_BYTES: u64 = 8 * 1024 * 1024;\n'
+          replacement = constant + 'pub const MAX_ARCHIVE_MEMBER_BYTES: u64 = 8 * 1024 * 1024;\n'
+          if 'MAX_ARCHIVE_MEMBER_BYTES' not in text:
+              if constant not in text:
+                  raise SystemExit('MAX_UPLOAD_BYTES anchor not found')
+              text = text.replace(constant, replacement, 1)
+
+          anchor = '''    let mut entry = archive
+              .by_name(member)
+              .map_err(|e| format!("document is missing {member}: {e}"))?;
+          '''
+          hardened = anchor + '''    if entry.size() > MAX_ARCHIVE_MEMBER_BYTES {
+              return Err(format!(
+                  "document member {member} expands to {} bytes; limit is {} bytes",
+                  entry.size(),
+                  MAX_ARCHIVE_MEMBER_BYTES
+              ));
+          }
+          '''
+          if 'document member {member} expands to' not in text:
+              if anchor not in text:
+                  raise SystemExit('ZIP member anchor not found')
+              text = text.replace(anchor, hardened, 1)
+
+          path.write_text(text)
+          PY
       - name: Apply rustfmt
         run: cargo fmt --manifest-path tui/Cargo.toml
-      - name: Commit formatted Rust sources
+      - name: Commit hardened formatted Rust sources
         shell: bash
         run: |
           set -euo pipefail
           if git diff --quiet -- tui/src; then
-            echo 'Rust sources already formatted.'
+            echo 'Rust sources already formatted and hardened.'
             exit 0
           fi
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add tui/src
-          git commit -m 'Apply rustfmt to IRC TUI'
+          git commit -m 'Harden and format IRC TUI document ingestion'
           git push origin HEAD:agent/rust-irc-tui
