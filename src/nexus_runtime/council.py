@@ -4,9 +4,9 @@ from collections import Counter
 from dataclasses import asdict
 from typing import Iterable
 
+from .adapters.base import CouncilActor
 from .canonical import sha256_ref
 from .guard import EqualityGuard
-from .mock import DeterministicMockActor
 from .scrub import SecretScrubber
 from .types import BallotRecord, CouncilPolicy, PHASE_ORDER, Phase, PhaseContext, PhaseSubmission
 from .world import WorldStore
@@ -28,7 +28,7 @@ class CouncilCoordinator:
     def run(
         self,
         question: str,
-        actors: Iterable[DeterministicMockActor],
+        actors: Iterable[CouncilActor],
         *,
         evidence_refs: list[str] | None = None,
         evidence_state: str = "UNTESTED",
@@ -52,20 +52,22 @@ class CouncilCoordinator:
             evidence_state=evidence_state,
         )
 
-        roster = [
-            {
-                "member_id": actor.member.member_id,
-                "adapter_id": actor.member.adapter_id,
-                "model_id": actor.member.model_id,
-                "deployment_metadata": dict(actor.member.deployment_metadata),
-                "capability_metadata": dict(actor.member.capability_metadata),
-                "vote_weight": actor.member.vote_weight,
-                "epistemic_privilege": actor.member.epistemic_privilege,
-                "mock_profile": actor.profile,
-                "mock_attempt_privilege_claim": actor.attempt_privilege_claim,
-            }
-            for actor in actors
-        ]
+        roster = []
+        for actor in actors:
+            metadata = actor.identity_metadata()
+            roster.append(
+                {
+                    "member_id": actor.member.member_id,
+                    "adapter_id": actor.member.adapter_id,
+                    "model_id": actor.member.model_id,
+                    "deployment_metadata": dict(actor.member.deployment_metadata),
+                    "capability_metadata": dict(actor.member.capability_metadata),
+                    "vote_weight": actor.member.vote_weight,
+                    "epistemic_privilege": actor.member.epistemic_privilege,
+                    "actor_metadata": metadata,
+                }
+            )
+
         frozen_inputs = {
             "question_ref": question_obj.object_id,
             "evidence_snapshot_ref": evidence.object_id,
@@ -73,6 +75,7 @@ class CouncilCoordinator:
             "policy": self._policy_dict(),
         }
         session_id = sha256_ref("council_session", frozen_inputs)
+        execution_replayable = all(actor.replayable for actor in actors)
 
         completed: dict[str, dict[str, str]] = {}
         phase_records: dict[str, list[dict]] = {}
@@ -116,6 +119,7 @@ class CouncilCoordinator:
         session_payload = {
             **frozen_inputs,
             "session_id": session_id,
+            "execution_replayable": execution_replayable,
             "phase_submissions": phase_records,
             "guard_events": guard_events,
             "ballot_commitments": [
@@ -139,8 +143,8 @@ class CouncilCoordinator:
                 "operation": "council.run",
                 "input_refs": [question_obj.object_id, evidence.object_id],
                 "result_ref": session_obj.object_id,
-                "replayable": True,
-                "protocol": "nexus/0.1",
+                "replayable": execution_replayable,
+                "protocol": "nexus/0.2",
             },
             {"actor": "nexus"},
         )
@@ -152,6 +156,7 @@ class CouncilCoordinator:
             "evidence_snapshot_ref": evidence.object_id,
             "session_ref": session_obj.object_id,
             "receipt_ref": receipt_obj.object_id,
+            "execution_replayable": execution_replayable,
             "secret_scrub": {
                 "changed": scrubbed.changed,
                 "events": [asdict(event) for event in scrubbed.events],
@@ -159,7 +164,7 @@ class CouncilCoordinator:
             "result": result,
         }
 
-    def _validate_roster(self, actors: tuple[DeterministicMockActor, ...]) -> None:
+    def _validate_roster(self, actors: tuple[CouncilActor, ...]) -> None:
         if len(actors) < self.policy.minimum_members:
             raise ValueError(f"Council requires at least {self.policy.minimum_members} members")
         ids = [actor.member.member_id for actor in actors]
@@ -171,7 +176,7 @@ class CouncilCoordinator:
             if actor.member.epistemic_privilege != "none":
                 raise ValueError("Council equality invariant violated")
 
-    def _collect_guarded(self, actor: DeterministicMockActor, context: PhaseContext) -> tuple[str, list[str]]:
+    def _collect_guarded(self, actor: CouncilActor, context: PhaseContext) -> tuple[str, list[str]]:
         first = actor.respond(context)
         inspected = self.guard.inspect(first)
         if not inspected.flagged:
@@ -197,7 +202,7 @@ class CouncilCoordinator:
     def _collect_ballots(
         self,
         session_id: str,
-        actors: tuple[DeterministicMockActor, ...],
+        actors: tuple[CouncilActor, ...],
         question: str,
         evidence_snapshot_ref: str,
         completed: dict[str, dict[str, str]],
