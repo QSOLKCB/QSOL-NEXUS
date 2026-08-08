@@ -70,13 +70,15 @@ They must never be written to:
 
 - world objects;
 - Council session objects;
-- prompts unless absolutely required by a provider protocol (normally they are not);
+- prompts;
 - phase transcripts;
 - receipts;
 - replay bundles;
 - experiment artifacts;
 - source-control files;
 - public diagnostic reports.
+
+Authentication material belongs only in adapter authentication or transport fields and must never become semantic prompt content exposed to a model.
 
 The future implementation should prefer an operating-system credential/keyring facility where practical, while allowing explicit external secret mechanisms for headless environments.
 
