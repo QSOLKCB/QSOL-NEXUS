@@ -31,4 +31,17 @@ fn fresh_go64_session_starts_at_basic_menu() {
     let session = Go64Session::new();
     assert_eq!(session.program(), Go64Program::Menu);
     assert_eq!(session.prompt_label(), "READY.");
+    assert!(session.status_label().contains("RASTER"));
+}
+
+#[test]
+fn go64_clear_is_virtual_and_preserves_host_scrollback_boundary() {
+    let mut session = Go64Session::new();
+    let action = session.handle("/clear", "Trent");
+    assert!(action
+        .lines
+        .iter()
+        .any(|line| line.contains("NEXUS SCROLLBACK PRESERVED")));
+    assert!(!action.exit_alias);
+    assert!(!action.quit_app);
 }
