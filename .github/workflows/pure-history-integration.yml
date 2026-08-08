@@ -16,7 +16,7 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
       - name: Apply Pure History integration
-        run: python3 .github/scripts/apply_pure_history.py
+        run: python3 .github/scripts/apply_pure_history_v2.py
       - name: Rust format
         run: cargo fmt --manifest-path tui/Cargo.toml
       - name: Rust tests
@@ -39,7 +39,9 @@ jobs:
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git add \
             README.md \
+            CHANGELOG.md \
             docs/API.md \
+            docs/IRC_TUI.md \
             docs/MODES_GEOMETRY.md \
             src/nexus_runtime/api.py \
             src/nexus_runtime/adapters/ollama.py \
@@ -48,6 +50,9 @@ jobs:
             src/nexus_runtime/modes.py \
             tests/test_adapters.py \
             tests/test_modes_geometry.py \
+            tests/test_mud.py \
+            tests/test_runtime.py \
+            tests/test_un_sim.py \
             tui/src/lib.rs \
             tui/src/main.rs
           if git diff --cached --quiet; then
