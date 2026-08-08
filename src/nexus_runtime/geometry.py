@@ -125,7 +125,7 @@ DEFAULT_WORLD_GEOMETRY = WorldGeometry(
             "Observatory",
             0,
             0,
-            ("archive", "agora", "commons"),
+            ("archive", "agora", "commons", "assembly"),
             "Default evidence-first analytical region.",
         ),
         WorldRegion(
@@ -149,9 +149,17 @@ DEFAULT_WORLD_GEOMETRY = WorldGeometry(
             "Commons",
             2,
             1,
-            ("observatory", "agora"),
+            ("observatory", "agora", "assembly"),
             "Meme/casual region for playful interaction without relaxing evidence boundaries.",
         ),
+        WorldRegion(
+            "assembly",
+            "Assembly Hall",
+            0,
+            -2,
+            ("observatory", "commons"),
+            "Fictional game region for UN-style strategy simulation, motions, crises and memes.",
+        ),
     ),
-    geometry_id="named-regions-v1",
+    geometry_id="named-regions-v2",
 )
