@@ -88,11 +88,11 @@ Frontier Beta / llama3.2:1b
 NEXUS AI Council
 ```
 
-The public JSONL `council.run` operation remains mock-instantiation-only.
+At this milestone the public JSONL `council.run` operation remained mock-instantiation-only. Alpha5 later exposes the already-hardened loopback Ollama actor to the local stdio control path without adding remote-provider auth.
 
 ## 2.0-alpha4 — World Modes and Geometry
 
-Make NEXUS feel like an inhabitable shared world rather than only a deliberation engine.
+Completed in PR #4.
 
 Initial modes:
 
@@ -121,7 +121,7 @@ Initial geometry:
                          (2,1)
 ```
 
-Goals:
+Implemented:
 
 - [x] deterministic built-in mode registry;
 - [x] modes carry framing/context but no procedural authority;
@@ -135,7 +135,10 @@ Goals:
 - [x] `world.geometry` API;
 - [x] `world.geometry.distance` API;
 - [x] deterministic tests proving mode changes framing but not vote mechanics;
-- [x] documentation of operational-vs-physical geometry claim boundary;
+- [x] documentation of operational-vs-physical geometry claim boundary.
+
+Still later:
+
 - [ ] user-defined modes;
 - [ ] explicit recorded `world.move` transitions;
 - [ ] richer object-to-region placement rules.
@@ -144,7 +147,51 @@ Core invariant:
 
 > **The mode can change the vibe. It cannot change the vote.**
 
-## 2.0-alpha5 — Council information telemetry
+## 2.0-alpha5 — Rust IRC-style operator TUI
+
+Build the first human operator shell over the local JSONL protocol using an old-school IRC interface rather than a dashboard/chat-card UI.
+
+Implemented / targeted in PR #5:
+
+- [x] Rust terminal client in `tui/`;
+- [x] local Python runtime subprocess over JSONL/stdio;
+- [x] room mapping to World Modes and geometry regions;
+- [x] chronological copy-friendly Council scrollback;
+- [x] visible model roster / nick list;
+- [x] room topics;
+- [x] normal public input as a Council question;
+- [x] explicit `/ask` Council command;
+- [x] `/me` action events, including Meme/Casual banter;
+- [x] `/msg` and DCC-style private non-Council model chat;
+- [x] local DCC-style document transfer vocabulary with no IRC/DCC sockets;
+- [x] PDF, DOCX, ODT, JSON, JSONL, CSV, TSV and UTF-8 text ingestion;
+- [x] content-addressed `document_evidence` world objects;
+- [x] bounded model-readable evidence views derived from object refs;
+- [x] explicit separation of room-wide evidence from targeted DCC evidence;
+- [x] `/ref` promotion of a targeted object into Council evidence;
+- [x] mock member management;
+- [x] explicit local loopback Ollama member management;
+- [x] mIRC-style aliases;
+- [x] local `%variables`;
+- [x] safe `$identifiers` (`$me`, `$chan`, `$mode`, `$region`, `$topic`, positional arguments/ranges);
+- [x] local persistence of aliases and variables;
+- [x] scrollback search/save, input history and command completion;
+- [x] Rust CI for format, tests and compile checks.
+
+Alpha5 deliberately does **not** implement:
+
+- IRC networking;
+- an IRC daemon;
+- peer-to-peer DCC sockets;
+- mIRC remote/event scripts;
+- arbitrary shell execution from aliases;
+- provider credentials;
+- OpenAI / Claude / Gemini / Grok cloud adapters;
+- remote Ollama endpoints.
+
+The Rust layer remains a replaceable operator shell. World, Council, evidence, security and voting rules remain in the Python/runtime protocol.
+
+## 2.0-alpha6 — Council information telemetry
 
 Add observation channels for *how* a Council converges or diverges without turning telemetry into authority.
 
@@ -177,29 +224,6 @@ Requirements:
 - low entropy is not automatically truth;
 - metrics must be reproducible from captured Council artifacts where practical;
 - geometric labels such as `bottlenecked` or `shattered` require explicit measurement rules rather than analogy alone.
-
-## 2.0-alpha6 — Rust CLI/TUI
-
-Build the Rust operator shell over the stable JSONL/local protocol.
-
-Goals:
-
-- single clear executable entrypoint;
-- world-mode selection;
-- geometry/region display;
-- Council creation and monitoring;
-- phase and ballot views;
-- world-object browsing;
-- evidence and minority reports;
-- telemetry inspection;
-- secret-scrub event visibility without secret disclosure;
-- instrument and receipt inspection;
-- local model process/endpoint supervision;
-- useful non-interactive subcommands for automation/SSH.
-
-Provider/account login UI remains deferred until the authentication milestone.
-
-The Rust layer should not duplicate Python/world business logic.
 
 ## 2.0-alpha7 — Instruments
 
@@ -236,7 +260,7 @@ Upgrade development storage into a robust persistent world:
 
 ## 2.0-alpha9 — Authentication and remote-provider setup
 
-Only after the world, modes, telemetry, operator surface, instruments and persistence contracts are mature enough should NEXUS invite remote providers into the operator-configurable runtime.
+Only after the world, modes, operator surface, telemetry, instruments and persistence contracts are mature enough should NEXUS invite remote providers into the operator-configurable runtime.
 
 Planned UX:
 
@@ -305,6 +329,8 @@ A Council version should demonstrate heterogeneous remote providers and at least
 - deterministic Council-policy tests;
 - mode/geometry migration tests;
 - telemetry reproducibility tests;
+- local document-ingestion fuzz/limit fixtures;
+- TUI state-file and transcript-redaction tests;
 - operational logging/redaction tests;
 - endpoint/process impersonation tests;
 - provider destination allowlisting tests.
