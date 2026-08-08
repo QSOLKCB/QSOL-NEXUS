@@ -145,7 +145,8 @@ impl Go64Session {
             Go64Phase::Brainrot => vec![
                 "*** 20:00 CONTEXT DECAY DETECTED".to_string(),
                 "*** THE FEED HAS BREACHED THE LANGUAGE REGISTER".to_string(),
-                "*** BRAINROT DIALECT ENABLED. COUNCIL AUTHORITY REMAINS EXACTLY ZERO HERE.".to_string(),
+                "*** BRAINROT DIALECT ENABLED. COUNCIL AUTHORITY REMAINS EXACTLY ZERO HERE."
+                    .to_string(),
             ],
             Go64Phase::GrassReady => vec![
                 "*** 30:00 OUTDOOR DEVICE 0 IS NOW READY".to_string(),
@@ -227,7 +228,8 @@ impl Go64Session {
             _ if trimmed.eq_ignore_ascii_case("/help") => go64_help(self.program),
             _ if trimmed.eq_ignore_ascii_case("/diagnose") => self.diagnose(elapsed),
             _ if trimmed.eq_ignore_ascii_case("/ethics") => vec![
-                "QSOL-IMC ETHICS: INSPECTABLE WORK, HONEST CLAIMS, EVIDENCE BEFORE CONFIDENCE,".to_string(),
+                "QSOL-IMC ETHICS: INSPECTABLE WORK, HONEST CLAIMS, EVIDENCE BEFORE CONFIDENCE,"
+                    .to_string(),
                 "PROPORTIONATE ATTRIBUTION, AND NO VIBE VERIFICATION.".to_string(),
             ],
             _ if trimmed.eq_ignore_ascii_case("/consultant") => vec![
@@ -236,7 +238,10 @@ impl Go64Session {
             ],
             _ if trimmed.eq_ignore_ascii_case("/back") => {
                 self.program = Go64Program::Menu;
-                vec!["RETURNING TO BASIC. SECRET ALIAS TIMER CONTINUES.".to_string(), "READY.".to_string()]
+                vec![
+                    "RETURNING TO BASIC. SECRET ALIAS TIMER CONTINUES.".to_string(),
+                    "READY.".to_string(),
+                ]
             }
             _ if trimmed.eq_ignore_ascii_case("/clear") => {
                 return Go64Action {
@@ -246,12 +251,12 @@ impl Go64Session {
                     clear_scrollback: true,
                 };
             }
-            _ if trimmed.eq_ignore_ascii_case("/mute") => vec![
-                "VOICE DEVICE: NONE. TEXT-ONLY MODE WAS ALREADY MUTED IN 1982.".to_string(),
-            ],
-            _ if trimmed.eq_ignore_ascii_case("/speak") => vec![
-                "?VOICE DEVICE NOT PRESENT. PLEASE HUM THE SID ARPEGGIO YOURSELF.".to_string(),
-            ],
+            _ if trimmed.eq_ignore_ascii_case("/mute") => {
+                vec!["VOICE DEVICE: NONE. TEXT-ONLY MODE WAS ALREADY MUTED IN 1982.".to_string()]
+            }
+            _ if trimmed.eq_ignore_ascii_case("/speak") => {
+                vec!["?VOICE DEVICE NOT PRESENT. PLEASE HUM THE SID ARPEGGIO YOURSELF.".to_string()]
+            }
             _ => {
                 self.interactions = self.interactions.saturating_add(1);
                 match self.program {
@@ -259,7 +264,9 @@ impl Go64Session {
                         "?SYNTAX  ERROR".to_string(),
                         "TRY LOAD \"$\",8 OR LOAD \"*\",8,1".to_string(),
                     ],
-                    Go64Program::Retro => retro_reply(trimmed, phase_for_elapsed(elapsed), self.interactions),
+                    Go64Program::Retro => {
+                        retro_reply(trimmed, phase_for_elapsed(elapsed), self.interactions)
+                    }
                     Go64Program::Doctor => doctor_reply(
                         trimmed,
                         self.doctor_mode,
@@ -382,9 +389,15 @@ fn retro_reply(input: &str, phase: Go64Phase, interaction: u64) -> Vec<String> {
     }
 
     let lower = input.to_ascii_lowercase();
-    let reply = if lower.contains("cloud") || lower.contains("microservice") || lower.contains("kubernetes") {
+    let reply = if lower.contains("cloud")
+        || lower.contains("microservice")
+        || lower.contains("kubernetes")
+    {
         "ASK WHAT FAILURE, SCALE OR ISOLATION REQUIREMENT JUSTIFIES THE NETWORK BOUNDARY. IF NONE DOES, THE BOUNDARY IS DECORATION."
-    } else if lower.contains("framework") || lower.contains("javascript") || lower.contains("electron") {
+    } else if lower.contains("framework")
+        || lower.contains("javascript")
+        || lower.contains("electron")
+    {
         "ABSTRACTION IS USEFUL WHEN IT REMOVES MORE COMPLEXITY THAN IT ADDS. COUNT BOTH SIDES OF THE LEDGER."
     } else if lower.contains("ai") || lower.contains("model") || lower.contains("agent") {
         "A SMARTER MODEL DOES NOT MAKE AN UNVERIFIED SIDE EFFECT TRUE. KEEP RECEIPTS OUTSIDE THE MODEL."
@@ -399,18 +412,22 @@ fn retro_reply(input: &str, phase: Go64Phase, interaction: u64) -> Vec<String> {
             "THE BEST STACK IS THE SMALLEST ONE THAT SATISFIES THE ACTUAL CONTRACT.",
             "MODERN TOOLS WIN WHEN THE PROBLEM REQUIRES THEIR CAPABILITIES. MEASURE BEFORE WORSHIPPING EITHER ERA.",
         ];
-        choose(&lessons, &format!("{input}:{interaction}"))
+        return vec![choose(&lessons, &format!("{input}:{interaction}")).to_string()];
     };
     vec![reply.to_string()]
 }
 
 fn doctor_intro(nick: &str) -> Vec<String> {
     vec![
-        format!("HELLO {}, MY NAME IS DOCTOR S.BAITSO.", nick.to_ascii_uppercase()),
+        format!(
+            "HELLO {}, MY NAME IS DOCTOR S.BAITSO.",
+            nick.to_ascii_uppercase()
+        ),
         "I AM HERE TO HELP YOU.".to_string(),
         "SAY WHATEVER IS IN YOUR MIND FREELY.".to_string(),
         "THIS IS AN ORIGINAL TEXT-ONLY MEME TRIBUTE, NOT MEDICAL CARE.".to_string(),
-        "GO64'S VOLATILE REPLY STATE IS WIPED ON EXIT; NORMAL NEXUS SCROLLBACK RULES STILL APPLY.".to_string(),
+        "GO64'S VOLATILE REPLY STATE IS WIPED ON EXIT; NORMAL NEXUS SCROLLBACK RULES STILL APPLY."
+            .to_string(),
         "SO, TELL ME ABOUT YOUR PROBLEMS.".to_string(),
         String::new(),
         "MODES: MODE THERAPY | MODE AGENT | MODE BENCHMARK | MODE DOOMSCROLL".to_string(),
@@ -479,7 +496,11 @@ fn doctor_reply(input: &str, mode: DoctorMode, phase: Go64Phase, interaction: u6
         )
         .to_string()];
     }
-    if lower.contains("doomscroll") || lower.contains("twitter") || lower.contains("social media") || lower.contains("feed") {
+    if lower.contains("doomscroll")
+        || lower.contains("twitter")
+        || lower.contains("social media")
+        || lower.contains("feed")
+    {
         return vec![choose(
             &[
                 "THE FEED IS NOT A COMMAND LINE. YOU ARE NOT REQUIRED TO REACH THE END.",
@@ -557,7 +578,10 @@ mod tests {
 
     #[test]
     fn phase_boundaries_are_exact() {
-        assert_eq!(phase_for_elapsed(Duration::from_secs(0)), Go64Phase::Classic);
+        assert_eq!(
+            phase_for_elapsed(Duration::from_secs(0)),
+            Go64Phase::Classic
+        );
         assert_eq!(
             phase_for_elapsed(BRAINROT_AFTER - Duration::from_secs(1)),
             Go64Phase::Classic
@@ -575,11 +599,17 @@ mod tests {
         let mut session = Go64Session::new();
         let locked = session.handle_at("/grass", "Trent", BRAINROT_AFTER);
         assert!(!locked.exit_alias);
-        assert!(locked.lines.iter().any(|line| line.contains("DEVICE NOT READY")));
+        assert!(locked
+            .lines
+            .iter()
+            .any(|line| line.contains("DEVICE NOT READY")));
 
         let released = session.handle_at("/grass", "Trent", GRASS_AFTER);
         assert!(released.exit_alias);
-        assert!(released.lines.iter().any(|line| line.contains("OUTDOOR CHECKSUM")));
+        assert!(released
+            .lines
+            .iter()
+            .any(|line| line.contains("OUTDOOR CHECKSUM")));
     }
 
     #[test]
@@ -587,11 +617,17 @@ mod tests {
         let mut session = Go64Session::new();
         let retro = session.handle_at("LOAD \"*\",8,1", "Trent", Duration::ZERO);
         assert_eq!(session.program(), Go64Program::Retro);
-        assert!(retro.lines.iter().any(|line| line.contains("NEWER != BETTER")));
+        assert!(retro
+            .lines
+            .iter()
+            .any(|line| line.contains("NEWER != BETTER")));
 
         let doctor = session.handle_at("LOAD \"*\",9,1", "Trent", Duration::ZERO);
         assert_eq!(session.program(), Go64Program::Doctor);
-        assert!(doctor.lines.iter().any(|line| line.contains("DOCTOR S.BAITSO")));
+        assert!(doctor
+            .lines
+            .iter()
+            .any(|line| line.contains("DOCTOR S.BAITSO")));
     }
 
     #[test]
@@ -612,7 +648,11 @@ mod tests {
     fn brainrot_is_a_timed_style_change_not_a_semantic_mode() {
         let mut session = Go64Session::new();
         session.program = Go64Program::Doctor;
-        let normal = session.handle_at("the agent says it finished", "Trent", Duration::from_secs(60));
+        let normal = session.handle_at(
+            "the agent says it finished",
+            "Trent",
+            Duration::from_secs(60),
+        );
         let brainrot = session.handle_at("the agent says it finished", "Trent", BRAINROT_AFTER);
         assert!(!normal.lines.join(" ").contains('💀'));
         assert!(brainrot.lines.join(" ").contains('💀') || brainrot.lines.join(" ").contains('😭'));
@@ -630,7 +670,10 @@ mod tests {
     fn soft_reset_does_not_cheat_the_thirty_minute_timer() {
         let mut session = Go64Session::new();
         let reset = session.handle_at("SYS 64738", "Trent", BRAINROT_AFTER);
-        assert!(reset.lines.iter().any(|line| line.contains("TIMER INTENTIONALLY SURVIVES")));
+        assert!(reset
+            .lines
+            .iter()
+            .any(|line| line.contains("TIMER INTENTIONALLY SURVIVES")));
         let grass = session.handle_at("/grass", "Trent", BRAINROT_AFTER);
         assert!(!grass.exit_alias);
     }

@@ -7,6 +7,7 @@ use crossterm::terminal::{
     LeaveAlternateScreen,
 };
 use crossterm::{execute, queue};
+use nexus_irc_tui::go64::{Go64Action, Go64Session};
 use nexus_irc_tui::scripting::{expand_identifiers, IdentifierContext, VariableBook};
 use nexus_irc_tui::{
     command_completions, load_document, normalize_action, parse_input, room_from_name,
@@ -20,6 +21,7 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use std::time::Duration;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Debug, Clone)]
@@ -198,6 +200,8 @@ struct App {
     room_evidence: BTreeMap<String, Vec<String>>,
     game_refs: BTreeMap<String, String>,
     mud_refs: BTreeMap<String, String>,
+    go64_confirmation_pending: bool,
+    go64: Option<Go64Session>,
     targeted_evidence: BTreeMap<String, Vec<String>>,
     dcc_sessions: Vec<DccSession>,
     private_target: Option<String>,
@@ -226,6 +230,8 @@ impl App {
             room_evidence: BTreeMap::new(),
             game_refs: BTreeMap::new(),
             mud_refs: BTreeMap::new(),
+            go64_confirmation_pending: false,
+            go64: None,
             targeted_evidence: BTreeMap::new(),
             dcc_sessions: Vec::new(),
             private_target: None,
@@ -240,7 +246,7 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS 2.0 alpha6.4 IRC/TUI — local room, no IRC server");
+        app.append("*** NEXUS TUI 2.0 alpha6.5 — local room, no IRC server");
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );
@@ -350,6 +356,9 @@ impl App {
         if changed {
             self.append("*** secret-bearing text redacted before local history/scrollback");
         }
+        if self.handle_go64_line(&clean) {
+            return;
+        }
         let expanded = self.preprocess(&clean);
         match parse_input(&expanded) {
             Ok(command) => {
@@ -359,6 +368,84 @@ impl App {
             }
             Err(error) => self.append(&format!("*** {error}")),
         }
+    }
+
+    fn handle_go64_line(&mut self, line: &str) -> bool {
+        let trimmed = line.trim();
+
+        if self.go64_confirmation_pending {
+            if trimmed.eq_ignore_ascii_case("yes") || trimmed.eq_ignore_ascii_case("y") {
+                self.go64_confirmation_pending = false;
+                self.go64 = Some(Go64Session::new());
+                for line in Go64Session::boot_lines(&self.nick) {
+                    self.append(&line);
+                }
+            } else if trimmed.eq_ignore_ascii_case("no") || trimmed.eq_ignore_ascii_case("n") {
+                self.go64_confirmation_pending = false;
+                self.append("*** SECRET ALIAS CANCELLED. PROBABLY WISE.");
+            } else {
+                self.append("ARE YOU SURE? TYPE YES OR NO.");
+            }
+            return true;
+        }
+
+        if self.go64.is_some() {
+            let nick = self.nick.clone();
+            let action = self
+                .go64
+                .as_mut()
+                .expect("GO64 checked above")
+                .handle(trimmed, &nick);
+            self.apply_go64_action(action);
+            return true;
+        }
+
+        if trimmed.eq_ignore_ascii_case("/go64") {
+            self.go64_confirmation_pending = true;
+            self.private_target = None;
+            self.append("*** SECRET ALIAS DETECTED: /GO64");
+            self.append("*** THIS TEMPORARILY HIDES THE TUI, NOT THE NEXUS SUBSTRATE.");
+            self.append("ARE YOU SURE?");
+            self.append("TYPE YES OR NO.");
+            return true;
+        }
+
+        false
+    }
+
+    fn apply_go64_action(&mut self, action: Go64Action) {
+        if action.clear_scrollback {
+            self.scrollback.clear();
+            self.scroll_offset = 0;
+        }
+        for line in action.lines {
+            self.append(&line);
+        }
+        if action.exit_alias {
+            self.go64 = None;
+            self.go64_confirmation_pending = false;
+            self.append(&format!(
+                "*** GO64 EXITED. STILL IN {} mode={} region={}",
+                self.room.channel, self.room.mode_id, self.room.region_id
+            ));
+        }
+        if action.quit_app {
+            self.running = false;
+        }
+    }
+
+    fn tick_go64(&mut self) {
+        let lines = match self.go64.as_mut() {
+            Some(session) => session.tick(),
+            None => return,
+        };
+        for line in lines {
+            self.append(&line);
+        }
+    }
+
+    fn go64_active(&self) -> bool {
+        self.go64.is_some()
     }
 
     fn execute_command(
@@ -1574,13 +1661,25 @@ impl App {
             .saturating_sub(side_width + if side_width > 0 { 1 } else { 0 })
             .max(20);
         let topic = self.current_topic();
-        let status = format!(
-            " NEXUS {}  mode={} region={}  topic={} ",
-            self.room.channel,
-            self.room.mode_id,
-            self.room.region_id,
-            if topic.is_empty() { "(none)" } else { topic }
-        );
+        let status = if let Some(go64) = &self.go64 {
+            format!(
+                " {} | under={} mode={} region={} ",
+                go64.status_label(),
+                self.room.channel,
+                self.room.mode_id,
+                self.room.region_id
+            )
+        } else if self.go64_confirmation_pending {
+            " SECRET ALIAS /GO64 // CONFIRM YES OR NO ".to_string()
+        } else {
+            format!(
+                " NEXUS {}  mode={} region={}  topic={} ",
+                self.room.channel,
+                self.room.mode_id,
+                self.room.region_id,
+                if topic.is_empty() { "(none)" } else { topic }
+            )
+        };
         queue!(stdout, MoveTo(0, 0), Print(fit(&status, width as usize)))?;
 
         let body_height = height.saturating_sub(3) as usize;
@@ -1635,9 +1734,15 @@ impl App {
             }
         }
 
-        let prompt = match &self.private_target {
-            Some(target) => format!(" DCC:{target}> "),
-            None => format!(" {}> ", self.room.channel),
+        let prompt = if self.go64_confirmation_pending {
+            " ARE YOU SURE? ".to_string()
+        } else if let Some(go64) = &self.go64 {
+            format!(" {} ", go64.prompt_label())
+        } else {
+            match &self.private_target {
+                Some(target) => format!(" DCC:{target}> "),
+                None => format!(" {}> ", self.room.channel),
+            }
         };
         let prompt_width = UnicodeWidthStr::width(prompt.as_str());
         let input_width = width as usize - prompt_width.min(width as usize);
@@ -1729,7 +1834,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .map_err(io::Error::other)?;
 
     while app.running {
+        app.tick_go64();
         app.render()?;
+        if app.go64_active() && !event::poll(Duration::from_millis(250))? {
+            continue;
+        }
         if let Event::Key(key) = event::read()? {
             if key.modifiers.contains(KeyModifiers::CONTROL)
                 && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d'))

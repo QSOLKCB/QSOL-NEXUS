@@ -2,6 +2,19 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.0.0-alpha6.5 — Secret Alias / GO64 TUI edition
+
+- add hidden `/GO64` + explicit YES confirmation to the Rust operator shell;
+- add original NEXUS/64 text demoscene teaching `NEWER != BETTER; OLDER != BETTER; MEASURE IT`;
+- add original text-only DR. S.BAITSO tribute adapted from QSOLKCB/ETHICS with Therapy, Agent Intervention, Benchmark Detox and Doomscroll Triage modes;
+- add monotonic 20-minute deterministic brainrot transition and 30-minute `/grass` release gate;
+- preserve `/quit` and Ctrl-C/Ctrl-D as process-level emergency exits;
+- keep `/GO64` out of normal command help/completion;
+- preserve the current World Mode, geometry, evidence, roster and Council state underneath the overlay;
+- keep the Python runtime at `2.0.0-alpha6.4` and protocol at `nexus/0.8` because no substrate contract changes.
+
+> **The terminal can cosplay as 1982. The substrate cannot.**
+
 ## 2.0.0-alpha6.4 — Pure History / No Ancient Aliens Edition
 
 - add `pure_history` as a source-forensic sibling of ordinary Historical Mode;

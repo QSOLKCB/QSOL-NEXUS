@@ -1,5 +1,7 @@
-use nexus_irc_tui::go64::{phase_for_elapsed, Go64Phase, Go64Program, Go64Session, BRAINROT_AFTER, GRASS_AFTER};
 use nexus_irc_tui::command_completions;
+use nexus_irc_tui::go64::{
+    phase_for_elapsed, Go64Phase, Go64Program, Go64Session, BRAINROT_AFTER, GRASS_AFTER,
+};
 use std::time::Duration;
 
 #[test]
