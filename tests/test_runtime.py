@@ -3,10 +3,11 @@ from __future__ import annotations
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from nexus_runtime.api import NexusAPI
 from nexus_runtime.canonical import canonical_json, sha256_ref
-from nexus_runtime.council import CouncilCoordinator
+from nexus_runtime.council import CouncilCoordinator, MAX_EVIDENCE_CONTEXT_CHARS
 from nexus_runtime.mock import DeterministicMockActor
 from nexus_runtime.scrub import SecretScrubber
 from nexus_runtime.types import CouncilMember, CouncilPolicy
@@ -163,13 +164,45 @@ class CouncilTests(unittest.TestCase):
         self.assertEqual(first["session_ref"], second["session_ref"])
         self.assertEqual(first["receipt_ref"], second["receipt_ref"])
 
+    def test_content_addressed_evidence_gets_bounded_model_readable_view(self) -> None:
+        world = WorldStore()
+        evidence = world.create_object(
+            "document_evidence",
+            {"filename": "notes.txt", "content": "THE TROUT FACT " + "x" * 20_000},
+            {"actor": "human_operator"},
+        )
+        council = CouncilCoordinator(world)
+        view = council.build_evidence_context([evidence.object_id])
+        self.assertIn("notes.txt", view)
+        self.assertIn("THE TROUT FACT", view)
+        self.assertLessEqual(len(view), MAX_EVIDENCE_CONTEXT_CHARS)
+        result = council.run("review the attachment", [actor("A"), actor("B"), actor("C")], evidence_refs=[evidence.object_id])
+        self.assertGreater(result["evidence_context_chars"], 0)
+
+    def test_evidence_context_global_cap_includes_separators_and_markers(self) -> None:
+        world = WorldStore()
+        refs = []
+        for index in range(12):
+            obj = world.create_object(
+                "document_evidence",
+                {"filename": f"doc-{index}.txt", "content": (f"DOC {index} " + "x" * 2500)},
+                {"actor": "human_operator"},
+            )
+            refs.append(obj.object_id)
+        view = CouncilCoordinator(world).build_evidence_context(refs)
+        self.assertLessEqual(len(view), MAX_EVIDENCE_CONTEXT_CHARS)
+
+
 
 class APITests(unittest.TestCase):
-    def test_health_and_mock_only_network_posture(self) -> None:
+    def test_health_reports_local_stdio_plus_explicit_loopback_ollama(self) -> None:
         api = NexusAPI()
         result = api.handle({"operation": "system.health"})
-        self.assertEqual(result["network"], "none")
-        self.assertEqual(result["adapters"], ["mock"])
+        self.assertEqual(result["protocol"], "nexus/0.4")
+        self.assertEqual(result["control_transport"], "jsonl_stdio")
+        self.assertEqual(result["network"], "none_unless_explicit_loopback_ollama_actor")
+        self.assertEqual(result["adapters"], ["mock", "ollama_loopback"])
+        self.assertFalse(result["remote_provider_auth"])
         self.assertEqual(result["actor_backends_available"], ["mock", "ollama"])
 
     def test_api_rejects_weighted_member(self) -> None:
@@ -220,6 +253,71 @@ class APITests(unittest.TestCase):
         self.assertNotIn(secret, json.dumps(result, sort_keys=True))
         inspected = api.handle({"operation": "world.inspect", "object_ref": result["object"]["object_id"]})
         self.assertNotIn(secret, json.dumps(inspected, sort_keys=True))
+
+    def test_actor_chat_is_non_council_and_scrubs_message_before_actor(self) -> None:
+        api = NexusAPI()
+        secret = "ghp_" + "Q" * 32
+        result = api.handle(
+            {
+                "operation": "actor.chat",
+                "member": {"member_id": "Alpha", "model_id": "mock-alpha", "adapter_id": "mock"},
+                "message": f"look at {secret}",
+                "mode": "meme_casual",
+            }
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["non_council"])
+        self.assertTrue(result["secret_scrub"]["changed"])
+        self.assertNotIn(secret, json.dumps(result, sort_keys=True))
+
+    def test_public_stdio_ollama_configuration_cannot_escape_loopback(self) -> None:
+        api = NexusAPI()
+        result = api.handle(
+            {
+                "operation": "actor.chat",
+                "member": {
+                    "member_id": "Remote",
+                    "model_id": "remote-model",
+                    "adapter_id": "ollama",
+                    "model": "remote-model",
+                    "endpoint": "https://example.com:11434",
+                },
+                "message": "hello",
+            }
+        )
+        self.assertEqual(result["status"], "error")
+        self.assertIn("loopback-only", result["error"]["message"])
+
+    def test_transport_failure_is_structured_and_does_not_kill_runtime(self) -> None:
+        api = NexusAPI()
+        member = {
+            "member_id": "Local",
+            "model_id": "fixture",
+            "adapter_id": "ollama",
+            "model": "fixture",
+            "endpoint": "http://127.0.0.1:11434",
+        }
+        with patch(
+            "nexus_runtime.adapters.ollama.OllamaTransport.generate",
+            side_effect=OSError("connection refused"),
+        ):
+            chat = api.handle({"operation": "actor.chat", "member": member, "message": "hello"})
+            council = api.handle(
+                {
+                    "operation": "council.run",
+                    "question": "hello",
+                    "members": [
+                        member,
+                        {"member_id": "B", "model_id": "mock-b"},
+                        {"member_id": "C", "model_id": "mock-c"},
+                    ],
+                }
+            )
+        self.assertEqual(chat["status"], "error")
+        self.assertEqual(chat["error"]["code"], "adapter_unavailable")
+        self.assertEqual(council["status"], "error")
+        self.assertEqual(council["error"]["code"], "adapter_unavailable")
+        self.assertEqual(api.handle({"operation": "system.health"})["status"], "ok")
 
     def test_world_inspect_rejects_invalid_object_ref(self) -> None:
         api = NexusAPI()

@@ -2,64 +2,52 @@
 
 ## Status
 
-The JSONL control API remains intentionally small and **mock-instantiation-only** while the provider-neutral actor boundary is tested separately with a real local Ollama integration.
-
-Alpha4 adds **World Modes** and a deterministic **named-region Geometry Layer**. Authentication remains deferred.
+The JSONL control API is the local structured boundary used by the Rust IRC-style TUI and other headless/operator clients.
 
 Protocol identifier:
 
 ```text
-nexus/0.3
+nexus/0.4
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha4
+2.0.0-alpha5
 ```
 
-Current distinction:
+Current posture:
 
 ```text
-JSONL control API
-  council.run -> mock actors only
-  world modes -> analytical / historical / cultural / meme_casual
-  geometry -> named-regions-v1
-  network -> none
-
-Python actor implementations
-  mock   -> deterministic / network-free
-  ollama -> local loopback integration fixture
+control transport -> JSON Lines over stdio
+mock actors       -> supported
+Ollama actors     -> supported only through loopback-local configuration
+remote providers  -> not implemented
+provider auth     -> not implemented
 ```
 
-The Ollama actor is not yet an operator-configurable provider in the JSONL API. Provider setup and authentication remain later milestones.
+The public stdio API exposes no `allow_remote` override for Ollama.
 
 ## Transport
 
-The reference control transport is JSON Lines over standard input/output.
-
 ```text
-future Rust TUI
-     |
-     | one JSON object per line
-     v
-python -m nexus_runtime
-     |
-     +-- one JSON response per line
+Rust IRC-style TUI / script / SSH operator
+               |
+               | one JSON object per line
+               v
+       python -m nexus_runtime
+               |
+               +-- one JSON response per line
 ```
 
-This keeps the trusted control plane independent of HTTP and browser state. The local Ollama actor uses its own adapter boundary to reach an explicitly configured loopback Ollama service.
+The control plane itself is not HTTP-based.
+
+An explicitly configured local Ollama actor may use the separately hardened loopback adapter boundary.
 
 ## Run
 
 ```bash
 python -m pip install -e .
-python -m nexus_runtime --demo
-```
-
-Persistent development world:
-
-```bash
 python -m nexus_runtime --world .nexus-world
 ```
 
@@ -71,27 +59,22 @@ Request:
 {"request_id":"1","operation":"system.health"}
 ```
 
-Current response shape:
+Current response fields include:
 
 ```json
 {
-  "request_id": "1",
   "status": "ok",
-  "protocol": "nexus/0.3",
-  "runtime_version": "2.0.0-alpha4",
-  "network": "none",
-  "adapters": ["mock"],
-  "actor_backends_available": ["mock", "ollama"],
-  "world_modes": ["analytical", "cultural", "historical", "meme_casual"],
-  "geometry": "named-regions-v1"
+  "protocol": "nexus/0.4",
+  "runtime_version": "2.0.0-alpha5",
+  "control_transport": "jsonl_stdio",
+  "network": "none_unless_explicit_loopback_ollama_actor",
+  "adapters": ["mock", "ollama_loopback"],
+  "remote_provider_auth": false,
+  "actor_backends_available": ["mock", "ollama"]
 }
 ```
 
-`network: none` describes the JSONL control API's active posture. The separately tested Ollama actor can make loopback-only requests when explicitly constructed by integration code.
-
 ## Operations
-
-Current control operations:
 
 ```text
 system.health
@@ -103,14 +86,11 @@ world.modes
 world.geometry
 world.geometry.distance
 receipt.verify
+actor.chat
 council.run
 ```
 
-They are reference operations, not a declaration that the World Protocol is complete.
-
 ## World modes
-
-Request:
 
 ```json
 {"operation":"world.modes"}
@@ -125,46 +105,17 @@ cultural    -> Agora
 meme_casual -> Commons
 ```
 
-A mode changes framing and context. It does **not** change:
-
-- vote weight;
-- evidence state;
-- verification;
-- secret handling;
-- Equality Guard behavior;
-- Council thresholds.
-
-The selected mode is frozen into Council session identity.
+A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds.
 
 ## Geometry
-
-Request:
 
 ```json
 {"operation":"world.geometry"}
 ```
 
-The initial geometry is a tiny deterministic named-region topology:
+The current geometry is an operational named-region topology, not a physical claim.
 
-```text
-                         ARCHIVE
-                       Historical
-                         (-2,1)
-                        /      \
-                       /        \
-                 AGORA ---------- OBSERVATORY
-                Cultural           Analytical
-                 (0,2)               (0,0)
-                      \             /
-                       \           /
-                        COMMONS
-                      Meme/Casual
-                         (2,1)
-```
-
-The geometry is explicitly operational metadata, **not a claim that cognition or culture literally occupies Euclidean space**.
-
-Distance request:
+Distance example:
 
 ```json
 {
@@ -174,63 +125,188 @@ Distance request:
 }
 ```
 
-returns the shortest adjacency hop count.
+## `world.create`
 
-## Secret scrubber
+Creates a content-addressed development object after recursively secret-scrubbing semantic strings in payload and provenance.
 
-`security.scrub_preview` lets the operator inspect high-confidence local redaction before semantic text becomes world/Council state.
-
-Detected values are replaced by deterministic placeholders such as:
-
-```text
-<REDACTED:OPENAI_STYLE_TOKEN:1>
-```
-
-The placeholder contains no hash or encoded secret material. The scrubber remains defence in depth rather than complete DLP.
-
-The live Ollama integration adds an additional acceptance assertion: the raw injected test secret must not appear in any prompt crossing the Ollama adapter boundary.
-
-## Mock Council run
-
-The public reference operation still accepts mock members only. Alpha4 adds the optional `mode` field:
+Example document object:
 
 ```json
 {
-  "request_id": "c1",
-  "operation": "council.run",
-  "question": "Why does this joke work in one culture and fail in another?",
-  "mode": "cultural",
-  "members": [
-    {"member_id":"A","model_id":"mock-a","profile":"balanced"},
-    {"member_id":"B","model_id":"mock-b","profile":"skeptical"},
-    {"member_id":"C","model_id":"mock-c","profile":"supportive"}
-  ],
-  "evidence_state": "UNTESTED"
+  "operation":"world.create",
+  "object_type":"document_evidence",
+  "payload":{
+    "filename":"notes.csv",
+    "format":"csv",
+    "content":"a,b,c\n1,2,3\n",
+    "classification":"operator_uploaded_evidence"
+  },
+  "provenance":{
+    "actor":"human_operator",
+    "source":"nexus_irc_tui",
+    "delivery":"dcc_room_send",
+    "target":"#agora"
+  }
 }
 ```
 
-If `mode` is omitted, NEXUS uses `analytical`.
+The runtime—not the Rust file parser—owns the final secret-scrub/persistence boundary.
 
-A Council session now creates a content-addressed `world_presence` object containing:
+## Bounded evidence views
+
+Council evidence identity remains reference-based:
 
 ```text
-mode_id
-mode_label
-region_id
-region_label
-coordinates
-member_ids
-question_ref
-geometry_id
+EvidenceSnapshot
+  -> included_object_refs[]
 ```
 
-The Council session references this presence object, so identical questions run in different modes have distinct lineage.
+Alpha5 additionally derives a bounded, labelled model-readable view from those refs so actors can actually read attached document material.
 
-Attempting to supply a non-mock adapter through the JSONL operation is still rejected. The later provider-setup API will introduce an explicit configured-adapter path rather than overloading this fixture interface.
+```text
+content-addressed object ref
+        |
+        v
+validated WorldStore object
+        |
+        v
+bounded evidence representation
+        |
+        v
+PhaseContext.evidence_context
+```
 
-## Provider-neutral actor contract
+The representation does not replace the durable object ref and is not a second source of identity.
 
-Internally, the Council coordinator consumes a `CouncilActor` contract:
+Current reference budgets are intentionally conservative for small local models.
+
+## `council.run`
+
+Example with mocks:
+
+```json
+{
+  "operation":"council.run",
+  "question":"Review the attached evidence.",
+  "mode":"analytical",
+  "evidence_refs":["object:<sha256>"],
+  "members":[
+    {"member_id":"A","model_id":"mock-a","adapter_id":"mock","profile":"balanced"},
+    {"member_id":"B","model_id":"mock-b","adapter_id":"mock","profile":"skeptical"},
+    {"member_id":"C","model_id":"mock-c","adapter_id":"mock","profile":"supportive"}
+  ]
+}
+```
+
+Example with an explicit loopback Ollama member:
+
+```json
+{
+  "operation":"council.run",
+  "question":"Review the attachment.",
+  "mode":"cultural",
+  "members":[
+    {"member_id":"A","model_id":"mock-a","adapter_id":"mock"},
+    {"member_id":"B","model_id":"mock-b","adapter_id":"mock"},
+    {
+      "member_id":"LocalQwen",
+      "model_id":"qwen2.5:0.5b",
+      "adapter_id":"ollama",
+      "model":"qwen2.5:0.5b",
+      "endpoint":"http://127.0.0.1:11434"
+    }
+  ]
+}
+```
+
+A non-loopback Ollama endpoint is rejected by this public path.
+
+No remote-provider credentials or cloud auth are accepted.
+
+## `actor.chat`
+
+`actor.chat` is the explicit non-Council direct-channel operation used by `/msg` and `/dcc chat` in the Rust TUI.
+
+Example:
+
+```json
+{
+  "operation":"actor.chat",
+  "member":{
+    "member_id":"LocalQwen",
+    "model_id":"qwen2.5:0.5b",
+    "adapter_id":"ollama",
+    "model":"qwen2.5:0.5b"
+  },
+  "message":"Explain this note briefly.",
+  "mode":"meme_casual",
+  "evidence_refs":["object:<sha256>"]
+}
+```
+
+Response shape includes:
+
+```json
+{
+  "status":"ok",
+  "non_council":true,
+  "member_id":"LocalQwen",
+  "mode_id":"meme_casual",
+  "geometry_region_id":"commons",
+  "response":"...",
+  "secret_scrub":{
+    "changed":false,
+    "events":[]
+  }
+}
+```
+
+Important boundaries:
+
+- direct chat is not a Council ballot;
+- direct chat does not alter Council vote weight;
+- direct chat input is secret-scrubbed before the actor sees it;
+- direct evidence refs are explicit;
+- the Rust TUI does not silently promote targeted DCC refs into room-wide Council evidence.
+
+## Actor configuration
+
+Supported public stdio adapter IDs:
+
+```text
+mock
+ollama
+```
+
+### Mock
+
+```json
+{
+  "member_id":"A",
+  "model_id":"mock-a",
+  "adapter_id":"mock",
+  "profile":"balanced"
+}
+```
+
+### Ollama
+
+```json
+{
+  "member_id":"Local",
+  "model_id":"qwen2.5:0.5b",
+  "adapter_id":"ollama",
+  "model":"qwen2.5:0.5b",
+  "endpoint":"http://127.0.0.1:11434",
+  "timeout_seconds":120
+}
+```
+
+`endpoint` must satisfy the existing loopback-only transport policy. The stdio API does not expose remote override state.
+
+## Provider-neutral Council contract
+
+The Council coordinator still consumes the same structural `CouncilActor` seam:
 
 ```text
 CouncilActor
@@ -241,58 +317,22 @@ CouncilActor
 └── replayable
 ```
 
-`PhaseContext` now also carries:
+`PhaseContext` now carries:
 
 ```text
 mode_id
 mode_instruction
 geometry_region_id
+evidence_context
 ```
 
-Adapters receive these values as context. The runtime remains authoritative about what mode is active and where the Council is placed.
+The coordinator retains ownership of roster identity, `vote_weight = 1`, evidence snapshots, phase ordering, Equality Guard behavior, sealed ballot count/tally, session persistence and receipts.
 
-The coordinator retains ownership of:
-
-- roster and member IDs;
-- fixed `vote_weight = 1`;
-- `epistemic_privilege = none`;
-- evidence snapshot;
-- world mode identity;
-- geometry placement;
-- phase ordering;
-- blind same-phase collection;
-- Equality Guard;
-- ballot count and tally;
-- Council session persistence;
-- receipt creation.
-
-An adapter therefore supplies model content, not Council authority or world identity.
-
-## Live Ollama integration fixture
-
-The separate integration workflow creates:
-
-```text
-Mock reference
-Frontier Alpha -> qwen2.5:0.5b
-Frontier Beta  -> llama3.2:1b
-```
-
-The frontier names and companies are fictional testing personas.
-
-The integration test checks the local real-model boundary, Equality Guard, secret crossing, Council phase/ballot completeness, and non-replayable receipt marking.
-
-World modes are propagated through the same `PhaseContext` seam, but alpha4 does not add a new expensive live-Ollama matrix for every mode. Deterministic mock tests cover mode and geometry invariants first.
+The `direct_message()` helper used by `actor.chat` is outside Council voting semantics.
 
 ## Exact consensus arithmetic
 
-The default threshold remains the exact fraction:
-
-```json
-{"numerator":2,"denominator":3}
-```
-
-Support is evaluated using integer arithmetic equivalent to:
+The default threshold remains exact `2/3` using integer arithmetic:
 
 ```text
 supporting_votes * 3 >= total_votes * 2
@@ -300,21 +340,15 @@ supporting_votes * 3 >= total_votes * 2
 
 Therefore 2–1 reaches consensus while 3–2 does not.
 
-## World objects and receipts
+## Replay status
 
-`world.create` creates content-addressed development objects after recursive secret scrubbing of semantic payload/provenance strings. `world.inspect` retrieves an `object:<sha256>` reference.
+Deterministic mock-only Councils may be marked replayable.
 
-Mock-only executions remain eligible for deterministic replay marking. A Council containing a live Ollama actor is explicitly marked:
+A Council containing live Ollama inference is explicitly marked non-replayable.
 
-```text
-replayable: false
-```
-
-A Modelfile seed may improve fixture stability, but NEXUS does not treat that as a replay guarantee across Ollama/model/runtime versions.
+A model seed is not treated as a cross-runtime replay guarantee.
 
 ## Error shape
-
-Errors are structured:
 
 ```json
 {
@@ -326,4 +360,18 @@ Errors are structured:
 }
 ```
 
-Remote-provider authentication, rate-limit semantics, cloud HTTP errors, and account setup remain outside the alpha4 control API.
+## Deliberately absent
+
+Alpha5 does not implement:
+
+- OpenAI cloud auth;
+- Anthropic/Claude cloud auth;
+- Google/Gemini cloud auth;
+- xAI/Grok cloud auth;
+- generic remote endpoints;
+- API-key storage;
+- OAuth;
+- account discovery;
+- rate-limit/provider billing semantics.
+
+Those remain later operator/authentication milestones.

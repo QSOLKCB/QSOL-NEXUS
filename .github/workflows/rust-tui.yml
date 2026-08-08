@@ -1,0 +1,51 @@
+name: Rust IRC TUI tests
+
+on:
+  pull_request:
+    paths:
+      - 'tui/**'
+      - 'src/nexus_runtime/api.py'
+      - 'src/nexus_runtime/council.py'
+      - 'src/nexus_runtime/types.py'
+      - 'src/nexus_runtime/mock.py'
+      - 'src/nexus_runtime/adapters/**'
+      - '.github/workflows/rust-tui.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'tui/**'
+      - 'src/nexus_runtime/api.py'
+      - 'src/nexus_runtime/council.py'
+      - 'src/nexus_runtime/types.py'
+      - 'src/nexus_runtime/mock.py'
+      - 'src/nexus_runtime/adapters/**'
+      - '.github/workflows/rust-tui.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  rust-tui:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_TERM_COLOR: always
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Toolchain versions
+        run: |
+          rustc --version
+          cargo --version
+          python3 --version
+      - name: Rust unit tests
+        run: cargo test --manifest-path tui/Cargo.toml --all-targets
+      - name: Rust compile check
+        run: cargo check --manifest-path tui/Cargo.toml --all-targets
+      - name: Python protocol tests
+        env:
+          PYTHONPATH: src
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Rust format check
+        run: cargo fmt --manifest-path tui/Cargo.toml -- --check

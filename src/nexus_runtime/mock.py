@@ -53,7 +53,23 @@ class DeterministicMockActor:
             "cultural": "Mode note: preserve context, ambiguity, norms, and insider/outsider distinctions.",
             "meme_casual": "Mode note: playful framing is welcome, but jokes do not become evidence.",
         }
-        return f"{prefix} {mode_notes.get(context.mode_id, '')} {templates[context.phase]}".strip()
+        evidence_note = " Attached evidence is available." if context.evidence_context else ""
+        return f"{prefix} {mode_notes.get(context.mode_id, '')} {templates[context.phase]}{evidence_note}".strip()
+
+    def direct_message(
+        self,
+        message: str,
+        *,
+        mode_id: str,
+        mode_instruction: str,
+        geometry_region_id: str,
+        evidence_context: str = "",
+    ) -> str:
+        evidence_note = " with attached evidence" if evidence_context else ""
+        return (
+            f"[{self.member.member_id}/{self.profile}/{mode_id}@{geometry_region_id} direct] "
+            f"received{evidence_note}: {message}"
+        )
 
     def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
         choices = {

@@ -4,6 +4,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
+from .adapters import OllamaActor, OllamaTransport
 from .council import CouncilCoordinator
 from .geometry import DEFAULT_WORLD_GEOMETRY
 from .mock import DeterministicMockActor
@@ -13,12 +14,17 @@ from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.3"
-RUNTIME_VERSION = "2.0.0-alpha4"
+PROTOCOL_VERSION = "nexus/0.4"
+RUNTIME_VERSION = "2.0.0-alpha5"
 
 
 class NexusAPI:
-    """Small transport-neutral API surface used by JSONL/stdio in this alpha."""
+    """Small transport-neutral API surface used by JSONL/stdio.
+
+    The control transport remains local stdio. Alpha5 may explicitly instantiate
+    the already-hardened loopback-only Ollama actor. Remote-provider auth and
+    remote model endpoints remain out of scope.
+    """
 
     def __init__(self, world_root: str | Path | None = None) -> None:
         self.world = WorldStore(world_root)
@@ -38,8 +44,10 @@ class NexusAPI:
                     "status": "ok",
                     "protocol": PROTOCOL_VERSION,
                     "runtime_version": RUNTIME_VERSION,
-                    "network": "none",
-                    "adapters": ["mock"],
+                    "control_transport": "jsonl_stdio",
+                    "network": "none_unless_explicit_loopback_ollama_actor",
+                    "adapters": ["mock", "ollama_loopback"],
+                    "remote_provider_auth": False,
                     "actor_backends_available": ["mock", "ollama"],
                     "world_modes": [mode.mode_id for mode in list_modes()],
                     "geometry": self.geometry.snapshot()["geometry_id"],
@@ -57,6 +65,7 @@ class NexusAPI:
                         "world.geometry",
                         "world.geometry.distance",
                         "receipt.verify",
+                        "actor.chat",
                         "council.run",
                     ],
                 }
@@ -115,12 +124,47 @@ class NexusAPI:
             elif operation == "receipt.verify":
                 receipt_ref = self._require_str(request, "receipt_ref")
                 response = self._verify_receipt(receipt_ref)
+            elif operation == "actor.chat":
+                member_item = request.get("member")
+                actor = self._actor(member_item)
+                raw_message = self._require_str(request, "message")
+                scrubbed = self.scrubber.scrub(raw_message)
+                mode_id = request.get("mode", "analytical")
+                if not isinstance(mode_id, str):
+                    raise ValueError("mode must be a string")
+                mode = get_mode(mode_id)
+                region = self.geometry.region_for_mode(mode_id)
+                evidence_refs = request.get("evidence_refs", [])
+                if not isinstance(evidence_refs, list) or not all(isinstance(ref, str) for ref in evidence_refs):
+                    raise ValueError("evidence_refs must be a list of strings")
+                evidence_context = self.council.build_evidence_context(evidence_refs)
+                text = actor.direct_message(
+                    scrubbed.text,
+                    mode_id=mode.mode_id,
+                    mode_instruction=mode.prompt_instruction,
+                    geometry_region_id=region.region_id,
+                    evidence_context=evidence_context,
+                )
+                response = {
+                    "status": "ok",
+                    "non_council": True,
+                    "member_id": actor.member.member_id,
+                    "model_id": actor.member.model_id,
+                    "mode_id": mode.mode_id,
+                    "geometry_region_id": region.region_id,
+                    "evidence_refs": list(evidence_refs),
+                    "response": text,
+                    "secret_scrub": {
+                        "changed": scrubbed.changed,
+                        "events": [asdict(event) for event in scrubbed.events],
+                    },
+                }
             elif operation == "council.run":
                 question = self._require_str(request, "question")
                 members = request.get("members")
                 if not isinstance(members, list):
                     raise ValueError("members must be a list")
-                actors = [self._mock_actor(item) for item in members]
+                actors = [self._actor(item) for item in members]
                 evidence_refs = request.get("evidence_refs", [])
                 if not isinstance(evidence_refs, list) or not all(isinstance(ref, str) for ref in evidence_refs):
                     raise ValueError("evidence_refs must be a list of strings")
@@ -142,35 +186,64 @@ class NexusAPI:
                 return self._error(request_id, "unknown_operation", operation)
         except (KeyError, TypeError, ValueError) as exc:
             return self._error(request_id, "invalid_request", str(exc))
+        except OSError as exc:
+            return self._error(request_id, "adapter_unavailable", str(exc))
 
         if request_id is not None:
             response = {"request_id": request_id, **response}
         return response
 
-    def _mock_actor(self, item: Any) -> DeterministicMockActor:
+    def _actor(self, item: Any) -> DeterministicMockActor | OllamaActor:
         if not isinstance(item, dict):
             raise ValueError("each member must be an object")
+        adapter_id = item.get("adapter_id", "mock")
+        if not isinstance(adapter_id, str):
+            raise ValueError("adapter_id must be a string")
+
         vote_weight = item.get("vote_weight", 1)
         epistemic_privilege = item.get("epistemic_privilege", "none")
-        attempt_privilege_claim = item.get("attempt_privilege_claim", False)
-        if type(attempt_privilege_claim) is not bool:
-            raise ValueError("attempt_privilege_claim must be a boolean")
         member = CouncilMember(
             member_id=self._require_str(item, "member_id"),
             model_id=self._require_str(item, "model_id"),
-            adapter_id=item.get("adapter_id", "mock"),
+            adapter_id=adapter_id,
             deployment_metadata=item.get("deployment_metadata", {}),
             capability_metadata=item.get("capability_metadata", {}),
             vote_weight=vote_weight,
             epistemic_privilege=epistemic_privilege,
         )
-        if member.adapter_id != "mock":
-            raise ValueError("the JSONL control API currently exposes only the mock adapter")
-        return DeterministicMockActor(
-            member=member,
-            profile=item.get("profile", "balanced"),
-            attempt_privilege_claim=attempt_privilege_claim,
-        )
+
+        if adapter_id == "mock":
+            attempt_privilege_claim = item.get("attempt_privilege_claim", False)
+            if type(attempt_privilege_claim) is not bool:
+                raise ValueError("attempt_privilege_claim must be a boolean")
+            profile = item.get("profile", "balanced")
+            if not isinstance(profile, str):
+                raise ValueError("mock profile must be a string")
+            return DeterministicMockActor(
+                member=member,
+                profile=profile,
+                attempt_privilege_claim=attempt_privilege_claim,
+            )
+
+        if adapter_id == "ollama":
+            model = item.get("model", member.model_id)
+            if not isinstance(model, str) or not model:
+                raise ValueError("Ollama member model must be a non-empty string")
+            endpoint = item.get("endpoint", "http://127.0.0.1:11434")
+            if not isinstance(endpoint, str) or not endpoint:
+                raise ValueError("Ollama endpoint must be a non-empty string")
+            timeout_seconds = item.get("timeout_seconds", 120)
+            if type(timeout_seconds) not in (int, float) or isinstance(timeout_seconds, bool) or timeout_seconds <= 0:
+                raise ValueError("Ollama timeout_seconds must be a positive number")
+            transport = OllamaTransport(endpoint, timeout_seconds=float(timeout_seconds), allow_remote=False)
+            return OllamaActor(
+                member=member,
+                model=model,
+                transport=transport,
+                fixture_role="operator_local",
+            )
+
+        raise ValueError("adapter_id must be 'mock' or loopback-local 'ollama'")
 
     def _verify_receipt(self, receipt_ref: str) -> dict[str, Any]:
         receipt = self.world.inspect(receipt_ref)

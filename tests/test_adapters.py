@@ -223,6 +223,7 @@ class AdapterBoundaryTests(unittest.TestCase):
             mode_id="meme_casual",
             mode_instruction="Allow playful framing while preserving claim boundaries.",
             geometry_region_id="commons",
+            evidence_context="ATTACHED TROUT EVIDENCE",
         )
         transport = _StubTransport('{"choice":"TEST_FURTHER","rationale":"Needs replication."}')
         actor = OllamaActor(
@@ -238,6 +239,7 @@ class AdapterBoundaryTests(unittest.TestCase):
         self.assertIsNotNone(transport.last_format_schema)
         self.assertIn("World mode: meme_casual", transport.last_prompt or "")
         self.assertIn("Geometry region: commons", transport.last_prompt or "")
+        self.assertIn("ATTACHED TROUT EVIDENCE", transport.last_prompt or "")
 
     def test_ollama_ballot_rejects_malformed_non_object_and_extra_keys(self) -> None:
         context = PhaseContext("session", Phase.BLUE, "question", "object:" + "a" * 64, {})

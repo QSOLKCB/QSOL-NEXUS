@@ -2,6 +2,58 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## [2.0.0-alpha5] — IRC-style Rust operator TUI
+
+### Added
+
+- Added the first Rust operator shell under `tui/`.
+- Adopted an old-school IRC interface: chronological scrollback, room/topic line, nick/model pane, single edit line, input history, search, save, and slash commands.
+- Mapped IRC-style rooms directly onto World Modes and geometry regions:
+  - `#observatory` -> `analytical` / Observatory;
+  - `#archive` -> `historical` / Archive;
+  - `#agora` -> `cultural` / Agora;
+  - `#commons` -> `meme_casual` / Commons.
+- Added `/me` action events, including normal Meme/Casual banter such as `/me *slapped Grok with a large trout*`.
+- Added local DCC-style **Direct Cognitive Channel** commands with no IRC/DCC sockets:
+  - `/dcc send <nick|#room> <file>`;
+  - `/dcc chat <nick>`;
+  - `/dcc close <send|chat> <nick>`;
+  - `/dcc list`.
+- Added local document ingestion for PDF, DOCX, ODT, JSON, JSONL/NDJSON, CSV, TSV, and UTF-8 text/source/document files.
+- Added content-addressed `document_evidence` world objects for imported documents.
+- Added bounded model-readable evidence views derived from durable object refs.
+- Added explicit separation between room-wide Council evidence and targeted DCC evidence.
+- Added `/ref` / `/unref` evidence controls.
+- Added `actor.chat` as an explicitly non-Council direct actor operation.
+- Exposed the already-hardened loopback Ollama actor through the public local JSONL/stdio control path without adding remote-provider auth.
+- Added mock/Ollama roster commands to the Rust shell.
+- Added mIRC-style aliases with positional arguments/ranges.
+- Added local `%variables` and safe `$identifiers`: `$me`, `$chan`, `$mode`, `$region`, `$topic`, `$1..$9`, `$1-..$9-`.
+- Added local persistence for aliases/variables.
+- Added `docs/IRC_TUI.md`.
+- Added dedicated Rust CI for formatting, tests, compile checks, and Python protocol regressions.
+
+### Protocol
+
+- Bumped the reference protocol to `nexus/0.4`.
+- Bumped the reference runtime to `2.0.0-alpha5`.
+- Secret scrubbing now explicitly covers `actor.chat` input as well as Council/world semantic input.
+- Council evidence refs are validated/read through the world store before a bounded representation is supplied to model actors.
+
+### Security / boundaries
+
+- The IRC UI is interface vocabulary only: no IRC daemon, IRC network connection, listening socket, or P2P DCC transfer is introduced.
+- The public stdio Ollama path exposes no `allow_remote` override; remote endpoints remain rejected by the loopback transport policy.
+- Targeted DCC material is not silently promoted into a Council evidence snapshot.
+- Aliases cannot replace built-in commands and do not execute shell commands, scripts, sockets, DLLs, timers, or remote events.
+- Direct DCC chat is marked non-Council and confers no vote or procedural authority.
+- Provider authentication and OpenAI/Claude/Gemini/Grok cloud integrations remain deferred.
+
+### Roadmap
+
+- Moved the Rust operator shell into alpha5.
+- Council-response entropy and related information-diversity telemetry move to alpha6.
+
 ## [2.0.0-alpha4] — World Modes and Geometry
 
 ### Added
@@ -82,7 +134,7 @@ The frontier identities and companies are fictional test personas.
 - Provider/model size and parameter-count prestige are explicit Equality Guard categories when used to demand authority.
 - Capability and size metadata remain valid descriptive metadata when not used as a vote/authority claim.
 - Live Ollama inference is marked `replayable: false` even when Modelfile seeds are used for fixture stability.
-- The JSONL control API remains mock-instantiation-only and reports `network: none`; Ollama is exercised as a package-level integration actor rather than an operator-configured provider.
+- At alpha3 the JSONL control API remained mock-instantiation-only; alpha5 later exposes explicit loopback Ollama actors locally without adding remote-provider authentication.
 
 ## [2.0.0-alpha1] — Mock Council runtime
 

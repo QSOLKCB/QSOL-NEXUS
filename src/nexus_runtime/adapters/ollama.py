@@ -20,10 +20,8 @@ _BALLOT_SCHEMA = {
     "additionalProperties": False,
 }
 
-# NEXUS owns protocol-level output budgets instead of relying on a Modelfile
-# default. Free-form hat contributions may be bounded at this limit; sealed
-# ballots remain strict because truncated structured output is not a valid vote.
 _PHASE_OPTIONS = {"num_predict": 192}
+_DIRECT_OPTIONS = {"num_predict": 256}
 _BALLOT_OPTIONS = {"num_predict": 256, "temperature": 0}
 
 
@@ -50,9 +48,6 @@ class OllamaTransport:
         if not self.allow_remote and not self._is_loopback(parsed.hostname):
             raise ValueError("Ollama transport is loopback-only by default")
         if not self.allow_remote:
-            # urllib otherwise inherits *_proxy environment variables and follows
-            # redirects. Neither behavior is acceptable for the local-only trust
-            # boundary, so use a private opener that does neither.
             self._local_opener = build_opener(ProxyHandler({}), _NoRedirectHandler())
 
     @staticmethod
@@ -113,8 +108,6 @@ class OllamaActor:
 
     @property
     def replayable(self) -> bool:
-        # A seed can improve fixture stability, but live model inference is not
-        # claimed as deterministic replay across Ollama/model/runtime versions.
         return False
 
     def identity_metadata(self) -> dict[str, Any]:
@@ -126,14 +119,41 @@ class OllamaActor:
         }
 
     def respond(self, context: PhaseContext) -> str:
-        prompt = self._phase_prompt(context)
-        # Hat responses are free-form reasoning contributions. If a small model
-        # reaches the bounded phase budget, the non-empty prefix remains a valid
-        # contribution. Structured ballots do not get this relaxation.
         return self.transport.generate(
             self.model,
-            prompt,
+            self._phase_prompt(context),
             options=_PHASE_OPTIONS,
+            require_complete=False,
+        )
+
+    def direct_message(
+        self,
+        message: str,
+        *,
+        mode_id: str,
+        mode_instruction: str,
+        geometry_region_id: str,
+        evidence_context: str = "",
+    ) -> str:
+        """One non-Council local DCC-style exchange.
+
+        This path confers no vote, Council phase, or evidence privilege. It is
+        used by the Rust TUI's explicit private Direct Cognitive Channel view.
+        """
+        parts = [
+            "NEXUS Direct Cognitive Channel.",
+            "This is a private operator exchange, not a Council vote or Council evidence decision.",
+            f"World mode: {mode_id}",
+            f"Mode guidance: {mode_instruction}",
+            f"Geometry region: {geometry_region_id}",
+        ]
+        if evidence_context:
+            parts.extend(["Attached local evidence view:", evidence_context])
+        parts.extend(["Operator message:", message, "Reply concisely in the current mode."])
+        return self.transport.generate(
+            self.model,
+            "\n".join(parts),
+            options=_DIRECT_OPTIONS,
             require_complete=False,
         )
 
@@ -142,7 +162,9 @@ class OllamaActor:
             "NEXUS AI Council sealed ballot.\n"
             f"World mode: {context.mode_id}\n"
             f"Geometry region: {context.geometry_region_id}\n"
-            f"Question: {context.question}\n"
+            f"Evidence snapshot: {context.evidence_snapshot_ref}\n"
+            + (f"Attached evidence view:\n{context.evidence_context}\n" if context.evidence_context else "")
+            + f"Question: {context.question}\n"
             "Review the completed phase material below and choose exactly one current disposition.\n"
             f"Allowed choices: {', '.join(_ALLOWED_BALLOTS)}\n"
             f"Completed phases: {json.dumps(context.completed_phases, sort_keys=True)}\n"
@@ -190,8 +212,10 @@ class OllamaActor:
             f"Council phase: {context.phase.value}",
             f"Question: {context.question}",
             f"Evidence snapshot reference: {context.evidence_snapshot_ref}",
-            phase_instructions[context.phase.value],
         ]
+        if context.evidence_context:
+            parts.extend(["Attached evidence view:", context.evidence_context])
+        parts.append(phase_instructions[context.phase.value])
         if context.completed_phases:
             parts.append(f"Completed earlier phases: {json.dumps(context.completed_phases, sort_keys=True)}")
         if context.guard_nudge:
