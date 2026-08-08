@@ -1,74 +1,180 @@
-# Security and Privacy
+# NEXUS 2.x Security and Trust Boundaries
 
-QSOL NEXUS is designed for direct local execution. It has no production network client and does not transmit source data, results, audio, history, or telemetry.
+## Security posture
 
-## Content Security Policy
+NEXUS 2.x is CLI/TUI-first. The browser workbench from NEXUS 1.0 is archived as prior work and is not the planned trusted operator surface for the new architecture.
 
-Both application and test pages use a restrictive policy based on:
+The design separates:
 
 ```text
-default-src 'self' blob: data:;
-connect-src 'none';
-img-src 'self' blob: data:;
-media-src 'self' blob: data:;
-script-src 'self';
-style-src 'self';
-object-src 'none';
-frame-src 'none';
-base-uri 'none';
-form-action 'none';
+operator interface
+provider adapters
+trusted NEXUS control plane
+persistent world
+scientific / deterministic instruments
 ```
 
-`file://` origin behaviour differs between browsers. If a browser refuses a local capability such as IndexedDB, NEXUS fails visibly to session-only storage rather than weakening the CSP or creating a remote dependency.
+Remote model traffic should occur only inside explicitly configured adapters.
 
-## Allowed capabilities
+## Why CLI/TUI first
 
-- local File, Blob, ArrayBuffer, typed-array and object-URL APIs;
-- Canvas 2D for non-identity-bearing visualization;
-- IndexedDB for completed local experiments, with explicit in-memory fallback;
-- native audio playback of already generated WAV bytes;
-- user-initiated downloads;
-- user-initiated clipboard writes for copy buttons, when permitted.
+A terminal architecture reduces several avoidable risks:
 
-## Prohibited production features
+- no browser credential storage requirement;
+- no CORS-driven architecture;
+- no extension-injected DOM as a control surface;
+- no front-end framework dependency in the trusted path;
+- clear local process boundaries;
+- natural headless / SSH operation;
+- easier auditing of outbound provider connections.
 
-- `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, or `sendBeacon`;
-- remote fonts, scripts, styles, images, audio, analytics, or telemetry;
-- service workers or background synchronization;
-- hidden clipboard reads;
-- `eval`, `new Function`, arbitrary code execution, or dynamic script injection;
-- HTML execution from imported data;
-- remote model or plugin loading.
+This does not make a CLI automatically secure. It makes the intended trust boundaries simpler to reason about.
 
-Source text and imported metadata are rendered with text nodes or escaped JSON, never inserted as executable markup.
+## Process boundary
 
-## Threat model
+Planned shape:
 
-NEXUS protects experiment identity against accidental mutation and ordinary artifact tampering. Replay recomputes source, recipe, result, observation, audio, contract, manifest, and required runtime identities. It is not a digital-signature system and does not protect against a hostile party who can replace both the application code and every artifact. Sign or archive release files separately when an authenticated publisher identity is required.
-
-ZIP import is bounded by entry count and size and rejects traversal paths, duplicate names, unsupported compression, and malformed records. CSV and JSON input is size-bounded by the UI/runtime. Numeric parsers reject non-finite values and invalid units.
-
-## Static release audit
-
-From the directory containing `QSOL-NEXUS`:
-
-```bash
-rg -n --pcre2 -g '*.js' -g '*.html' \
-  '\bfetch\s*\(|new\s+XMLHttpRequest|new\s+WebSocket|EventSource\s*\(|sendBeacon\s*\(' \
-  QSOL-NEXUS
-
-rg -n --pcre2 -g '*.html' -g '*.css' \
-  '(?i)(src|href)\s*=\s*["'"'](?:https?:)?//' \
-  QSOL-NEXUS
-
-rg -n --pcre2 -g '*.js' '\beval\s*\(|new\s+Function\s*\(' QSOL-NEXUS
-
-find QSOL-NEXUS -type f \
-  \( -name package.json -o -name package-lock.json -o -name yarn.lock -o -name pnpm-lock.yaml \)
+```text
++-----------------------------+
+| Rust TUI / CLI              |
+| no raw provider secrets in  |
+| normal display/log output   |
++-------------+---------------+
+              |
+        local protocol
+              |
++-------------v---------------+
+| Python NEXUS runtime        |
+| world / Council / receipts  |
+| equality policy             |
++-------------+---------------+
+              |
+        adapter interface
+              |
++-------------v---------------+
+| provider adapters           |
+| only layer requiring remote |
+| provider network access     |
++-------------+---------------+
+              |
+          provider API
 ```
 
-Expected result: no production network client, no remote asset, no dynamic code evaluator, and no package-manager file. Documentation may contain ordinary repository links; exclude Markdown when auditing executable resources.
+Local-model adapters may require no outbound provider network access.
 
-## Reporting
+## Credential boundary
 
-Do not attach private source datasets or experiment bundles to a public issue. Report the minimum reproducible description, affected NEXUS version, browser/runtime fingerprint when relevant, and a synthetic fixture if possible.
+Provider credentials are not cognitive state.
+
+They must never be written to:
+
+- world objects;
+- Council session objects;
+- prompts;
+- phase transcripts;
+- receipts;
+- replay bundles;
+- experiment artifacts;
+- source-control files;
+- public diagnostic reports.
+
+Authentication material belongs only in adapter authentication or transport fields and must never become semantic prompt content exposed to a model.
+
+The future implementation should prefer an operating-system credential/keyring facility where practical, while allowing explicit external secret mechanisms for headless environments.
+
+## Adapter privilege
+
+An adapter may:
+
+- obtain credentials from an approved secret source;
+- make provider-specific network calls;
+- discover available models where supported;
+- normalize provider responses;
+- report capability and usage metadata.
+
+An adapter may not:
+
+- change Council vote weight;
+- change the Council roster;
+- change the consensus threshold;
+- edit another member's response;
+- reveal blind material early;
+- reveal sealed ballots early;
+- mutate a frozen evidence snapshot;
+- write raw secrets to world state;
+- grant its provider epistemic privilege.
+
+## Network policy
+
+The NEXUS runtime should be able to report network intent explicitly:
+
+```text
+world kernel         outbound: none
+receipt service      outbound: none
+openai adapter       outbound: configured provider
+anthropic adapter    outbound: configured provider
+ollama adapter       local endpoint
+```
+
+A provider adapter's need for networking does not turn the whole world kernel into a general network client.
+
+## Model content is untrusted input
+
+Model-generated text, structured output, tool requests, and suggested code are untrusted until parsed and validated by the relevant protocol layer.
+
+Future implementations should avoid directly executing arbitrary model-generated code in the NEXUS control plane. Experiments requiring code execution should use an explicit bounded instrument/sandbox contract.
+
+## Equality Guard security role
+
+The Equality Guard is not a security sandbox. It protects Council procedure from identity-based privilege claims.
+
+Structural enforcement belongs in the coordinator:
+
+```text
+vote_weight = 1
+one ballot per registered member
+frozen roster
+frozen threshold
+phase-order enforcement
+blind/reveal boundaries
+```
+
+Prompt nudges are only the friendly surface of those rules.
+
+## Logging
+
+Operational logs should distinguish:
+
+```text
+SAFE TO ARCHIVE
+session ids
+adapter ids
+model ids
+phase transitions
+world object refs
+receipt refs
+non-secret error classes
+
+DO NOT ARCHIVE
+raw credentials
+authorization headers
+provider refresh secrets
+secret-store payloads
+private local paths unless intentionally included
+```
+
+## Future threat work
+
+Before executable adapters ship, create a dedicated threat model covering:
+
+- credential theft;
+- prompt injection through imported world objects;
+- malicious model tool calls;
+- provider response spoofing;
+- replay tampering;
+- Council ballot tampering;
+- local-model endpoint impersonation;
+- untrusted artifact parsing;
+- denial-of-service / runaway Council loops.
+
+The architecture-only alpha intentionally does not claim these implementation problems are solved.

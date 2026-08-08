@@ -1,0 +1,72 @@
+QSOL NEXUS
+Copyright 2026 Trent Slade / QSOL-IMC
+
+This product includes original Apache License 2.0 software and reimplemented
+concepts informed by the following QSOL ecosystem repositories. NEXUS integrates
+contracts and selected algorithms; it does not redistribute entire repositories.
+
+QSOLKCB/SPECTRAL
+https://github.com/QSOLKCB/SPECTRAL
+Licence: MIT
+Contribution: local browser architecture; deterministic PCM/WAV and store-only
+ZIP concepts; canonical artifact, replay, visualization and persistence patterns.
+Modifications: generalized into a three-engine runtime, three determinism modes,
+shared claim system and NEXUS v1 artifact schemas.
+
+QSOLKCB/QEC
+https://github.com/QSOLKCB/QEC
+Licence: Creative Commons Attribution 4.0 International (CC BY 4.0)
+Contribution: recompute-not-trust receipts, canonical proof-artifact concepts,
+replay validation and source-bound claim architecture.
+Modifications: reimplemented as a lightweight browser provenance layer; no QEC
+decoder or QEC runtime is included.
+
+QSOLKCB/QNTOY
+https://github.com/QSOLKCB/QNTOY
+Licence: MIT
+Contribution: three-state audiovisual field-organism concept.
+Modifications: uncontrolled randomness and WebAudio-coupled export were replaced
+with seeded deterministic evolution, offline PCM, explicit classical boundaries,
+measurements, replay artifacts and tests.
+
+QSOLKCB/TFT
+https://github.com/QSOLKCB/TFT
+Licence: Creative Commons Attribution 4.0 International (CC BY 4.0)
+DOI: https://doi.org/10.5281/zenodo.17587839
+Contribution: symmetric tensor transformation/invariance demonstration,
+eigenvalue-to-frequency mapping and quadrature stereo concept.
+Modifications: reimplemented in dependency-free JavaScript, bounded to 2x2 and
+3x3 real symmetric matrices, with numerical residual validation and a claim
+boundary that does not infer physical self-duality.
+
+QSOLKCB/UFF
+https://github.com/QSOLKCB/UFF
+Licence: Apache License 2.0
+DOI: https://doi.org/10.5281/zenodo.17669627
+Reviewed lineage: uff_model.py and DEMO_GALAXY.csv at
+e642060626e70f52dcb44daacbffbdbe149a32d0.
+Contribution: SPARC-style rotation-curve analysis, comparative model and
+sonification concepts, and the replaceable pseudo-isothermal-like UFF profile.
+Modifications: reimplemented with canonical units, fail-closed validation,
+transparent bounded fitting, versioned model status, and mandatory Experimental
+label for uff_experimental_v1.
+
+QSOLKCB/QAI-UFT
+https://github.com/QSOLKCB/QAI-UFT
+Licence: Creative Commons Attribution 4.0 International (CC BY 4.0)
+DOI: https://doi.org/10.5281/zenodo.17569256
+Contribution: ternary, sexagesimal, codon-64, tensor-phase and interface concepts.
+Modifications: reimplemented as bounded mathematical and musical mapping helpers;
+no React/Vite application or claim of embodied physics is imported.
+
+QSOLKCB/AIMM
+https://github.com/QSOLKCB/AIMM
+Contribution: future optional narrator/assistant concept only.
+No AIMM implementation, remote inference client, system-entropy authority or
+trusted numerical role is included in NEXUS 1.0.
+
+Author of the referenced QSOL works: Trent Slade / QSOL-IMC.
+
+The MIT, Apache-2.0 and CC BY 4.0 licences and attribution obligations continue
+to apply to material governed by those licences. This NOTICE records project
+lineage and is practical project documentation, not formal legal advice.

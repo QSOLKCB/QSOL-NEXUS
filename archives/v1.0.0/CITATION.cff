@@ -1,0 +1,27 @@
+cff-version: 1.2.0
+message: "If you use QSOL NEXUS in research, software, teaching, or an archived audiovisual experiment, please cite this software release."
+title: "QSOL NEXUS: Deterministic Field Simulation and Sonification Workbench"
+type: software
+version: 1.0.0
+date-released: 2026-07-14
+authors:
+  - family-names: Slade
+    given-names: Trent
+    orcid: "https://orcid.org/0009-0002-4515-9237"
+repository-code: "https://github.com/QSOLKCB/QSOL-NEXUS"
+url: "https://github.com/QSOLKCB/QSOL-NEXUS"
+license: Apache-2.0
+abstract: >-
+  A zero-install browser-native laboratory for deterministic three-state field
+  simulation, tensor invariant analysis, galaxy rotation-curve model comparison,
+  scientific sonification, and replay-verifiable experiment bundles with
+  identity-bearing scientific claim boundaries.
+keywords:
+  - deterministic simulation
+  - scientific sonification
+  - reproducible research
+  - provenance
+  - qutrit-inspired classical simulation
+  - tensor invariants
+  - galaxy rotation curves
+  - browser-native software
