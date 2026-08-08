@@ -76,6 +76,16 @@ Actors are asked to:
 
 Historical Mode does not grant the model a hidden historical database. Its claims still depend on supplied or retrieved evidence.
 
+### Pure History / No Ancient Aliens — Archive
+
+`pure_history` is a stricter source-forensic sibling of Historical Mode. It deliberately maps to the **same Archive region** because mode and geometry are separate contracts.
+
+Actors must distinguish primary or near-primary attestation, chronology and provenance, later interpretation/transmission, modern retelling, and unsupported speculation. Mythic/literary texts may be historical evidence for the existence and content of a tradition without automatically establishing that the narrated event occurred.
+
+Pure History also rejects chatbot autobiography as a substitute for analysis. A contribution such as “As a Large Language Model, I don't watch television” receives one narrow deterministic restatement request. This does not rank historical interpretations or change Council authority.
+
+See [`PURE_HISTORY.md`](PURE_HISTORY.md).
+
 ### Cultural — Agora
 
 Context-sensitive cultural reasoning.
@@ -184,7 +194,7 @@ Properties:
 - coordinates are small deterministic integers;
 - adjacency is explicit and symmetric;
 - hop distance is computable;
-- every built-in mode maps to exactly one region;
+- every built-in mode maps to exactly one region, while multiple modes may intentionally share a region (for example `historical` and `pure_history` both map to Archive);
 - the current built-in geometry identifier is `named-regions-v3`;
 - the content-derived `topology_ref` remains separate from that human-readable identifier.
 

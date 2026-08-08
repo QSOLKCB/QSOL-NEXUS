@@ -86,7 +86,8 @@ NEXUS rooms map directly to the built-in world geometry:
 
 ```text
 #observatory   -> analytical  -> Observatory
-#archive       -> historical  -> Archive
+#archive       -> historical   -> Archive
+#pure-history -> pure_history -> Archive
 #agora         -> cultural    -> Agora
 #commons       -> meme_casual -> Commons
 #un-sim        -> game_un     -> Assembly Hall
@@ -97,6 +98,8 @@ Examples:
 ```text
 /join #agora
 /join cultural
+/join #pure-history
+/mode pure_history
 /mode meme_casual
 /join #un-sim
 ```

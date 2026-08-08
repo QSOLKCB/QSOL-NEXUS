@@ -50,6 +50,7 @@ class DeterministicMockActor:
         mode_notes = {
             "analytical": "Mode note: keep claim boundaries explicit.",
             "historical": "Mode note: preserve chronology, sources, and change over time.",
+            "pure_history": "Mode note: separate source attestation, chronology, later interpretation, modern retelling, and speculation.",
             "cultural": "Mode note: preserve context, ambiguity, norms, and insider/outsider distinctions.",
             "meme_casual": "Mode note: playful framing is welcome, but jokes do not become evidence.",
         }

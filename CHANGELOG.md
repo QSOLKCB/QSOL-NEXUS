@@ -2,6 +2,19 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.0.0-alpha6.4 — Pure History / No Ancient Aliens Edition
+
+- add `pure_history` as a source-forensic sibling of ordinary Historical Mode;
+- add the Rust `#pure-history` room while intentionally reusing the existing Archive region;
+- distinguish primary/near-primary attestation, chronology/provenance, later interpretation, modern retelling and unsupported speculation;
+- state explicitly that mythic/literary texts attest traditions without automatically proving narrated events;
+- add a narrow deterministic retry guard for chatbot-autobiography/media-habit evasions in Pure History only;
+- propagate mode guidance into sealed Ollama ballots as well as Council phases;
+- bump the local protocol to `nexus/0.8` and runtime to `2.0.0-alpha6.4`;
+- keep world geometry at `named-regions-v3` because mode and geometry remain separate contracts.
+
+> **Same archive. Stricter source discipline. Same vote.**
+
 ## 2.0.0-alpha6.2 — `#un-sim` fictional game room
 
 - add `game_un` World Mode and the Assembly Hall region;
