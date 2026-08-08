@@ -42,7 +42,7 @@ class AdversarialToolTests(unittest.TestCase):
             report([("known-hole", "fail"), ("stable", "pass")]),
         )
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn("NO NEW NAMED FAILURES", result.stdout)
+        self.assertIn("NO NEW FAILURES OR CHECK LOSS", result.stdout)
 
     def test_comparator_returns_nonzero_for_new_failure(self) -> None:
         result = self.run_compare(
@@ -52,6 +52,15 @@ class AdversarialToolTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1, result.stdout)
         self.assertIn("NEW FAILURES", result.stdout)
         self.assertIn("stable", result.stdout)
+
+    def test_comparator_returns_nonzero_when_candidate_drops_a_check(self) -> None:
+        result = self.run_compare(
+            report([("keep-me", "pass"), ("stable", "pass")]),
+            report([("stable", "pass")]),
+        )
+        self.assertEqual(result.returncode, 1, result.stdout)
+        self.assertIn("MISSING CHECKS", result.stdout)
+        self.assertIn("keep-me", result.stdout)
 
     def test_comparator_reports_fixed_failure(self) -> None:
         result = self.run_compare(
