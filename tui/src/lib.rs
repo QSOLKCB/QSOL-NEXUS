@@ -1,3 +1,5 @@
+pub mod scripting;
+
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
 use std::fs::{self, File};
@@ -23,10 +25,11 @@ pub const ROOMS: [RoomSpec; 4] = [
     RoomSpec { channel: "#commons", mode_id: "meme_casual", region_id: "commons", label: "Commons / Meme-Casual" },
 ];
 
-pub const COMMANDS: [&str; 24] = [
+pub const COMMANDS: [&str; 28] = [
     "/help", "/join", "/mode", "/topic", "/ask", "/council", "/me", "/msg",
     "/nick", "/who", "/names", "/upload", "/dcc", "/evidence", "/ref", "/unref",
-    "/addmock", "/addollama", "/kick", "/alias", "/search", "/save", "/clear", "/quit",
+    "/addmock", "/addollama", "/kick", "/alias", "/aliases", "/set", "/unset", "/vars",
+    "/search", "/save", "/clear", "/quit",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -58,6 +61,10 @@ pub enum InputCommand {
     AddOllama { nick: String, model: String },
     Kick(String),
     Alias { name: String, expansion: String },
+    Aliases,
+    Set { name: String, value: String },
+    Unset(String),
+    Vars,
     Search(String),
     Save(PathBuf),
     Clear,
@@ -81,6 +88,8 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/who" | "/names" => Ok(InputCommand::Who),
         "/clear" => Ok(InputCommand::Clear),
         "/evidence" => Ok(InputCommand::Evidence),
+        "/aliases" => Ok(InputCommand::Aliases),
+        "/vars" => Ok(InputCommand::Vars),
         "/join" => require(rest, "/join <#room|mode>").map(InputCommand::Join),
         "/mode" => require(rest, "/mode <mode>").map(InputCommand::Mode),
         "/topic" => require(rest, "/topic <question>").map(InputCommand::Topic),
@@ -116,6 +125,12 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
             if expansion.is_empty() { return Err("usage: /alias <name> <expansion>".to_string()); }
             Ok(InputCommand::Alias { name: name.trim_start_matches('/').to_string(), expansion: expansion.to_string() })
         }
+        "/set" => {
+            let (name, value) = split_first(rest).ok_or_else(|| "usage: /set %name <value>".to_string())?;
+            if value.is_empty() { return Err("usage: /set %name <value>".to_string()); }
+            Ok(InputCommand::Set { name: name.to_string(), value: value.to_string() })
+        }
+        "/unset" => require(rest, "/unset %name").map(InputCommand::Unset),
         "/dcc" => parse_dcc(rest).map(InputCommand::Dcc),
         other => Err(format!("unknown command: {other}; try /help")),
     }
@@ -213,8 +228,11 @@ impl AliasBook {
         let name = cmd.trim_start_matches('/').to_ascii_lowercase();
         let template = self.aliases.get(&name)?;
         let args: Vec<&str> = rest.split_whitespace().collect();
-        let mut out = template.replace("$me", nick).replace("$chan", channel).replace("$1-", rest);
+        let mut out = template.replace("$me", nick).replace("$chan", channel);
         for index in (1..=9).rev() {
+            let range_token = format!("${index}-");
+            let range_value = if index <= args.len() { args[index - 1..].join(" ") } else { String::new() };
+            out = out.replace(&range_token, &range_value);
             let token = format!("${index}");
             let value = args.get(index - 1).copied().unwrap_or("");
             out = out.replace(&token, value);
@@ -392,7 +410,7 @@ mod tests {
     }
 
     #[test]
-    fn aliases_use_mirc_style_positional_parameters_without_shell_execution() {
+    fn aliases_support_mirc_style_argument_ranges() {
         let mut aliases = AliasBook::default();
         aliases.define("slap", "/me slaps $1 with $2-").unwrap();
         assert_eq!(aliases.expand("/slap Grok a large trout", "Trent", "#commons").unwrap(), "/me slaps Grok with a large trout");
@@ -400,7 +418,8 @@ mod tests {
     }
 
     #[test]
-    fn parses_plain_chat_and_local_model_addition() {
+    fn parses_variables_and_local_model_addition() {
+        assert_eq!(parse_input("/set %weapon a large trout").unwrap(), InputCommand::Set { name: "%weapon".to_string(), value: "a large trout".to_string() });
         assert_eq!(parse_input("hello room").unwrap(), InputCommand::Say("hello room".to_string()));
         assert_eq!(parse_input("/join #commons").unwrap(), InputCommand::Join("#commons".to_string()));
         assert_eq!(parse_input("/addollama LocalQwen qwen2.5:0.5b").unwrap(), InputCommand::AddOllama { nick: "LocalQwen".to_string(), model: "qwen2.5:0.5b".to_string() });
