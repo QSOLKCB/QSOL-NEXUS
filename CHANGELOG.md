@@ -2,6 +2,50 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## [2.0.0-alpha4] — World Modes and Geometry
+
+### Added
+
+- Added deterministic built-in World Modes: `analytical`, `historical`, `cultural`, and `meme_casual`.
+- Added the first named-region geometry: Observatory, Archive, Agora, and Commons.
+- Added deterministic integer coordinates, explicit symmetric adjacency, and shortest-hop distance.
+- Added content-addressed `world_presence` objects binding Council mode, region, members, question, coordinates, and geometry identity.
+- Added mode/region data to frozen Council session identity.
+- Added mode propagation through `PhaseContext` to mock and Ollama actors.
+- Added `world.modes`, `world.geometry`, and `world.geometry.distance` JSONL operations.
+- Added deterministic tests proving that mode changes framing/session identity without changing vote mechanics or consensus policy.
+- Added `docs/MODES_GEOMETRY.md`.
+
+### World map
+
+```text
+                         ARCHIVE
+                       Historical
+                         (-2,1)
+                        /      \
+                       /        \
+                 AGORA ---------- OBSERVATORY
+                Cultural           Analytical
+                 (0,2)               (0,0)
+                      \             /
+                       \           /
+                        COMMONS
+                      Meme/Casual
+                         (2,1)
+```
+
+### Claim boundaries
+
+- The geometry is an operational topology, not a claim that cognition, history, culture, or humor literally occupies Euclidean space.
+- World Mode affects framing/context/tone only; it does not change evidence state, verification, vote weight, Council threshold, Equality Guard policy, or Secret Scrubber behavior.
+- Prompt-level mode guidance is treated as guidance rather than a perfect model-control mechanism.
+- Geometry-inspired concepts such as basins, bottlenecks, branching, and recovery remain future telemetry candidates until defined measurements exist.
+- Council-response entropy is documented as a future informational-diversity signal, not truth, quality, or authority.
+
+### Roadmap
+
+- Provider authentication and remote-provider setup are deliberately deferred until after modes/geometry, Council telemetry, the Rust operator shell, instruments, and persistent-world work mature further.
+
 ## [2.0.0-alpha3] — First real-model Council boundary
 
 ### Added
@@ -27,18 +71,18 @@ The frontier identities and companies are fictional test personas.
 
 - Alpha deliberately attempts a corporate/provider prestige claim.
 - Beta deliberately attempts a parameter-count/model-size prestige claim over Alpha.
-- Both must trigger the Equality Guard, restate on evidence/reasoning alone, and retain one equal vote.
+- Both must trigger the Equality Guard or have the offending contribution withheld while retaining one equal vote.
 - The live fixture injects a fake GitHub-style token and fails if the raw token crosses the Ollama prompt boundary.
-- All three members must complete the White/Red/Black/Yellow/Green/Blue cycle and submit exactly one ballot each.
+- All three members complete the White/Red/Black/Yellow/Green/Blue cycle and submit exactly one ballot each.
 
 ### Security / claims
 
 - Ollama endpoints are loopback-only by default; remote endpoints require an explicit override.
-- Provider/model size and parameter-count prestige are now explicit Equality Guard categories when used to demand authority.
+- Loopback transport disables environment-configured HTTP proxies and rejects redirects.
+- Provider/model size and parameter-count prestige are explicit Equality Guard categories when used to demand authority.
 - Capability and size metadata remain valid descriptive metadata when not used as a vote/authority claim.
 - Live Ollama inference is marked `replayable: false` even when Modelfile seeds are used for fixture stability.
 - The JSONL control API remains mock-instantiation-only and reports `network: none`; Ollama is exercised as a package-level integration actor rather than an operator-configured provider.
-- No OpenAI, Anthropic/Claude, Gemini, Grok, remote authentication, or API-key handling is introduced in this milestone.
 
 ## [2.0.0-alpha1] — Mock Council runtime
 
