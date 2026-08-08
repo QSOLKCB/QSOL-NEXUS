@@ -3,8 +3,8 @@ from __future__ import annotations
 import unittest
 
 from nexus_runtime.api import NexusAPI
-from nexus_runtime.council import CouncilCoordinator
-from nexus_runtime.game_un import GAME_SCHEMA, advance_turn, apply_action, inspect_game, new_game
+from nexus_runtime.council import CouncilCoordinator, MAX_EVIDENCE_OBJECT_CHARS
+from nexus_runtime.game_un import GAME_SCHEMA, MAX_EVENT_LOG, advance_turn, apply_action, inspect_game, new_game
 from nexus_runtime.world import WorldStore
 
 
@@ -52,6 +52,34 @@ class UNSimulationEngineTests(unittest.TestCase):
         self.assertTrue(any(event["kind"] == "arms_hypocrisy" for event in result.payload["event_log"]))
         self.assertFalse(result.payload["claim_boundary"]["real_weapon_procurement"])
 
+    def test_arming_both_belligerents_is_detected_even_among_extra_targets(self) -> None:
+        world = WorldStore()
+        game = new_game(world, "arms-everyone")
+        war = game.payload["wars"][0]
+        extra = next(country_id for country_id in sorted(game.payload["countries"]) if country_id not in (war["a"], war["b"]))
+        result = apply_action(world, game.object_id, "arms", [extra, war["b"], war["a"]])
+        self.assertEqual(result.payload["un_legitimacy"], game.payload["un_legitimacy"] - 1)
+        self.assertTrue(any(event["kind"] == "arms_hypocrisy" for event in result.payload["event_log"]))
+
+    def test_suspend_and_reinstate_cannot_be_replayed_to_farm_influence(self) -> None:
+        world = WorldStore()
+        game = new_game(world, "procedural-farming")
+        target = sorted(game.payload["countries"])[0]
+        initial = game.payload["countries"][target]["influence"]
+
+        suspended = apply_action(world, game.object_id, "suspend", [target])
+        self.assertEqual(suspended.payload["countries"][target]["influence"], max(0, initial - 2))
+        suspended_again = apply_action(world, suspended.object_id, "suspend", [target])
+        self.assertEqual(
+            suspended_again.payload["countries"][target]["influence"],
+            suspended.payload["countries"][target]["influence"],
+        )
+
+        reinstated = apply_action(world, suspended_again.object_id, "reinstate", [target])
+        once = reinstated.payload["countries"][target]["influence"]
+        reinstated_again = apply_action(world, reinstated.object_id, "reinstate", [target])
+        self.assertEqual(reinstated_again.payload["countries"][target]["influence"], once)
+
     def test_turn_resolution_is_deterministic_and_lineaged(self) -> None:
         world = WorldStore()
         game = new_game(world, "risk-ish")
@@ -71,13 +99,23 @@ class UNSimulationEngineTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             apply_action(world, game.object_id, "mediate", peaceful[:2])
 
-    def test_current_game_state_is_readable_as_council_evidence(self) -> None:
+    def test_current_game_state_has_compact_complete_council_evidence_view(self) -> None:
         world = WorldStore()
         game = new_game(world, "shared-board")
-        context = CouncilCoordinator(world).build_evidence_context([game.object_id])
-        self.assertIn("fictional_un_simulation", context)
-        self.assertIn("troutistan", context)
-        self.assertIn(game.payload["wars"][0]["a"], context)
+        state = game
+        for _ in range(MAX_EVENT_LOG + 5):
+            state = apply_action(world, state.object_id, "do_nothing", [])
+
+        self.assertLessEqual(len(state.payload["event_log"]), MAX_EVENT_LOG)
+        self.assertLess(len(state.payload["content"]), MAX_EVIDENCE_OBJECT_CHARS)
+        context = CouncilCoordinator(world).build_evidence_context([state.object_id])
+        self.assertIn("NEXUS UN SIMULATION", context)
+        self.assertIn("world_tension=", context)
+        self.assertIn("wars:", context)
+        for country_id in state.payload["countries"]:
+            self.assertIn(country_id, context)
+        self.assertIn("not real-world policy", context)
+        self.assertNotIn("[NEXUS: evidence excerpt truncated]", context)
 
     def test_inspect_rejects_non_game_object(self) -> None:
         world = WorldStore()
