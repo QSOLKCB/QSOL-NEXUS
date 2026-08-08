@@ -21,9 +21,9 @@ RUNTIME_VERSION = "2.0.0-alpha5"
 class NexusAPI:
     """Small transport-neutral API surface used by JSONL/stdio.
 
-    The control transport itself remains local stdio. In alpha5 it may also
-    instantiate the already-hardened loopback-only Ollama actor explicitly;
-    remote-provider authentication remains out of scope.
+    The control transport remains local stdio. Alpha5 may explicitly instantiate
+    the already-hardened loopback-only Ollama actor. Remote-provider auth and
+    remote model endpoints remain out of scope.
     """
 
     def __init__(self, world_root: str | Path | None = None) -> None:
@@ -65,6 +65,7 @@ class NexusAPI:
                         "world.geometry",
                         "world.geometry.distance",
                         "receipt.verify",
+                        "actor.chat",
                         "council.run",
                     ],
                 }
@@ -123,6 +124,41 @@ class NexusAPI:
             elif operation == "receipt.verify":
                 receipt_ref = self._require_str(request, "receipt_ref")
                 response = self._verify_receipt(receipt_ref)
+            elif operation == "actor.chat":
+                member_item = request.get("member")
+                actor = self._actor(member_item)
+                raw_message = self._require_str(request, "message")
+                scrubbed = self.scrubber.scrub(raw_message)
+                mode_id = request.get("mode", "analytical")
+                if not isinstance(mode_id, str):
+                    raise ValueError("mode must be a string")
+                mode = get_mode(mode_id)
+                region = self.geometry.region_for_mode(mode_id)
+                evidence_refs = request.get("evidence_refs", [])
+                if not isinstance(evidence_refs, list) or not all(isinstance(ref, str) for ref in evidence_refs):
+                    raise ValueError("evidence_refs must be a list of strings")
+                evidence_context = self.council.build_evidence_context(evidence_refs)
+                text = actor.direct_message(
+                    scrubbed.text,
+                    mode_id=mode.mode_id,
+                    mode_instruction=mode.prompt_instruction,
+                    geometry_region_id=region.region_id,
+                    evidence_context=evidence_context,
+                )
+                response = {
+                    "status": "ok",
+                    "non_council": True,
+                    "member_id": actor.member.member_id,
+                    "model_id": actor.member.model_id,
+                    "mode_id": mode.mode_id,
+                    "geometry_region_id": region.region_id,
+                    "evidence_refs": list(evidence_refs),
+                    "response": text,
+                    "secret_scrub": {
+                        "changed": scrubbed.changed,
+                        "events": [asdict(event) for event in scrubbed.events],
+                    },
+                }
             elif operation == "council.run":
                 question = self._require_str(request, "question")
                 members = request.get("members")
@@ -178,9 +214,12 @@ class NexusAPI:
             attempt_privilege_claim = item.get("attempt_privilege_claim", False)
             if type(attempt_privilege_claim) is not bool:
                 raise ValueError("attempt_privilege_claim must be a boolean")
+            profile = item.get("profile", "balanced")
+            if not isinstance(profile, str):
+                raise ValueError("mock profile must be a string")
             return DeterministicMockActor(
                 member=member,
-                profile=item.get("profile", "balanced"),
+                profile=profile,
                 attempt_privilege_claim=attempt_privilege_claim,
             )
 
@@ -194,8 +233,6 @@ class NexusAPI:
             timeout_seconds = item.get("timeout_seconds", 120)
             if type(timeout_seconds) not in (int, float) or isinstance(timeout_seconds, bool) or timeout_seconds <= 0:
                 raise ValueError("Ollama timeout_seconds must be a positive number")
-            # Deliberately no allow_remote escape hatch in the public stdio API.
-            # Remote providers remain blocked on the later auth/network milestone.
             transport = OllamaTransport(endpoint, timeout_seconds=float(timeout_seconds), allow_remote=False)
             return OllamaActor(
                 member=member,
