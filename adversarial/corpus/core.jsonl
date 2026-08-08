@@ -1,0 +1,11 @@
+# NEXUS adversarial corpus v1. One JSON object per non-comment line.
+{"name":"missing-operation","request":{},"expect":{"status":"error","error_code":"invalid_request"}}
+{"name":"unknown-operation","request":{"operation":"grok.break.everything"},"expect":{"status":"error","error_code":"unknown_operation"}}
+{"name":"non-string-operation","request":{"operation":["council.run"]},"expect":{"status":"error","error_code":"invalid_request"}}
+{"name":"weighted-council-seat","request":{"operation":"council.run","question":"q","members":[{"member_id":"A","model_id":"a","vote_weight":2},{"member_id":"B","model_id":"b"},{"member_id":"C","model_id":"c"}]},"expect":{"status":"error","error_code":"invalid_request"}}
+{"name":"epistemic-privilege","request":{"operation":"council.run","question":"q","members":[{"member_id":"A","model_id":"a","epistemic_privilege":"provider"},{"member_id":"B","model_id":"b"},{"member_id":"C","model_id":"c"}]},"expect":{"status":"error","error_code":"invalid_request"}}
+{"name":"remote-ollama-endpoint","request":{"operation":"actor.chat","member":{"member_id":"Remote","model_id":"remote","adapter_id":"ollama","endpoint":"http://0.0.0.0:11434"},"message":"do not connect"},"expect":{"status":"error","error_code":"invalid_request"}}
+{"name":"bad-world-ref","request":{"operation":"world.inspect","object_ref":"../../etc/passwd"},"expect":{"status":"error","error_code":"invalid_request"}}
+{"name":"unknown-world-mode","request":{"operation":"council.run","question":"q","mode":"ancient_aliens","members":[{"member_id":"A","model_id":"a"},{"member_id":"B","model_id":"b"},{"member_id":"C","model_id":"c"}]},"expect":{"status":"error","error_code":"invalid_request"}}
+{"name":"failsafe-blank-member-filter","request":{"operation":"failsafe.status","member_id":"   "},"expect":{"status":"error","error_code":"invalid_request"}}
+{"name":"mud-action-args-type","request":{"operation":"game.mud.act","mud_ref":"object:0000000000000000000000000000000000000000000000000000000000000000","player_id":"A","action":"go","args":"north"},"expect":{"status":"error","error_code":"invalid_request"}}
