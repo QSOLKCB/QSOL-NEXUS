@@ -12,6 +12,7 @@ on:
       - 'src/nexus_runtime/types.py'
       - 'tests/test_adapters.py'
       - 'tests/test_ollama_integration.py'
+      - 'tests/test_parallel_council.py'
 
 permissions:
   contents: read
@@ -27,6 +28,11 @@ jobs:
     env:
       PYTHONPATH: src
       OLLAMA_VERSION: 0.32.5
+      # The acceptance Council uses two distinct tiny models. Keep both resident
+      # while allowing one request per model so Council-level concurrency does not
+      # silently turn into a server-side FIFO queue or multiply context memory.
+      OLLAMA_MAX_LOADED_MODELS: '2'
+      OLLAMA_NUM_PARALLEL: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -79,7 +85,9 @@ jobs:
       - name: Run Mock plus two real Ollama Council
         env:
           NEXUS_OLLAMA_INTEGRATION: '1'
-        run: python3 -m unittest discover -s tests -p 'test_ollama_integration.py' -v
+        run: |
+          /usr/bin/time -f 'NEXUS live Council wall: %e s' \
+            python3 -m unittest discover -s tests -p 'test_ollama_integration.py' -v
 
       - name: Ollama diagnostics on failure
         if: failure()
