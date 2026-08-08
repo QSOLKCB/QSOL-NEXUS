@@ -35,6 +35,8 @@ class LiveCouncilBenchToolTests(unittest.TestCase):
     def test_loopback_endpoint_accepts_dedicated_bench_port(self) -> None:
         self.assertEqual(bench._loopback_endpoint("http://127.0.0.1:11435"), ("127.0.0.1", 11435))
         self.assertEqual(bench._loopback_endpoint("http://localhost:11435"), ("localhost", 11435))
+        self.assertEqual(bench._loopback_endpoint("http://[::1]:11435/"), ("::1", 11435))
+        self.assertEqual(bench._ollama_host_authority("::1", 11435), "[::1]:11435")
 
     def test_loopback_endpoint_rejects_remote_and_wildcard_hosts(self) -> None:
         for endpoint in (
@@ -42,6 +44,9 @@ class LiveCouncilBenchToolTests(unittest.TestCase):
             "http://192.168.1.2:11435",
             "http://0.0.0.0:11435",
             "http://example.com:11435",
+            "http://127.0.0.1:11435/foo",
+            "http://127.0.0.1:11435/?query=1",
+            "http://127.0.0.1:11435/#fragment",
         ):
             with self.subTest(endpoint=endpoint):
                 with self.assertRaises(bench.BenchError):
@@ -115,6 +120,41 @@ class LiveCouncilBenchToolTests(unittest.TestCase):
             rc = bench.main(["run", "--endpoint", "http://example.com:11435"])
         self.assertEqual(rc, 2)
 
+    def test_run_rejects_mode_and_seat_before_start_or_pull(self) -> None:
+        with mock.patch.object(bench.ControlledOllama, "start", side_effect=AssertionError("must not start")), mock.patch.object(
+            bench, "_ensure_model", side_effect=AssertionError("must not pull")
+        ), mock.patch.object(bench, "_hardware_snapshot", side_effect=AssertionError("must not probe")):
+            rc = bench.main(["run", "--mode", "definitely_not_a_mode", "--pull-missing"])
+        self.assertEqual(rc, 2)
+
+        manifest = self.complete_manifest(question="q", mode="pure_history")
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "seat.json"
+            path.write_text(json.dumps(manifest), encoding="utf-8")
+            with mock.patch.object(bench.ControlledOllama, "start", side_effect=AssertionError("must not start")), mock.patch.object(
+                bench, "_ensure_model", side_effect=AssertionError("must not pull")
+            ), mock.patch.object(bench, "_hardware_snapshot", side_effect=AssertionError("must not probe")):
+                rc = bench.main(["run", "--question", "q", "--mode", "analytical", "--seat-file", str(path), "--pull-missing"])
+        self.assertEqual(rc, 2)
+
+    def test_gpu_accounting_respects_cuda_visible_devices(self) -> None:
+        snapshot = {
+            "cuda_visible_devices": "1",
+            "nvidia": {
+                "gpus": [
+                    {"index": 0, "uuid": "GPU-zero", "memory_total_mib": 8192, "memory_used_mib": 7000},
+                    {"index": 1, "uuid": "GPU-one", "memory_total_mib": 16384, "memory_used_mib": 512},
+                ]
+            },
+        }
+        rows = bench._ollama_gpu_rows(snapshot)
+        self.assertEqual([row["index"] for row in rows], [1])
+        self.assertEqual(bench._ollama_gpu_total_vram(snapshot), 16384)
+        self.assertEqual(bench._ollama_gpu_memory_used(snapshot), 512)
+
+        snapshot["cuda_visible_devices"] = "GPU-zero"
+        self.assertEqual([row["index"] for row in bench._ollama_gpu_rows(snapshot)], [0])
+
     def test_sealed_seat_cannot_be_combined_with_question_mutating_secret_probe(self) -> None:
         rc = bench.main(["run", "--seat-file", "unused.json", "--secret-probe"])
         self.assertEqual(rc, 2)
@@ -132,9 +172,30 @@ class LiveCouncilBenchToolTests(unittest.TestCase):
         session = {
             "payload": {
                 "roster": [
-                    {"vote_weight": 1, "epistemic_privilege": "none"},
-                    {"vote_weight": 1, "epistemic_privilege": "none"},
-                    {"vote_weight": 1, "epistemic_privilege": "none"},
+                    {
+                        "member_id": "local-alpha",
+                        "model_id": "model-a",
+                        "adapter_id": "ollama",
+                        "actor_metadata": {"actor_kind": "ollama"},
+                        "vote_weight": 1,
+                        "epistemic_privilege": "none",
+                    },
+                    {
+                        "member_id": "local-beta",
+                        "model_id": "model-b",
+                        "adapter_id": "ollama",
+                        "actor_metadata": {"actor_kind": "ollama"},
+                        "vote_weight": 1,
+                        "epistemic_privilege": "none",
+                    },
+                    {
+                        "member_id": "bench-reference",
+                        "model_id": "deterministic-bench-reference",
+                        "adapter_id": "mock",
+                        "actor_metadata": {"actor_kind": "mock"},
+                        "vote_weight": 1,
+                        "epistemic_privilege": "none",
+                    },
                 ],
                 "phase_submissions": {
                     phase.value: [{}, {}, {}]
@@ -145,10 +206,29 @@ class LiveCouncilBenchToolTests(unittest.TestCase):
                 "guard_events": [{"member_id": "local-alpha"}],
             }
         }
-        self.assertEqual(bench._validate_session(session, require_guard_event=True), [])
+        expected = {"local-alpha": "model-a", "local-beta": "model-b"}
+        self.assertEqual(
+            bench._validate_session(session, require_guard_event=True, expected_live_models=expected),
+            [],
+        )
         session["payload"]["roster"][0]["vote_weight"] = 2
-        failures = bench._validate_session(session, require_guard_event=True)
+        failures = bench._validate_session(
+            session,
+            require_guard_event=True,
+            expected_live_models=expected,
+        )
         self.assertTrue(any("vote weight" in failure for failure in failures))
+
+        session["payload"]["roster"][0]["vote_weight"] = 1
+        session["payload"]["roster"][0]["adapter_id"] = "failsafe_replacement"
+        session["payload"]["roster"][0]["model_id"] = "nexus-failsafe-relief-v1"
+        session["payload"]["roster"][0]["actor_metadata"] = {"actor_kind": "failsafe_replacement"}
+        failures = bench._validate_session(
+            session,
+            require_guard_event=True,
+            expected_live_models=expected,
+        )
+        self.assertTrue(any("was replaced" in failure for failure in failures))
 
 
 if __name__ == "__main__":

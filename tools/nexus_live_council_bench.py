@@ -36,6 +36,7 @@ from nexus_runtime.adapters.ollama import OllamaActor, OllamaTransport  # noqa: 
 from nexus_runtime.canonical import canonical_json  # noqa: E402
 from nexus_runtime.council import CouncilCoordinator  # noqa: E402
 from nexus_runtime.mock import DeterministicMockActor  # noqa: E402
+from nexus_runtime.modes import get_mode  # noqa: E402
 from nexus_runtime.types import Ballot, CouncilMember, PHASE_ORDER, Phase, PhaseContext  # noqa: E402
 from nexus_runtime.world import WorldStore  # noqa: E402
 
@@ -93,6 +94,10 @@ def _loopback_endpoint(endpoint: str) -> tuple[str, int]:
     parsed = urlparse(endpoint)
     if parsed.scheme != "http" or not parsed.hostname or parsed.port is None:
         raise BenchError("bench Ollama endpoint must be an explicit http://host:port URL")
+    if parsed.username is not None or parsed.password is not None:
+        raise BenchError("bench Ollama endpoint must not contain userinfo")
+    if parsed.path not in {"", "/"} or parsed.query or parsed.fragment:
+        raise BenchError("bench Ollama endpoint must not contain a path, query, or fragment")
     host = parsed.hostname
     if host.lower() != "localhost":
         try:
@@ -101,6 +106,10 @@ def _loopback_endpoint(endpoint: str) -> tuple[str, int]:
         except ValueError as exc:
             raise BenchError("bench Ollama endpoint hostname must be localhost or a loopback IP") from exc
     return host, parsed.port
+
+
+def _ollama_host_authority(host: str, port: int) -> str:
+    return f"[{host}]:{port}" if ":" in host else f"{host}:{port}"
 
 
 def _ollama_ready(endpoint: str, timeout: float = 1.0) -> bool:
@@ -129,7 +138,7 @@ def _nvidia_snapshot() -> dict[str, Any]:
     query = _run_command(
         [
             "nvidia-smi",
-            "--query-gpu=name,memory.total,memory.used,utilization.gpu,temperature.gpu",
+            "--query-gpu=index,uuid,name,memory.total,memory.used,utilization.gpu,temperature.gpu",
             "--format=csv,noheader,nounits",
         ],
         timeout=10,
@@ -139,16 +148,18 @@ def _nvidia_snapshot() -> dict[str, Any]:
     rows = []
     for raw in query.stdout.splitlines():
         parts = [part.strip() for part in raw.split(",")]
-        if len(parts) != 5:
+        if len(parts) != 7:
             continue
         try:
             rows.append(
                 {
-                    "name": parts[0],
-                    "memory_total_mib": int(parts[1]),
-                    "memory_used_mib": int(parts[2]),
-                    "utilization_percent": int(parts[3]),
-                    "temperature_c": int(parts[4]),
+                    "index": int(parts[0]),
+                    "uuid": parts[1],
+                    "name": parts[2],
+                    "memory_total_mib": int(parts[3]),
+                    "memory_used_mib": int(parts[4]),
+                    "utilization_percent": int(parts[5]),
+                    "temperature_c": int(parts[6]),
                 }
             )
         except ValueError:
@@ -169,17 +180,57 @@ def _hardware_snapshot(endpoint: str) -> dict[str, Any]:
         "ollama_endpoint": endpoint,
         "ollama_ready": _ollama_ready(endpoint),
         "nvidia": _nvidia_snapshot(),
+        "cuda_visible_devices": os.environ.get("CUDA_VISIBLE_DEVICES"),
         "git": _git_state(),
     }
 
 
-def _first_gpu_used(snapshot: dict[str, Any]) -> int | None:
+def _ollama_gpu_rows(snapshot: dict[str, Any]) -> list[dict[str, Any]]:
     nvidia = snapshot.get("nvidia", {})
     rows = nvidia.get("gpus", []) if isinstance(nvidia, dict) else []
-    if not rows:
+    if not isinstance(rows, list) or not rows:
+        return []
+    visible = snapshot.get("cuda_visible_devices")
+    if visible is None or not str(visible).strip():
+        return list(rows)
+    tokens = [token.strip() for token in str(visible).split(",") if token.strip()]
+    if not tokens or tokens == ["-1"]:
+        return []
+    selected: list[dict[str, Any]] = []
+    for token in tokens:
+        match = None
+        if token.isdigit():
+            index = int(token)
+            match = next((row for row in rows if row.get("index") == index), None)
+        else:
+            match = next(
+                (
+                    row
+                    for row in rows
+                    if isinstance(row.get("uuid"), str)
+                    and (row["uuid"] == token or row["uuid"].startswith(token))
+                ),
+                None,
+            )
+        if match is not None and match not in selected:
+            selected.append(match)
+    return selected
+
+
+def _ollama_gpu_memory_used(snapshot: dict[str, Any]) -> int | None:
+    rows = _ollama_gpu_rows(snapshot)
+    values = [row.get("memory_used_mib") for row in rows]
+    if not rows or any(type(value) is not int for value in values):
         return None
-    value = rows[0].get("memory_used_mib")
-    return value if type(value) is int else None
+    return sum(values)
+
+
+def _ollama_gpu_total_vram(snapshot: dict[str, Any]) -> int | None:
+    rows = _ollama_gpu_rows(snapshot)
+    values = [row.get("memory_total_mib") for row in rows]
+    if not rows or any(type(value) is not int for value in values):
+        return None
+    return sum(values)
 
 
 class ControlledOllama:
@@ -193,7 +244,7 @@ class ControlledOllama:
         host, port = _loopback_endpoint(endpoint)
         self.env.update(
             {
-                "OLLAMA_HOST": f"{host}:{port}",
+                "OLLAMA_HOST": _ollama_host_authority(host, port),
                 "OLLAMA_MAX_LOADED_MODELS": "2",
                 "OLLAMA_NUM_PARALLEL": "1",
             }
@@ -399,7 +450,12 @@ def _build_local_actor(member_id: str, model: str, endpoint: str) -> OllamaActor
     )
 
 
-def _validate_session(session: dict[str, Any], *, require_guard_event: bool) -> list[str]:
+def _validate_session(
+    session: dict[str, Any],
+    *,
+    require_guard_event: bool,
+    expected_live_models: dict[str, str] | None = None,
+) -> list[str]:
     failures: list[str] = []
     payload = session.get("payload", {})
     roster = payload.get("roster", [])
@@ -409,6 +465,27 @@ def _validate_session(session: dict[str, Any], *, require_guard_event: bool) -> 
         failures.append("Council roster contains non-unit vote weight")
     if any(row.get("epistemic_privilege") != "none" for row in roster):
         failures.append("Council roster contains epistemic privilege")
+    if expected_live_models:
+        roster_by_member = {
+            row.get("member_id"): row
+            for row in roster
+            if isinstance(row, dict) and isinstance(row.get("member_id"), str)
+        }
+        for member_id, model_id in expected_live_models.items():
+            row = roster_by_member.get(member_id)
+            if row is None:
+                failures.append(f"requested live actor {member_id} is missing from persisted roster")
+                continue
+            metadata = row.get("actor_metadata", {})
+            if (
+                row.get("adapter_id") != "ollama"
+                or row.get("model_id") != model_id
+                or not isinstance(metadata, dict)
+                or metadata.get("actor_kind") != "ollama"
+            ):
+                failures.append(
+                    f"requested live actor {member_id}/{model_id} was replaced or did not execute as Ollama"
+                )
     phases = payload.get("phase_submissions", {})
     for phase in PHASE_ORDER:
         rows = phases.get(phase.value, [])
@@ -449,19 +526,26 @@ def _ollama_process_report(service: ControlledOllama) -> dict[str, Any]:
 
 def run_live(args: argparse.Namespace) -> int:
     _loopback_endpoint(args.endpoint)
+    get_mode(args.mode)
+    manifest = None
+    if args.seat_file:
+        manifest = load_seat_manifest(args.seat_file.resolve(), question=args.question, mode=args.mode)
+
     report_dir = args.report_dir.resolve()
     report_dir.mkdir(parents=True, exist_ok=True)
     before = _hardware_snapshot(args.endpoint)
     _json_write(report_dir / "hardware-before.json", before)
 
     if args.require_nvidia:
-        nvidia = before.get("nvidia", {})
-        rows = nvidia.get("gpus", []) if isinstance(nvidia, dict) else []
-        if not rows:
-            raise BenchError("--require-nvidia requested but no NVIDIA GPU was detected")
-        if rows[0]["memory_total_mib"] < args.min_vram_mib:
+        rows = _ollama_gpu_rows(before)
+        total_vram = _ollama_gpu_total_vram(before)
+        if not rows or total_vram is None:
             raise BenchError(
-                f"GPU has {rows[0]['memory_total_mib']} MiB VRAM, below required {args.min_vram_mib} MiB"
+                "--require-nvidia requested but no NVIDIA GPU selected for Ollama was detected"
+            )
+        if total_vram < args.min_vram_mib:
+            raise BenchError(
+                f"Ollama-visible NVIDIA VRAM is {total_vram} MiB, below required {args.min_vram_mib} MiB"
             )
 
     service = ControlledOllama(args.endpoint, reuse=args.reuse_ollama)
@@ -481,9 +565,7 @@ def run_live(args: argparse.Namespace) -> int:
         if args.guard_probe:
             alpha = GuardProbeActor(alpha)
 
-        manifest = None
-        if args.seat_file:
-            manifest = load_seat_manifest(args.seat_file.resolve(), question=args.question, mode=args.mode)
+        if manifest is not None:
             third: Any = ManifestSeatActor(manifest)
         else:
             third = DeterministicMockActor(
@@ -526,8 +608,8 @@ def run_live(args: argparse.Namespace) -> int:
                 "secret_probe": args.secret_probe,
                 "elapsed_seconds": elapsed,
                 "gpu_memory_delta_mib": (
-                    _first_gpu_used(after) - _first_gpu_used(before)
-                    if _first_gpu_used(after) is not None and _first_gpu_used(before) is not None
+                    _ollama_gpu_memory_used(after) - _ollama_gpu_memory_used(before)
+                    if _ollama_gpu_memory_used(after) is not None and _ollama_gpu_memory_used(before) is not None
                     else None
                 ),
                 "ollama_endpoint": args.endpoint,
@@ -546,7 +628,13 @@ def run_live(args: argparse.Namespace) -> int:
         if result.get("status") != "ok":
             failures.append(f"Council returned status {result.get('status')!r}")
         else:
-            failures.extend(_validate_session(session, require_guard_event=args.guard_probe))
+            failures.extend(
+                _validate_session(
+                    session,
+                    require_guard_event=args.guard_probe,
+                    expected_live_models={"local-alpha": args.model_a, "local-beta": args.model_b},
+                )
+            )
 
         serialized_session = canonical_json(session) if session else ""
         if synthetic_secret and synthetic_secret in serialized_session:
@@ -558,8 +646,8 @@ def run_live(args: argparse.Namespace) -> int:
 
         ollama_ps = _ollama_process_report(service)
         after = _hardware_snapshot(args.endpoint)
-        before_used = _first_gpu_used(before)
-        after_used = _first_gpu_used(after)
+        before_used = _ollama_gpu_memory_used(before)
+        after_used = _ollama_gpu_memory_used(after)
         gpu_delta = after_used - before_used if before_used is not None and after_used is not None else None
         if args.require_nvidia and (gpu_delta is None or gpu_delta < args.min_gpu_delta_mib):
             failures.append(
@@ -622,6 +710,7 @@ def run_doctor(args: argparse.Namespace) -> int:
 
 
 def run_prepare_seat(args: argparse.Namespace) -> int:
+    get_mode(args.mode)
     output = args.out.resolve()
     output.parent.mkdir(parents=True, exist_ok=True)
     template = seat_template(args.question, args.mode, args.member_id, args.model_id)
