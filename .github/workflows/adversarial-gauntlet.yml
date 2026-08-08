@@ -15,7 +15,7 @@ on:
     paths:
       - '.github/workflows/adversarial-gauntlet.yml'
       - 'adversarial/**'
-      - 'tools/nexus_adversary.py'
+      - 'tools/nexus_adversary*.py'
       - 'src/nexus_runtime/**'
       - 'tests/**'
       - 'tui/**'
