@@ -21,10 +21,11 @@ import signal
 import subprocess
 import sys
 import time
+import traceback
 from dataclasses import dataclass
 from typing import Any
 from urllib.parse import urlparse
-from urllib.request import urlopen
+from urllib.request import ProxyHandler, build_opener
 
 ROOT = Path(__file__).resolve().parents[1]
 SRC = ROOT / "src"
@@ -104,7 +105,8 @@ def _loopback_endpoint(endpoint: str) -> tuple[str, int]:
 
 def _ollama_ready(endpoint: str, timeout: float = 1.0) -> bool:
     try:
-        with urlopen(f"{endpoint.rstrip('/')}/api/tags", timeout=timeout) as response:
+        opener = build_opener(ProxyHandler({}))
+        with opener.open(f"{endpoint.rstrip('/')}/api/tags", timeout=timeout) as response:
             return 200 <= getattr(response, "status", 200) < 300
     except Exception:
         return False
@@ -492,7 +494,50 @@ def run_live(args: argparse.Namespace) -> int:
         world = WorldStore(report_dir / "world")
         coordinator = CouncilCoordinator(world, max_parallel_workers=3)
         started = time.time()
-        result = coordinator.run(question, [alpha, beta, third], mode_id=args.mode)
+        try:
+            result = coordinator.run(question, [alpha, beta, third], mode_id=args.mode)
+        except Exception as exc:
+            elapsed = time.time() - started
+            after = _hardware_snapshot(args.endpoint)
+            ollama_ps = _ollama_process_report(service)
+            failure = f"{type(exc).__name__}: {exc}"
+            failure_trace = traceback.format_exc()
+            _json_write(report_dir / "hardware-after.json", after)
+            _json_write(report_dir / "ollama-ps.json", ollama_ps)
+            (report_dir / "council-exception.txt").write_text(failure_trace, encoding="utf-8")
+            summary = {
+                "schema_version": BENCH_SCHEMA,
+                "status": "FAIL",
+                "failures": [failure],
+                "question": args.question,
+                "mode": args.mode,
+                "models": [args.model_a, args.model_b],
+                "third_seat": (
+                    {
+                        "kind": "sealed_agent_manifest",
+                        "member_id": manifest["member_id"],
+                        "model_id": manifest["model_id"],
+                        "manifest_sha256": _seat_digest(manifest),
+                    }
+                    if manifest is not None
+                    else {"kind": "deterministic_mock", "member_id": "bench-reference"}
+                ),
+                "guard_probe": args.guard_probe,
+                "secret_probe": args.secret_probe,
+                "elapsed_seconds": elapsed,
+                "gpu_memory_delta_mib": (
+                    _first_gpu_used(after) - _first_gpu_used(before)
+                    if _first_gpu_used(after) is not None and _first_gpu_used(before) is not None
+                    else None
+                ),
+                "ollama_endpoint": args.endpoint,
+                "ollama_service": "reused" if service.process is None else "controlled_child",
+                "exception_file": "council-exception.txt",
+                "git": _git_state(),
+            }
+            _json_write(report_dir / "bench-summary.json", summary)
+            print(json.dumps(summary, indent=2, sort_keys=True))
+            return 1
         elapsed = time.time() - started
 
         session = world.inspect(result["session_ref"]).as_dict() if result.get("status") == "ok" else {}
