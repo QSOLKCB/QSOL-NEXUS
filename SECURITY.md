@@ -8,6 +8,7 @@ The design separates:
 
 ```text
 operator interface
+local secret scrubber
 provider adapters
 trusted NEXUS control plane
 persistent world
@@ -45,8 +46,8 @@ Planned shape:
               |
 +-------------v---------------+
 | Python NEXUS runtime        |
-| world / Council / receipts  |
-| equality policy             |
+| scrubber / world / Council  |
+| receipts / equality policy  |
 +-------------+---------------+
               |
         adapter interface
@@ -82,6 +83,57 @@ Authentication material belongs only in adapter authentication or transport fiel
 
 The future implementation should prefer an operating-system credential/keyring facility where practical, while allowing explicit external secret mechanisms for headless environments.
 
+## Deterministic pre-model Secret Scrubber
+
+Human operators make mistakes. Someone will eventually paste an API token, bearer token, private key, password assignment, or other credential into a question.
+
+NEXUS therefore applies a local deterministic high-confidence scrubber to semantic user text **before** that text is used to create the canonical Council question or any model-facing phase context.
+
+```text
+RAW OPERATOR TEXT
+      |
+      v
+LOCAL SECRET SCRUBBER
+      |
+      +-- detected secret -> <REDACTED:TYPE:N>
+      |
+      v
+SCRUBBED SEMANTIC TEXT
+      |
+      +-- canonical question object
+      +-- evidence snapshot
+      +-- Council phase input
+      +-- future model adapter
+```
+
+The raw detected secret is not included in the placeholder. NEXUS does not place a hash, reversible encoding, prefix fragment, or suffix fragment of the secret into model-facing output.
+
+Within one scrub operation:
+
+- replacement is deterministic;
+- placeholders are numbered by secret type and first appearance order;
+- repeated appearances of the same detected secret receive the same placeholder;
+- scrub reports contain only secret class and placeholder, never the secret itself.
+
+The first reference scrubber recognizes high-confidence forms including private-key blocks, common provider token shapes, JWTs, bearer tokens, explicit secret/token/password assignments, and URL-embedded credentials.
+
+### Limitations
+
+The Secret Scrubber is defence in depth, **not** a complete data-loss-prevention system.
+
+Regex and format recognition cannot guarantee detection of:
+
+- undocumented proprietary token formats;
+- short or low-entropy secrets that resemble ordinary text;
+- secrets deliberately split or obfuscated across fields;
+- arbitrary private personal information with no recognizable secret format.
+
+Therefore the constitutional rule remains stronger than the scrubber:
+
+> Credentials belong in adapter authentication/transport fields and must never intentionally be placed in semantic prompts.
+
+Future provider-adapter work must preserve this pre-model boundary and add tests proving raw injected credentials cannot reach provider request bodies.
+
 ## Adapter privilege
 
 An adapter may:
@@ -111,12 +163,22 @@ The NEXUS runtime should be able to report network intent explicitly:
 ```text
 world kernel         outbound: none
 receipt service      outbound: none
+secret scrubber      outbound: none
 openai adapter       outbound: configured provider
 anthropic adapter    outbound: configured provider
 ollama adapter       local endpoint
 ```
 
 A provider adapter's need for networking does not turn the whole world kernel into a general network client.
+
+The current mock runtime reports:
+
+```text
+network: none
+adapters: [mock]
+```
+
+and contains no real provider integration.
 
 ## Model content is untrusted input
 
@@ -153,6 +215,7 @@ model ids
 phase transitions
 world object refs
 receipt refs
+secret scrub event classes/placeholders
 non-secret error classes
 
 DO NOT ARCHIVE
@@ -160,14 +223,16 @@ raw credentials
 authorization headers
 provider refresh secrets
 secret-store payloads
+pre-scrub semantic text containing a detected secret
 private local paths unless intentionally included
 ```
 
 ## Future threat work
 
-Before executable adapters ship, create a dedicated threat model covering:
+Before executable provider adapters ship, create a dedicated threat model covering:
 
 - credential theft;
+- scrubber bypass and secret exfiltration;
 - prompt injection through imported world objects;
 - malicious model tool calls;
 - provider response spoofing;
@@ -177,4 +242,4 @@ Before executable adapters ship, create a dedicated threat model covering:
 - untrusted artifact parsing;
 - denial-of-service / runaway Council loops.
 
-The architecture-only alpha intentionally does not claim these implementation problems are solved.
+The current mock-runtime alpha does not claim these future provider/security problems are solved. It only establishes and tests the local boundaries that later adapters must obey.
