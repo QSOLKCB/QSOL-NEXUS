@@ -215,7 +215,7 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
                         "member_id": "RemoteProbe",
                         "model_id": "remote-probe",
                         "adapter_id": "ollama",
-                        "endpoint": "https://example.com:11434",
+                        "endpoint": "http://0.0.0.0:11434",
                     },
                     "message": "do not connect",
                 }

@@ -88,6 +88,15 @@ class AdversarialToolTests(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stdout)
         self.assertIn("INCOMPATIBLE CONFIGURATION", result.stdout)
 
+    def test_comparator_rejects_missing_configuration_metadata(self) -> None:
+        baseline = report([("stable", "pass")])
+        candidate = report([("stable", "pass")])
+        baseline.pop("seed")
+        candidate.pop("seed")
+        result = self.run_compare(baseline, candidate)
+        self.assertEqual(result.returncode, 2, result.stdout)
+        self.assertIn("INCOMPATIBLE CONFIGURATION", result.stdout)
+
     def test_missing_failed_check_is_not_reported_fixed(self) -> None:
         result = self.run_compare(
             report([("known-hole", "fail"), ("stable", "pass")]),

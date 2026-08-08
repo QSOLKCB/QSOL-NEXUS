@@ -53,9 +53,16 @@ def main() -> int:
 
     baseline_report = load_report(args.baseline)
     candidate_report = load_report(args.candidate)
-    for field in ("profile", "seed", "iterations"):
+    expected_types = {"profile": str, "seed": int, "iterations": int}
+    for field, expected_type in expected_types.items():
         baseline_value = baseline_report.get(field)
         candidate_value = candidate_report.get(field)
+        if type(baseline_value) is not expected_type or type(candidate_value) is not expected_type:
+            print(
+                f"INCOMPATIBLE CONFIGURATION: {field} must be present as "
+                f"{expected_type.__name__} in both reports"
+            )
+            return 2
         if baseline_value != candidate_value:
             print(
                 f"INCOMPATIBLE CONFIGURATION: {field} baseline={baseline_value!r} "
