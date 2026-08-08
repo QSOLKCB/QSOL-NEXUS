@@ -147,12 +147,17 @@ class OAuthHTTPClient:
             raise AuthUnavailableError("OAuth provider request failed") from exc
 
 
-def parse_token_response(payload: Mapping[str, Any], *, now: float) -> SecretMaterial:
+def parse_token_response(
+    payload: Mapping[str, Any],
+    *,
+    now: float,
+    default_scopes: tuple[str, ...] = (),
+) -> SecretMaterial:
     access_token = payload.get("access_token")
     refresh_token = payload.get("refresh_token")
     token_type = payload.get("token_type", "Bearer")
     expires_in = payload.get("expires_in")
-    raw_scope = payload.get("scope", "")
+    raw_scope = payload.get("scope")
     if expires_in is None:
         expires_at = None
     elif isinstance(expires_in, bool) or not isinstance(expires_in, (int, float)):
@@ -161,7 +166,9 @@ def parse_token_response(payload: Mapping[str, Any], *, now: float) -> SecretMat
         raise AuthProtocolError("OAuth expires_in must be positive and finite")
     else:
         expires_at = now + float(expires_in)
-    if isinstance(raw_scope, str):
+    if "scope" not in payload:
+        scopes = default_scopes
+    elif isinstance(raw_scope, str):
         scopes = tuple(item for item in raw_scope.split() if item)
     elif isinstance(raw_scope, list) and all(isinstance(item, str) and item for item in raw_scope):
         scopes = tuple(raw_scope)
@@ -200,7 +207,7 @@ class OAuthTokenClient:
             },
             config,
         )
-        return parse_token_response(payload, now=self.clock())
+        return parse_token_response(payload, now=self.clock(), default_scopes=config.scopes)
 
     def refresh(self, config: _TokenConfig, material: SecretMaterial) -> SecretMaterial:
         if material.refresh_token is None:
@@ -214,7 +221,7 @@ class OAuthTokenClient:
             },
             config,
         )
-        refreshed = parse_token_response(payload, now=self.clock())
+        refreshed = parse_token_response(payload, now=self.clock(), default_scopes=material.scopes)
         if refreshed.refresh_token is None:
             refreshed = replace(refreshed, refresh_token=material.refresh_token)
         return refreshed
@@ -474,7 +481,7 @@ class DeviceCodeFlow:
                 if exc.error_code == "expired_token":
                     raise AuthTimeoutError("device authorization expired") from None
                 raise
-            return parse_token_response(payload, now=self.clock())
+            return parse_token_response(payload, now=self.clock(), default_scopes=config.scopes)
         raise AuthTimeoutError("device authorization timed out")
 
     @staticmethod

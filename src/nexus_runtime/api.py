@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import OllamaActor, OllamaTransport
-from .auth import AuthBroker
+from .auth import AuthBroker, ensure_disjoint_auth_world_roots
 from .council import CouncilCoordinator
 from .failsafe import FAILSAFE_SCHEMA_VERSION
 from .game_un import GAME_SCHEMA, action_catalog, advance_turn, apply_action, inspect_game, new_game
@@ -47,10 +47,7 @@ class NexusAPI:
     ) -> None:
         self.auth = auth_broker or AuthBroker(auth_root)
         if world_root is not None:
-            world_path = Path(world_root).expanduser().resolve()
-            auth_path = self.auth.root.expanduser().resolve()
-            if world_path == auth_path or world_path.is_relative_to(auth_path) or auth_path.is_relative_to(world_path):
-                raise ValueError("auth storage and world storage must be disjoint directories")
+            ensure_disjoint_auth_world_roots(self.auth.root, world_root)
         self.world = WorldStore(world_root)
         self.scrubber = SecretScrubber()
         self.geometry = DEFAULT_WORLD_GEOMETRY

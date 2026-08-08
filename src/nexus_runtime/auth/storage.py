@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import stat
 import tempfile
+import threading
 from typing import Any, Mapping, Protocol
 
 from .types import (
@@ -21,6 +22,127 @@ from .types import (
 
 MAX_AUTH_FILE_BYTES = 1_048_576
 KEYRING_SERVICE = "qsol-nexus"
+
+
+class AuthStorageLock:
+    """Re-entrant thread/process lock for one authentication storage root."""
+
+    def __init__(self, root: str | Path) -> None:
+        self.root = Path(root)
+        self.path = self.root / "auth.lock"
+        self._thread_lock = threading.RLock()
+        self._local = threading.local()
+
+    def __enter__(self) -> "AuthStorageLock":
+        self._thread_lock.acquire()
+        depth = getattr(self._local, "depth", 0)
+        if depth:
+            self._local.depth = depth + 1
+            return self
+
+        descriptor: int | None = None
+        handle: Any | None = None
+        try:
+            ensure_private_auth_root(self.root)
+            if self.path.exists() or self.path.is_symlink():
+                _assert_private_regular_file(self.path)
+            flags = os.O_RDWR | os.O_CREAT
+            flags |= getattr(os, "O_CLOEXEC", 0)
+            flags |= getattr(os, "O_NOFOLLOW", 0)
+            flags |= getattr(os, "O_BINARY", 0)
+            descriptor = os.open(self.path, flags, 0o600)
+            info = os.fstat(descriptor)
+            if not stat.S_ISREG(info.st_mode):
+                raise AuthError("authentication storage lock is not a regular file")
+            if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077:
+                raise AuthError("authentication storage lock permissions must be owner-only")
+            handle = os.fdopen(descriptor, "r+b", buffering=0)
+            descriptor = None
+            if os.name == "nt":
+                import msvcrt
+
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    handle.write(b"\0")
+                    handle.flush()
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+            else:
+                import fcntl
+
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        except Exception as exc:
+            try:
+                if handle is not None:
+                    handle.close()
+                elif descriptor is not None:
+                    os.close(descriptor)
+            except OSError:
+                pass
+            self._thread_lock.release()
+            if isinstance(exc, AuthError):
+                raise
+            if isinstance(exc, OSError):
+                raise AuthUnavailableError("authentication storage lock is unavailable") from exc
+            raise
+
+        self._local.handle = handle
+        self._local.depth = 1
+        return self
+
+    def __exit__(self, exc_type: object, exc: object, traceback: object) -> bool:
+        depth = getattr(self._local, "depth", 0)
+        if depth > 1:
+            self._local.depth = depth - 1
+            self._thread_lock.release()
+            return False
+
+        handle = getattr(self._local, "handle", None)
+        unlock_error: OSError | None = None
+        try:
+            if handle is not None:
+                try:
+                    if os.name == "nt":
+                        import msvcrt
+
+                        handle.seek(0)
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
+
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+                except OSError as error:
+                    unlock_error = error
+                finally:
+                    try:
+                        handle.close()
+                    except OSError as error:
+                        if unlock_error is None:
+                            unlock_error = error
+        finally:
+            self._local.depth = 0
+            self._local.handle = None
+            self._thread_lock.release()
+        if unlock_error is not None and exc_type is None:
+            raise AuthUnavailableError("authentication storage lock could not be released") from unlock_error
+        return False
+
+
+_AUTH_STORAGE_LOCKS_GUARD = threading.Lock()
+_AUTH_STORAGE_LOCKS: dict[str, AuthStorageLock] = {}
+
+
+def auth_storage_lock(root: str | Path) -> AuthStorageLock:
+    try:
+        key = str(Path(root).expanduser().resolve())
+    except (OSError, RuntimeError) as exc:
+        raise AuthError("authentication storage root could not be resolved") from exc
+    with _AUTH_STORAGE_LOCKS_GUARD:
+        lock = _AUTH_STORAGE_LOCKS.get(key)
+        if lock is None:
+            lock = AuthStorageLock(Path(key))
+            _AUTH_STORAGE_LOCKS[key] = lock
+        return lock
 
 
 class SecretStore(Protocol):
@@ -53,46 +175,65 @@ def sys_platform() -> str:
 
 
 def _ensure_private_directory(path: Path) -> None:
-    existed = path.exists()
     try:
+        existed = path.exists()
         path.mkdir(mode=0o700, parents=True, exist_ok=True)
-    except OSError as exc:
+        if path.is_symlink() or not path.is_dir() or path.resolve() != path.absolute():
+            raise AuthError("authentication storage directory is not a private directory")
+        if os.name != "nt":
+            permissions = stat.S_IMODE(path.stat().st_mode)
+            if existed and permissions & 0o077:
+                raise AuthError("authentication storage directory permissions must be owner-only")
+            if not existed:
+                os.chmod(path, 0o700)
+    except AuthError:
+        raise
+    except (OSError, RuntimeError) as exc:
         raise AuthError("authentication storage directory could not be prepared") from exc
-    if path.is_symlink() or not path.is_dir() or path.resolve() != path.absolute():
-        raise AuthError("authentication storage directory is not a private directory")
-    if os.name != "nt":
-        permissions = stat.S_IMODE(path.stat().st_mode)
-        if existed and permissions & 0o077:
-            raise AuthError("authentication storage directory permissions must be owner-only")
-        if not existed:
-            os.chmod(path, 0o700)
 
 
 def ensure_private_auth_root(path: str | Path) -> None:
     _ensure_private_directory(Path(path))
 
 
+def ensure_disjoint_auth_world_roots(auth_root: str | Path, world_root: str | Path) -> None:
+    try:
+        auth_path = Path(auth_root).expanduser().resolve()
+        world_path = Path(world_root).expanduser().resolve()
+    except (OSError, RuntimeError) as exc:
+        raise AuthError("auth or world storage root could not be resolved") from exc
+    if auth_path == world_path or auth_path.is_relative_to(world_path) or world_path.is_relative_to(auth_path):
+        raise AuthError("auth storage and world storage must be disjoint directories")
+
+
 def _assert_private_regular_file(path: Path) -> None:
-    if path.parent.resolve() != path.parent.absolute():
-        raise AuthError("authentication storage directory must not traverse symbolic links")
-    parent_info = path.parent.lstat()
-    if not stat.S_ISDIR(parent_info.st_mode):
-        raise AuthError("authentication storage parent is not a directory")
-    if os.name != "nt" and stat.S_IMODE(parent_info.st_mode) & 0o077:
-        raise AuthError("authentication storage directory permissions must be owner-only")
-    info = path.lstat()
-    if not stat.S_ISREG(info.st_mode):
-        raise AuthError("authentication storage file is not a regular file")
-    if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077:
-        raise AuthError("authentication storage file permissions must be owner-only")
+    try:
+        if path.parent.resolve() != path.parent.absolute():
+            raise AuthError("authentication storage directory must not traverse symbolic links")
+        parent_info = path.parent.lstat()
+        if not stat.S_ISDIR(parent_info.st_mode):
+            raise AuthError("authentication storage parent is not a directory")
+        if os.name != "nt" and stat.S_IMODE(parent_info.st_mode) & 0o077:
+            raise AuthError("authentication storage directory permissions must be owner-only")
+        info = path.lstat()
+        if not stat.S_ISREG(info.st_mode):
+            raise AuthError("authentication storage file is not a regular file")
+        if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077:
+            raise AuthError("authentication storage file permissions must be owner-only")
+    except AuthError:
+        raise
+    except (OSError, RuntimeError) as exc:
+        raise AuthError("authentication storage file could not be inspected") from exc
 
 
 def _read_json(path: Path) -> Mapping[str, Any]:
-    _assert_private_regular_file(path)
-    if path.stat().st_size > MAX_AUTH_FILE_BYTES:
-        raise AuthError("authentication storage file exceeds the size limit")
     try:
+        _assert_private_regular_file(path)
+        if path.stat().st_size > MAX_AUTH_FILE_BYTES:
+            raise AuthError("authentication storage file exceeds the size limit")
         value = json.loads(path.read_text(encoding="utf-8"))
+    except AuthError:
+        raise
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise AuthError("authentication storage file is unreadable or invalid") from exc
     if not isinstance(value, dict):
@@ -105,37 +246,49 @@ def _atomic_private_json(path: Path, value: Mapping[str, Any]) -> None:
     payload = json.dumps(value, sort_keys=True, separators=(",", ":")) + "\n"
     if len(payload.encode("utf-8")) > MAX_AUTH_FILE_BYTES:
         raise AuthError("authentication storage payload exceeds the size limit")
-    fd, temporary_name = tempfile.mkstemp(prefix=".nexus-auth-", dir=path.parent, text=True)
-    temporary = Path(temporary_name)
+    fd: int | None = None
+    temporary: Path | None = None
     try:
+        fd, temporary_name = tempfile.mkstemp(prefix=".nexus-auth-", dir=path.parent, text=True)
+        temporary = Path(temporary_name)
         if os.name != "nt":
             os.fchmod(fd, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            fd = None
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
         os.replace(temporary, path)
         if os.name != "nt":
             os.chmod(path, 0o600)
-    except Exception:
+    except Exception as exc:
         try:
-            try:
+            if fd is not None:
                 os.close(fd)
-            except OSError:
-                pass
-            temporary.unlink(missing_ok=True)
-        finally:
-            raise
+            if temporary is not None:
+                temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+        if isinstance(exc, OSError):
+            raise AuthUnavailableError("authentication storage file could not be written") from exc
+        raise
 
 
 class ProfileStore:
     def __init__(self, root: str | Path) -> None:
         self.root = Path(root)
         self.path = self.root / "profiles.json"
+        self.lock = auth_storage_lock(self.root)
 
     def load(self) -> dict[str, AuthProfile]:
-        if not self.path.exists():
-            return {}
+        return self._load_unlocked()
+
+    def _load_unlocked(self) -> dict[str, AuthProfile]:
+        try:
+            if not self.path.exists():
+                return {}
+        except OSError as exc:
+            raise AuthUnavailableError("auth profile store is unavailable") from exc
         value = _read_json(self.path)
         if set(value) != {"schema_version", "profiles"}:
             raise AuthError("auth profile store schema is invalid")
@@ -155,6 +308,10 @@ class ProfileStore:
         return profiles
 
     def save(self, profiles: Mapping[str, AuthProfile]) -> None:
+        with self.lock:
+            self._save_unlocked(profiles)
+
+    def _save_unlocked(self, profiles: Mapping[str, AuthProfile]) -> None:
         if any(key != profile.profile_id for key, profile in profiles.items()):
             raise AuthError("auth profile store key does not match profile identity")
         ordered = [profiles[key].storage_dict() for key in sorted(profiles)]
@@ -164,23 +321,25 @@ class ProfileStore:
         )
 
     def upsert(self, profile: AuthProfile, *, replace: bool = False) -> AuthProfile | None:
-        profiles = self.load()
-        previous = profiles.get(profile.profile_id)
-        if previous is not None and not replace:
-            raise AuthError(f"auth profile {profile.profile_id} already exists")
-        profiles[profile.profile_id] = profile
-        self.save(profiles)
-        return previous
+        with self.lock:
+            profiles = self._load_unlocked()
+            previous = profiles.get(profile.profile_id)
+            if previous is not None and not replace:
+                raise AuthError(f"auth profile {profile.profile_id} already exists")
+            profiles[profile.profile_id] = profile
+            self._save_unlocked(profiles)
+            return previous
 
     def delete(self, adapter_id: str, profile_name: str) -> AuthProfile:
-        profiles = self.load()
-        profile_id = f"{adapter_id}:{profile_name}"
-        try:
-            removed = profiles.pop(profile_id)
-        except KeyError as exc:
-            raise AuthError(f"auth profile {profile_id} does not exist") from exc
-        self.save(profiles)
-        return removed
+        with self.lock:
+            profiles = self._load_unlocked()
+            profile_id = f"{adapter_id}:{profile_name}"
+            try:
+                removed = profiles.pop(profile_id)
+            except KeyError as exc:
+                raise AuthError(f"auth profile {profile_id} does not exist") from exc
+            self._save_unlocked(profiles)
+            return removed
 
 
 class FileSecretStore:
@@ -201,8 +360,11 @@ class FileSecretStore:
 
     def get(self, handle: str) -> SecretMaterial:
         path = self._path(handle)
-        if not path.exists():
-            raise AuthUnavailableError("stored credential is unavailable")
+        try:
+            if not path.exists():
+                raise AuthUnavailableError("stored credential is unavailable")
+        except OSError as exc:
+            raise AuthUnavailableError("stored credential is unavailable") from exc
         value = _read_json(path)
         if set(value) != {"schema_version", "credential"}:
             raise AuthError("stored credential schema is invalid")
@@ -215,15 +377,17 @@ class FileSecretStore:
 
     def delete(self, handle: str) -> None:
         path = self._path(handle)
-        if path.parent.exists():
-            if path.parent.is_symlink() or path.parent.resolve() != path.parent.absolute():
-                raise AuthError("authentication storage directory must not traverse symbolic links")
-            if os.name != "nt" and stat.S_IMODE(path.parent.stat().st_mode) & 0o077:
-                raise AuthError("authentication storage directory permissions must be owner-only")
         try:
+            if path.parent.exists():
+                if path.parent.is_symlink() or path.parent.resolve() != path.parent.absolute():
+                    raise AuthError("authentication storage directory must not traverse symbolic links")
+                if os.name != "nt" and stat.S_IMODE(path.parent.stat().st_mode) & 0o077:
+                    raise AuthError("authentication storage directory permissions must be owner-only")
             path.unlink()
         except FileNotFoundError:
             return
+        except OSError as exc:
+            raise AuthUnavailableError("stored credential could not be deleted") from exc
 
 
 class KeyringSecretStore:

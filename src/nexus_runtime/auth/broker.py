@@ -4,6 +4,7 @@ from dataclasses import dataclass
 import json
 import os
 from pathlib import Path
+import re
 import subprocess
 import threading
 import time
@@ -37,6 +38,12 @@ from .types import (
 
 EXTERNAL_COMMAND_TIMEOUT_SECONDS = 30.0
 MAX_EXTERNAL_COMMAND_OUTPUT_BYTES = 65_536
+_SECRET_BEARING_HELPER_OPTION = re.compile(
+    r"^(?:--?|/)(?:api[-_]?key|(?:access|auth|oauth|refresh|id|identity|session)[-_]?token"
+    r"|client[-_]?secret|private[-_]?key|password|passwd|secret|token|credential"
+    r"|authorization|bearer|cookie)(?:=|:|$)",
+    re.I,
+)
 
 
 @dataclass(frozen=True)
@@ -157,7 +164,6 @@ class AuthBroker:
             self.registry.get(adapter_id)
         self.remote_adapters_admitted = remote_adapters_admitted
         self.environment = environment if environment is not None else os.environ
-        self._refresh_lock = threading.Lock()
 
     def status(self) -> dict[str, Any]:
         profiles = self.profile_store.load()
@@ -375,11 +381,12 @@ class AuthBroker:
     def logout(self, adapter_id: str, profile_name: str = "default") -> dict[str, Any]:
         validate_identifier(adapter_id, "adapter_id")
         validate_identifier(profile_name, "profile_name")
-        profile = self._get_profile(adapter_id, profile_name)
-        if profile.secret_source == "stored":
-            store = self._secret_store(profile.secret_backend)
-            store.delete(profile.credential_handle or "")
-        self.profile_store.delete(adapter_id, profile_name)
+        with self.profile_store.lock:
+            profile = self._get_profile(adapter_id, profile_name)
+            if profile.secret_source == "stored":
+                store = self._secret_store(profile.secret_backend)
+                store.delete(profile.credential_handle or "")
+            self.profile_store.delete(adapter_id, profile_name)
         return {
             "status": "ok",
             "adapter_id": adapter_id,
@@ -412,7 +419,16 @@ class AuthBroker:
         material = store.get(profile.credential_handle or "")
         if not material.is_expired(self.clock()):
             return material
-        with self._refresh_lock:
+        with self.profile_store.lock:
+            profile = self._get_profile(adapter_id, profile_name)
+            if (
+                descriptor.implementation_status != "available"
+                or profile.auth_method not in descriptor.auth_methods
+                or profile.auth_flow not in descriptor.auth_flows
+                or profile.secret_source != "stored"
+            ):
+                raise AuthUnavailableError("auth profile changed while its credential was refreshing")
+            store = self._secret_store(profile.secret_backend)
             material = store.get(profile.credential_handle or "")
             if not material.is_expired(self.clock()):
                 return material
@@ -508,10 +524,26 @@ class AuthBroker:
     ) -> dict[str, Any]:
         validate_identifier(profile_name, "profile_name")
         ensure_private_auth_root(self.root)
-        backend = self.default_secret_backend
-        store = self._secret_store(backend)
+        attempted_backend = self.default_secret_backend
+        backend = attempted_backend
+        store = self._secret_store(attempted_backend)
         handle = f"cred-{uuid.uuid4().hex}"
-        store.put(handle, material)
+        backend_fallback = False
+        fallback_cleanup_pending = False
+        try:
+            store.put(handle, material)
+        except AuthUnavailableError:
+            fallback = self.secret_stores.get(FileSecretStore.backend_id)
+            if fallback is None or attempted_backend == FileSecretStore.backend_id:
+                raise
+            try:
+                store.delete(handle)
+            except (AuthError, OSError):
+                fallback_cleanup_pending = True
+            backend = FileSecretStore.backend_id
+            store = fallback
+            store.put(handle, material)
+            backend_fallback = True
         try:
             result = self._add_profile(
                 adapter_id,
@@ -525,8 +557,14 @@ class AuthBroker:
                 replace=replace,
             )
         except Exception:
-            store.delete(handle)
+            try:
+                store.delete(handle)
+            except (AuthError, OSError):
+                pass
             raise
+        result["credential_backend_fallback"] = backend_fallback
+        if fallback_cleanup_pending:
+            result["credential_cleanup_pending"] = True
         return result
 
     def _add_profile(
@@ -547,25 +585,26 @@ class AuthBroker:
         if type(replace) is not bool:
             raise AuthError("replace must be a boolean")
         ensure_private_auth_root(self.root)
-        profiles = self.profile_store.load()
-        profile_id = f"{adapter_id}:{profile_name}"
-        previous = profiles.get(profile_id)
-        if previous is not None and not replace:
-            raise AuthError(f"auth profile {profile_id} already exists")
-        now = self.clock()
-        profile = AuthProfile(
-            adapter_id=adapter_id,
-            profile_name=profile_name,
-            auth_method=auth_method,
-            auth_flow=auth_flow,
-            secret_source=secret_source,
-            source_metadata=dict(source_metadata),
-            credential_handle=credential_handle,
-            secret_backend=secret_backend,
-            created_at=previous.created_at if previous is not None else now,
-            updated_at=now,
-        )
-        self.profile_store.upsert(profile, replace=replace)
+        with self.profile_store.lock:
+            profiles = self.profile_store.load()
+            profile_id = f"{adapter_id}:{profile_name}"
+            previous = profiles.get(profile_id)
+            if previous is not None and not replace:
+                raise AuthError(f"auth profile {profile_id} already exists")
+            now = self.clock()
+            profile = AuthProfile(
+                adapter_id=adapter_id,
+                profile_name=profile_name,
+                auth_method=auth_method,
+                auth_flow=auth_flow,
+                secret_source=secret_source,
+                source_metadata=dict(source_metadata),
+                credential_handle=credential_handle,
+                secret_backend=secret_backend,
+                created_at=previous.created_at if previous is not None else now,
+                updated_at=now,
+            )
+            previous = self.profile_store.upsert(profile, replace=replace)
         cleanup_warning = False
         if previous is not None and previous.secret_source == "stored":
             if previous.credential_handle != credential_handle or previous.secret_backend != secret_backend:
@@ -650,6 +689,8 @@ class AuthBroker:
             raise AuthError("external command must be a bounded non-empty argv list")
         if not Path(command[0]).is_absolute():
             raise AuthError("external credential helper executable must use an absolute path")
+        if any(_SECRET_BEARING_HELPER_OPTION.match(item) for item in command[1:]):
+            raise AuthError("external credential helper argv must not contain credential-bearing options")
         scrubber = SecretScrubber()
         if any(scrubber.scrub(item).changed for item in command):
             raise AuthError("external credential helper argv must not contain credential-shaped text")

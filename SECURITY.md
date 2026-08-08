@@ -101,12 +101,13 @@ Browser authorization uses an ephemeral `127.0.0.1` callback, state comparison, 
 Credential storage order is:
 
 ```text
-usable OS keyring -> preferred
+usable OS keyring -> preferred and attempted first
+write unavailable -> reported owner-only private_file fallback
 otherwise         -> owner-only private_file fallback
 headless option   -> environment reference or no-shell external helper
 ```
 
-On POSIX the fallback auth directories are `0700` and files are `0600`. Loose permissions, symbolic-link traversal, unknown schema fields, duplicate profiles, and unsupported schema versions fail closed. The fallback does not protect bearer tokens from the same compromised account, privileged malware, or an unencrypted stolen disk.
+On POSIX the fallback auth directories are `0700` and files are `0600`. Loose permissions, symbolic-link traversal, unknown schema fields, duplicate profiles, and unsupported schema versions fail closed. One owner-only interprocess lock serializes profile mutations and refresh-token rotation across CLI/runtime instances. The fallback does not protect bearer tokens from the same compromised account, privileged malware, or an unencrypted stolen disk.
 
 Auth and world directories must be disjoint. Neither may contain the other. NEXUS does not import another CLI's token file, consumer-browser cookies, or another application's OAuth identity.
 

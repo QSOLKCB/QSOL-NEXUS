@@ -10,6 +10,7 @@ Implemented now:
 - browser authorization-code flow with PKCE `S256` and a loopback callback;
 - OAuth device authorization for headless hosts;
 - refresh-token rotation;
+- cross-process serialization of profile mutations and refresh-token rotation;
 - hidden-prompt API credential storage;
 - environment-backed credentials;
 - no-shell external credential helpers;
@@ -111,7 +112,7 @@ The browser flow follows the native-application pattern:
 6. exchange the code directly with the adapter-owned token endpoint using the verifier;
 7. reject token-endpoint redirects;
 8. store token material through the selected credential backend;
-9. refresh expiring tokens through the same fixed token endpoint.
+9. refresh expiring tokens through the same fixed token endpoint, preserving prior scopes when the provider omits an unchanged `scope` field.
 
 Provider endpoints are code-owned descriptor data, not arbitrary values supplied during login. HTTPS is mandatory except for explicit loopback-only fixtures. OAuth response bodies, authorization codes, PKCE verifiers, access tokens, refresh tokens, and credential handles are absent from public results and error messages.
 
@@ -130,9 +131,9 @@ The headless path implements the [RFC 8628 device authorization grant](https://w
 
 ## Credential sources and storage
 
-Stored credentials use the OS keyring when the optional `keyring` integration finds an available backend. Supported native services include macOS Keychain, Freedesktop Secret Service/KWallet, and Windows Credential Locker. See the [keyring project documentation](https://keyring.readthedocs.io/).
+Stored credentials first attempt the OS keyring when the optional `keyring` integration finds an available backend. Supported native services include macOS Keychain, Freedesktop Secret Service/KWallet, and Windows Credential Locker. See the [keyring project documentation](https://keyring.readthedocs.io/).
 
-If no usable OS keyring is installed, NEXUS falls back to an explicitly identified private-file backend:
+If no usable OS keyring is installed—or an enrolled keyring rejects the actual credential write—NEXUS falls back to an explicitly identified private-file backend and reports that fallback in the enrollment result:
 
 ```text
 auth directory: 0700 on POSIX
@@ -141,6 +142,8 @@ secret files:   0600 on POSIX
 ```
 
 Auth directories are created owner-only; an existing directory with group/other permissions is rejected rather than silently chmodded. Files with group/other permissions, symbolic-link traversal, unknown fields, duplicate profiles, or unsupported schema versions fail closed. The private-file fallback protects against other ordinary OS users; it does not protect a bearer token from the same compromised account, privileged malware, or an unencrypted stolen disk. Full-disk encryption remains recommended.
+
+Profile load-modify-save transactions and refresh-token read-refresh-write transactions share one owner-only `auth.lock`. The lock is re-entrant within a process and advisory across processes, preventing concurrent CLI/runtime instances from losing profiles or submitting the same rotating refresh token twice.
 
 Operational overrides:
 
@@ -163,7 +166,7 @@ Environment profiles persist only the variable name. External-command profiles p
 }
 ```
 
-Raw tokens must never be placed in helper arguments. Helper stdout is parsed as secret material and never copied into normal output; stderr is suppressed at the broker boundary.
+Raw tokens must never be placed in helper arguments. Credential-bearing options such as `--token`, `--api-key`, `--password`, and their inline-value forms are rejected before argv is persisted. Helper stdout is parsed as secret material and never copied into normal output; stderr is suppressed at the broker boundary.
 
 ## Grok Build relationship
 

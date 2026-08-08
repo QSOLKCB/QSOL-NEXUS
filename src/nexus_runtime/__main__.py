@@ -6,8 +6,8 @@ import sys
 from typing import Sequence
 
 from .api import NexusAPI
-from .auth import AuthBroker
-from .auth_cli import configure_auth_parser, run_auth_command
+from .auth import AuthBroker, AuthError, ensure_disjoint_auth_world_roots
+from .auth_cli import configure_auth_parser, emit_auth_error, run_auth_command
 
 
 def _demo_request() -> dict:
@@ -35,7 +35,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "auth":
-        return run_auth_command(args, AuthBroker(args.auth_root))
+        try:
+            broker = AuthBroker(args.auth_root)
+            if args.world is not None:
+                ensure_disjoint_auth_world_roots(broker.root, args.world)
+        except (AuthError, EOFError, OSError) as exc:
+            return emit_auth_error(exc)
+        return run_auth_command(args, broker)
 
     api = NexusAPI(args.world, auth_root=args.auth_root)
     if args.demo:

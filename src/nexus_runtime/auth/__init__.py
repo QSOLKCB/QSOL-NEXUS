@@ -1,5 +1,6 @@
 from .broker import AdapterAuthRegistry, AuthBroker, ConnectionCheck
 from .oauth import BrowserPKCEFlow, DeviceAuthorizationPrompt, DeviceCodeFlow, OAuthTokenClient
+from .storage import ensure_disjoint_auth_world_roots
 from .types import (
     AUTH_SCHEMA_VERSION,
     AdapterAuthDescriptor,
@@ -33,6 +34,7 @@ __all__ = [
     "DeviceAuthorizationPrompt",
     "DeviceCodeFlow",
     "DeviceOAuthConfig",
+    "ensure_disjoint_auth_world_roots",
     "OAuthTokenClient",
     "SecretMaterial",
 ]

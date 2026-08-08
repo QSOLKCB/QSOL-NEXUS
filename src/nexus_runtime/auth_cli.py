@@ -58,15 +58,27 @@ def run_auth_command(args: argparse.Namespace, broker: AuthBroker) -> int:
         else:
             raise AuthError("unknown auth command")
     except (AuthError, EOFError, OSError) as exc:
-        print(
-            json.dumps(
-                {"status": "error", "error": {"code": "auth_error", "message": str(exc)}},
-                sort_keys=True,
-            )
-        )
-        return 2
+        return emit_auth_error(exc)
     print(json.dumps(result, indent=2, sort_keys=True))
     return 0 if result.get("status") in {"ok", "ready"} else 1
+
+
+def emit_auth_error(exc: BaseException) -> int:
+    if isinstance(exc, AuthError):
+        message = str(exc)
+        if not message or len(message) > 256 or any(ord(character) < 0x20 for character in message):
+            message = "authentication operation failed"
+    elif isinstance(exc, EOFError):
+        message = "authentication input was unavailable"
+    else:
+        message = "authentication operation failed"
+    print(
+        json.dumps(
+            {"status": "error", "error": {"code": "auth_error", "message": message}},
+            sort_keys=True,
+        )
+    )
+    return 2
 
 
 def _add_profile(args: argparse.Namespace, broker: AuthBroker) -> dict[str, Any]:

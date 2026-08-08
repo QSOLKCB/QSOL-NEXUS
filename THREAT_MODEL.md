@@ -233,11 +233,13 @@ Threat: another local user reads fallback bearer-token files, a symlink redirect
 
 Controls:
 - a usable OS keyring is preferred when the optional integration exists;
+- a rejected keyring write falls back to the owner-only private-file store and is reported in the enrollment result;
 - POSIX auth directories are created `0700` and must already be owner-only if present; files are written `0600` and checked on read;
 - symbolic-link directory traversal and non-regular secret files are rejected;
 - profile and secret schemas use exact field sets and explicit versions;
 - identifiers are bounded before they become filenames;
 - writes use same-directory temporary files plus atomic replacement.
+- profile mutations and refresh-token rotation share an owner-only interprocess lock.
 
 Residual risk: `private_file` is permission-protected, not encrypted from the same OS account. Full-disk encryption and an OS keyring are recommended.
 
@@ -251,6 +253,7 @@ Controls:
 - execution has a timeout;
 - stderr is suppressed at the broker boundary;
 - stdout must be bounded UTF-8 JSON with a closed token-field allowlist;
+- credential-bearing argv options are rejected even when an opaque value evades format-based secret detection;
 - helper output is transient and omitted from profiles/public results.
 
 Residual risk: the helper is explicitly trusted operator code and inherits its configured environment. Raw tokens remain forbidden in helper argv, and helper admission/packaging is outside this PR.

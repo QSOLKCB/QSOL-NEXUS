@@ -6,6 +6,7 @@ import hashlib
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import io
 import json
+import multiprocessing
 import os
 from pathlib import Path
 from queue import Queue
@@ -14,7 +15,9 @@ import sys
 import tempfile
 import threading
 import time
+from types import SimpleNamespace
 import unittest
+from unittest import mock
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
 from urllib.request import urlopen
@@ -27,8 +30,10 @@ from nexus_runtime.auth import (
     AuthError,
     AuthFlow,
     AuthMethod,
+    AuthProfile,
     AuthProtocolError,
     AuthTimeoutError,
+    AuthUnavailableError,
     BrowserOAuthConfig,
     BrowserPKCEFlow,
     ConnectionCheck,
@@ -39,11 +44,114 @@ from nexus_runtime.auth import (
 )
 from nexus_runtime.auth.oauth import MAX_DEVICE_AUTHORIZATION_SECONDS, OAuthHTTPClient
 from nexus_runtime.auth.storage import FileSecretStore, ProfileStore, available_secret_stores
+from nexus_runtime.auth_cli import run_auth_command
 
 
 FAKE_ACCESS_TOKEN = "fixture-access-token-DO-NOT-PERSIST-IN-WORLD"
 FAKE_REFRESH_TOKEN = "fixture-refresh-token-DO-NOT-PRINT"
 REFRESHED_ACCESS_TOKEN = "fixture-refreshed-access-token"
+
+
+def _headless_descriptor() -> AdapterAuthDescriptor:
+    return AdapterAuthDescriptor(
+        adapter_id="fixture",
+        provider_name="Fixture Provider",
+        local_or_remote="remote",
+        auth_methods=(AuthMethod.API_CREDENTIAL,),
+        auth_flows=(AuthFlow.ENVIRONMENT,),
+    )
+
+
+def _refresh_descriptor() -> AdapterAuthDescriptor:
+    return AdapterAuthDescriptor(
+        adapter_id="fixture",
+        provider_name="Fixture Provider",
+        local_or_remote="remote",
+        auth_methods=(AuthMethod.PROVIDER_SUPPORTED_INTERACTIVE,),
+        auth_flows=(AuthFlow.BROWSER_PKCE,),
+        browser_oauth=BrowserOAuthConfig(
+            authorization_endpoint="https://auth.example.test/authorize",
+            token_endpoint="https://auth.example.test/token",
+            client_id="client",
+            scopes=("models.read", "inference"),
+            allowed_endpoint_hosts=("auth.example.test",),
+        ),
+    )
+
+
+class _SlowProfileStore(ProfileStore):
+    def _load_unlocked(self) -> dict[str, AuthProfile]:
+        profiles = super()._load_unlocked()
+        time.sleep(0.15)
+        return profiles
+
+
+class _CoordinatedFileSecretStore(FileSecretStore):
+    def __init__(self, root: str | Path, barrier: object) -> None:
+        super().__init__(root)
+        self._barrier = barrier
+        self._first_get = True
+
+    def get(self, handle: str) -> SecretMaterial:
+        material = super().get(handle)
+        if self._first_get:
+            self._first_get = False
+            self._barrier.wait(timeout=5)  # type: ignore[attr-defined]
+        return material
+
+
+class _ProcessTokenClient:
+    def __init__(self, refresh_count: object) -> None:
+        self._refresh_count = refresh_count
+
+    def refresh(self, config: object, material: SecretMaterial) -> SecretMaterial:
+        with self._refresh_count.get_lock():  # type: ignore[attr-defined]
+            self._refresh_count.value += 1  # type: ignore[attr-defined]
+        time.sleep(0.1)
+        return SecretMaterial(
+            REFRESHED_ACCESS_TOKEN,
+            material.refresh_token,
+            expires_at=4_600.0,
+            scopes=material.scopes,
+        )
+
+
+def _process_add_environment(root: str, profile_name: str, start: object, results: object) -> None:
+    try:
+        profile_store = _SlowProfileStore(root)
+        secret_store = FileSecretStore(root)
+        broker = AuthBroker(
+            root,
+            descriptors=(_headless_descriptor(),),
+            profile_store=profile_store,
+            secret_stores={secret_store.backend_id: secret_store},
+        )
+        start.wait(timeout=5)  # type: ignore[attr-defined]
+        broker.add_environment("fixture", profile_name, "FIXTURE_TOKEN")
+        results.put(None)  # type: ignore[attr-defined]
+    except BaseException as exc:
+        results.put(repr(exc))  # type: ignore[attr-defined]
+
+
+def _process_resolve_refresh(
+    root: str,
+    barrier: object,
+    refresh_count: object,
+    results: object,
+) -> None:
+    try:
+        secret_store = _CoordinatedFileSecretStore(root, barrier)
+        broker = AuthBroker(
+            root,
+            descriptors=(_refresh_descriptor(),),
+            secret_stores={secret_store.backend_id: secret_store},
+            token_client=_ProcessTokenClient(refresh_count),  # type: ignore[arg-type]
+            clock=lambda: 1_000.0,
+        )
+        material = broker.resolve("fixture", "shared")
+        results.put(material.access_token)  # type: ignore[union-attr,attr-defined]
+    except BaseException as exc:
+        results.put(repr(exc))  # type: ignore[attr-defined]
 
 
 class _OAuthFixtureHandler(BaseHTTPRequestHandler):
@@ -96,7 +204,6 @@ class _OAuthFixtureHandler(BaseHTTPRequestHandler):
                     "access_token": REFRESHED_ACCESS_TOKEN,
                     "token_type": "Bearer",
                     "expires_in": 3600,
-                    "scope": "models.read inference",
                 },
             )
             return
@@ -107,7 +214,6 @@ class _OAuthFixtureHandler(BaseHTTPRequestHandler):
                 "refresh_token": FAKE_REFRESH_TOKEN,
                 "token_type": "Bearer",
                 "expires_in": 3600,
-                "scope": "models.read inference",
                 "id_token": "discard-this-id-token",
             },
         )
@@ -277,6 +383,19 @@ class AuthStorageTests(unittest.TestCase):
             with self.assertRaisesRegex(AuthError, "owner-only"):
                 store.get(handle)
 
+    def test_file_store_delete_sanitizes_os_errors(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            store = FileSecretStore(root)
+            handle = "cred-55555555555555555555555555555555"
+            store.put(handle, SecretMaterial(FAKE_ACCESS_TOKEN))
+            leaked_path = str(root / "secrets" / f"{handle}.json")
+            with mock.patch.object(Path, "unlink", side_effect=PermissionError(13, "denied", leaked_path)):
+                with self.assertRaises(AuthUnavailableError) as raised:
+                    store.delete(handle)
+            self.assertEqual(str(raised.exception), "stored credential could not be deleted")
+            self.assertNotIn(leaked_path, str(raised.exception))
+
     def test_profile_store_rejects_unknown_fields(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -301,6 +420,18 @@ class AuthStorageTests(unittest.TestCase):
             store = FileSecretStore(link)
             with self.assertRaisesRegex(AuthError, "private directory"):
                 store.put("cred-44444444444444444444444444444444", SecretMaterial(FAKE_ACCESS_TOKEN))
+
+    def test_profile_store_rejects_symlinked_interprocess_lock(self) -> None:
+        if os.name == "nt":
+            self.skipTest("symbolic-link fixture")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "unrelated"
+            target.write_bytes(b"x")
+            target.chmod(0o600)
+            (root / "auth.lock").symlink_to(target)
+            with self.assertRaisesRegex(AuthError, "regular file"):
+                ProfileStore(root).save({})
 
     def test_broker_does_not_chmod_or_write_into_broad_preexisting_root(self) -> None:
         if os.name == "nt":
@@ -343,6 +474,73 @@ class AuthStorageTests(unittest.TestCase):
             handle = "cred-33333333333333333333333333333333"
             stores[default].put(handle, SecretMaterial(FAKE_ACCESS_TOKEN))
             self.assertEqual(stores[default].get(handle).access_token, FAKE_ACCESS_TOKEN)
+
+    def test_unavailable_keyring_write_falls_back_to_private_file_and_reports_it(self) -> None:
+        class Backend:
+            priority = 1
+
+        class LockedKeyring:
+            @staticmethod
+            def get_keyring() -> Backend:
+                return Backend()
+
+            @staticmethod
+            def set_password(service: str, handle: str, value: str) -> None:
+                raise RuntimeError("keyring is locked")
+
+            @staticmethod
+            def get_password(service: str, handle: str) -> None:
+                return None
+
+            @staticmethod
+            def delete_password(service: str, handle: str) -> None:
+                return None
+
+        with _ServerFixture() as server, tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stores, default = available_secret_stores(root, keyring_module=LockedKeyring)
+            broker = AuthBroker(
+                root,
+                descriptors=(_descriptor(server.server_port),),
+                secret_stores=stores,
+                default_secret_backend=default,
+            )
+            result = broker.add_api_key("fixture", "default", FAKE_ACCESS_TOKEN)
+            self.assertTrue(result["credential_backend_fallback"])
+            self.assertEqual(result["profile"]["source"]["backend"], "private_file")
+            profile = broker.profile_store.load()["fixture:default"]
+            self.assertEqual(profile.secret_backend, "private_file")
+            self.assertEqual(stores["private_file"].get(profile.credential_handle).access_token, FAKE_ACCESS_TOKEN)
+
+    def test_profile_mutations_preserve_concurrent_process_updates(self) -> None:
+        try:
+            context = multiprocessing.get_context("fork")
+        except ValueError:
+            self.skipTest("fork-based interprocess lock fixture")
+        with tempfile.TemporaryDirectory() as directory:
+            start = context.Event()
+            results = context.Queue()
+            processes = [
+                context.Process(
+                    target=_process_add_environment,
+                    args=(directory, profile_name, start, results),
+                )
+                for profile_name in ("alpha", "beta")
+            ]
+            for process in processes:
+                process.start()
+            start.set()
+            for process in processes:
+                process.join(timeout=10)
+                if process.is_alive():
+                    process.terminate()
+                    process.join(timeout=2)
+                    self.fail("concurrent auth profile process did not finish")
+            self.assertEqual([results.get(timeout=2) for _ in processes], [None, None])
+            profiles = ProfileStore(directory).load()
+            self.assertEqual(set(profiles), {"fixture:alpha", "fixture:beta"})
+            if os.name != "nt":
+                self.assertEqual(stat.S_IMODE((Path(directory) / "auth.lock").stat().st_mode), 0o600)
 
 
 class AuthBrokerTests(unittest.TestCase):
@@ -393,12 +591,20 @@ class AuthBrokerTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(AuthError, "absolute"):
                 broker.add_external_command("fixture", "corp", ["helper"])
-            with self.assertRaisesRegex(AuthError, "credential-shaped"):
+            with self.assertRaisesRegex(AuthError, "credential-bearing options"):
                 broker.add_external_command(
                     "fixture",
                     "corp",
-                    [sys.executable, "--token", "ghp_" + "Q" * 32],
+                    [sys.executable, "--token", "opaque-provider-value"],
                 )
+            with self.assertRaisesRegex(AuthError, "credential-bearing options"):
+                broker.add_external_command(
+                    "fixture",
+                    "corp",
+                    [sys.executable, "--api-key=opaque-provider-value"],
+                )
+            with self.assertRaisesRegex(AuthError, "credential-shaped"):
+                broker.add_external_command("fixture", "corp", [sys.executable, "ghp_" + "Q" * 32])
             broker.add_external_command(
                 "fixture",
                 "corp",
@@ -538,7 +744,9 @@ class BrowserPKCETests(unittest.TestCase):
             public = json.dumps({"result": outcome["result"], "list": broker.list_profiles()}, sort_keys=True)
             self.assertNotIn(FAKE_ACCESS_TOKEN, public)
             self.assertNotIn(FAKE_REFRESH_TOKEN, public)
-            self.assertEqual(broker.resolve("fixture", "personal").access_token, FAKE_ACCESS_TOKEN)
+            resolved = broker.resolve("fixture", "personal")
+            self.assertEqual(resolved.access_token, FAKE_ACCESS_TOKEN)
+            self.assertEqual(resolved.scopes, ("models.read", "inference"))
 
     def test_token_endpoint_redirect_is_rejected_without_contacting_target(self) -> None:
         with _ServerFixture() as provider:
@@ -580,6 +788,7 @@ class BrowserPKCETests(unittest.TestCase):
                     access_token="expired-access",
                     refresh_token=FAKE_REFRESH_TOKEN,
                     expires_at=900.0,
+                    scopes=("models.read", "inference"),
                 ),
             )
             # Turn the fixture profile into a browser-flow profile without
@@ -595,6 +804,7 @@ class BrowserPKCETests(unittest.TestCase):
             refreshed = broker.resolve("fixture", "temporary")
             self.assertEqual(refreshed.access_token, REFRESHED_ACCESS_TOKEN)
             self.assertEqual(refreshed.refresh_token, FAKE_REFRESH_TOKEN)
+            self.assertEqual(refreshed.scopes, ("models.read", "inference"))
             refresh_posts = [form for path, form in _OAuthFixtureHandler.posted if path == "/token"]
             self.assertEqual(refresh_posts[0]["grant_type"], ["refresh_token"])
 
@@ -653,6 +863,62 @@ class BrowserPKCETests(unittest.TestCase):
             self.assertEqual(results, [REFRESHED_ACCESS_TOKEN] * 4)
             self.assertEqual(token_client.calls, 1)
 
+    def test_parallel_processes_rotate_an_expired_refresh_token_once(self) -> None:
+        try:
+            context = multiprocessing.get_context("fork")
+        except ValueError:
+            self.skipTest("fork-based interprocess lock fixture")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            handle = "cred-66666666666666666666666666666666"
+            secret_store = FileSecretStore(root)
+            secret_store.put(
+                handle,
+                SecretMaterial(
+                    "expired",
+                    FAKE_REFRESH_TOKEN,
+                    expires_at=900.0,
+                    scopes=("models.read", "inference"),
+                ),
+            )
+            ProfileStore(root).upsert(
+                AuthProfile(
+                    adapter_id="fixture",
+                    profile_name="shared",
+                    auth_method=AuthMethod.PROVIDER_SUPPORTED_INTERACTIVE,
+                    auth_flow=AuthFlow.BROWSER_PKCE,
+                    secret_source="stored",
+                    source_metadata={},
+                    credential_handle=handle,
+                    secret_backend="private_file",
+                    created_at=1.0,
+                    updated_at=1.0,
+                )
+            )
+            barrier = context.Barrier(2)
+            refresh_count = context.Value("i", 0)
+            results = context.Queue()
+            processes = [
+                context.Process(
+                    target=_process_resolve_refresh,
+                    args=(directory, barrier, refresh_count, results),
+                )
+                for _ in range(2)
+            ]
+            for process in processes:
+                process.start()
+            for process in processes:
+                process.join(timeout=10)
+                if process.is_alive():
+                    process.terminate()
+                    process.join(timeout=2)
+                    self.fail("concurrent credential refresh process did not finish")
+            self.assertEqual(
+                [results.get(timeout=2) for _ in processes],
+                [REFRESHED_ACCESS_TOKEN, REFRESHED_ACCESS_TOKEN],
+            )
+            self.assertEqual(refresh_count.value, 1)
+
 
 class DeviceCodeTests(unittest.TestCase):
     def test_device_flow_polls_pending_then_returns_token_and_bounded_prompt(self) -> None:
@@ -668,6 +934,7 @@ class DeviceCodeTests(unittest.TestCase):
                 on_prompt=lambda prompt: prompts.append(prompt.public_dict()),
             )
             self.assertEqual(material.access_token, FAKE_ACCESS_TOKEN)
+            self.assertEqual(material.scopes, ("models.read", "inference"))
             self.assertEqual(_OAuthFixtureHandler.device_polls, 2)
             self.assertEqual(prompts[0]["user_code"], "NEX-US16")
             self.assertNotIn("secret-device-code", json.dumps(prompts))
@@ -765,6 +1032,46 @@ class AuthAPITests(unittest.TestCase):
             value = json.loads(output.getvalue())
             self.assertEqual([row["adapter_id"] for row in value["adapters"]], ["mock", "ollama"])
             self.assertNotIn("credential", output.getvalue())
+
+    def test_cli_rejects_auth_storage_nested_inside_world_storage(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            world_root = Path(directory) / "world"
+            auth_root = world_root / "auth"
+            output = io.StringIO()
+            with redirect_stdout(output):
+                exit_code = main(
+                    [
+                        "--world",
+                        str(world_root),
+                        "--auth-root",
+                        str(auth_root),
+                        "auth",
+                        "adapters",
+                    ]
+                )
+            self.assertEqual(exit_code, 2)
+            value = json.loads(output.getvalue())
+            self.assertEqual(value["error"]["message"], "auth storage and world storage must be disjoint directories")
+            self.assertFalse(auth_root.exists())
+
+    def test_cli_sanitizes_raw_os_errors(self) -> None:
+        leaked_path = "/private/operator/auth/secrets/token.json"
+
+        class FailingBroker:
+            @staticmethod
+            def adapters() -> dict[str, object]:
+                raise PermissionError(13, "denied", leaked_path)
+
+        output = io.StringIO()
+        with redirect_stdout(output):
+            exit_code = run_auth_command(
+                SimpleNamespace(auth_action="adapters"),  # type: ignore[arg-type]
+                FailingBroker(),  # type: ignore[arg-type]
+            )
+        self.assertEqual(exit_code, 2)
+        value = json.loads(output.getvalue())
+        self.assertEqual(value["error"]["message"], "authentication operation failed")
+        self.assertNotIn(leaked_path, output.getvalue())
 
 
 if __name__ == "__main__":
