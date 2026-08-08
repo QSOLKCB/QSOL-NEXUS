@@ -6,6 +6,7 @@ from typing import Any
 
 from .adapters import OllamaActor, OllamaTransport
 from .council import CouncilCoordinator
+from .failsafe import FAILSAFE_SCHEMA_VERSION
 from .game_un import GAME_SCHEMA, action_catalog, advance_turn, apply_action, inspect_game, new_game
 from .game_mud import (
     MUD_SCHEMA,
@@ -24,8 +25,8 @@ from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.8"
-RUNTIME_VERSION = "2.0.0-alpha6.4"
+PROTOCOL_VERSION = "nexus/0.9"
+RUNTIME_VERSION = "2.0.0-alpha6.6"
 
 
 class NexusAPI:
@@ -62,6 +63,7 @@ class NexusAPI:
                     "world_modes": [mode.mode_id for mode in list_modes()],
                     "geometry": self.geometry.snapshot()["geometry_id"],
                     "telemetry": {"schema_version": TELEMETRY_SCHEMA_VERSION, "role": "observational_only"},
+                    "failsafe": self.council.failsafe.policy_dict(),
                     "games": [
                         {"game_id": "un_sim", "schema": GAME_SCHEMA, "room": "#un-sim", "fictional_only": True},
                         {"game_id": "mud", "schema": MUD_SCHEMA, "room": "#mud", "fictional_only": True},
@@ -81,6 +83,7 @@ class NexusAPI:
                         "world.geometry.distance",
                         "receipt.verify",
                         "telemetry.verify",
+                        "failsafe.status",
                         "game.un.catalog",
                         "game.un.new",
                         "game.un.inspect",
@@ -161,6 +164,15 @@ class NexusAPI:
                     "matches": matches,
                     "schema_version": TELEMETRY_SCHEMA_VERSION,
                     "recomputed": recomputed,
+                }
+            elif operation == "failsafe.status":
+                member_id = request.get("member_id")
+                if member_id is not None and (not isinstance(member_id, str) or not member_id.strip()):
+                    raise ValueError("member_id must be non-empty text when supplied")
+                response = {
+                    "status": "ok",
+                    "schema_version": FAILSAFE_SCHEMA_VERSION,
+                    **self.council.failsafe.status_snapshot(member_id),
                 }
             elif operation == "game.un.catalog":
                 response = {

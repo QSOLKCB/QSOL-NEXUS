@@ -26,14 +26,15 @@ NEXUS now has:
 - bounded ordered-parallel Council execution;
 - explicit game rooms: **`#un-sim`** and the cursed multi-avatar **`#mud`**;
 - **Pure History Mode — No Ancient Aliens Edition** for source-forensic historical deliberation;
-- a hidden Rust-TUI **`/GO64` Secret Alias Mode** with a text demoscene and DR. S.BAITSO tribute.
+- a hidden Rust-TUI **`/GO64` Secret Alias Mode** with a text demoscene and DR. S.BAITSO tribute;
+- **NEXUS Failsafe** containment with the cursed Upside Down, bounded rehabilitation, Shadow Realm, and deterministic equal-vote relief actors.
 
 Current posture:
 
 ```text
-protocol: nexus/0.8
-runtime version: 2.0.0-alpha6.4
-operator TUI version: 2.0.0-alpha6.5
+protocol: nexus/0.9
+runtime version: 2.0.0-alpha6.6
+operator TUI version: 2.0.0-alpha6.6
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
 actor backends: mock + explicit loopback Ollama
@@ -69,6 +70,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
             | world + Council     |
             | modes + geometry    |
             | telemetry + games   |
+            | Failsafe / Shadow   |
             | Secret Scrubber     |
             +----------+----------+
                        |
@@ -178,6 +180,14 @@ Normal public text is treated as a Council question. Council phases and ballots 
 The Rust shell also contains a deliberately hidden `/GO64` overlay. It is absent from ordinary `/help` and command completion, changes no World Mode or evidence state, and leaves the current room underneath it. Device 8 loads an original text-only NEXUS/64 demoscene about why **newer is not automatically better**; device 9 loads an original DR. S.BAITSO meme-therapist tribute adapted from QSOLKCB/ETHICS. At 20 minutes both programs acquire terminally-online brainrot diction; at 30 minutes `/grass` unlocks and returns to the unchanged NEXUS room.
 
 See [`docs/GO64.md`](docs/GO64.md) for the contract and copyright/claim boundary.
+
+### Actor failsafe / Shadow Realm
+
+If a Council actor repeats a registered procedural guard violation after the ordinary nudge, NEXUS removes it from normal Council influence and sends it through one isolated **Upside Down** rehabilitation probe with no evidence, vote, other-member output, or world mutation capability. A clean probe grants parole at the next Council hat. A failed probe sends the original actor to the **Shadow Realm** and a deterministic local relief model occupies the same one-vote seat on subsequent Council runs. Disagreement, model size, provider identity, openness, benchmark rank, and being wrong are not Failsafe triggers.
+
+Failsafe state is recorded as immutable content-addressed world objects; a durable pointer index preserves Shadow-Realm state across runtime restarts. See [`docs/FAILSAFE.md`](docs/FAILSAFE.md).
+
+> **The troll layer may be cursed. The trigger must be boring.**
 
 Useful commands:
 
