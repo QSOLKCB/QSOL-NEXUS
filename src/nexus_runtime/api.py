@@ -11,8 +11,8 @@ from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.1"
-RUNTIME_VERSION = "2.0.0-alpha1"
+PROTOCOL_VERSION = "nexus/0.2"
+RUNTIME_VERSION = "2.0.0-alpha3"
 
 
 class NexusAPI:
@@ -37,6 +37,7 @@ class NexusAPI:
                     "runtime_version": RUNTIME_VERSION,
                     "network": "none",
                     "adapters": ["mock"],
+                    "actor_backends_available": ["mock", "ollama"],
                 }
             elif operation == "system.operations":
                 response = {
@@ -134,7 +135,7 @@ class NexusAPI:
             epistemic_privilege=epistemic_privilege,
         )
         if member.adapter_id != "mock":
-            raise ValueError("this alpha exposes only the network-free mock adapter")
+            raise ValueError("the JSONL control API currently exposes only the mock adapter")
         return DeterministicMockActor(
             member=member,
             profile=item.get("profile", "balanced"),
