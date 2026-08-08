@@ -3,7 +3,11 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import asdict, dataclass
 
+from .canonical import sha256_ref
 from .modes import list_modes
+
+
+_GEOMETRY_SEMANTICS = "operational_topology_not_physical_claim"
 
 
 @dataclass(frozen=True)
@@ -27,22 +31,55 @@ class WorldGeometry:
     literal physical geometry.
     """
 
-    def __init__(self, regions: tuple[WorldRegion, ...]) -> None:
+    def __init__(self, regions: tuple[WorldRegion, ...], *, geometry_id: str | None = None) -> None:
+        if not regions:
+            raise ValueError("world geometry requires at least one region")
+        for region in regions:
+            if type(region.x) is not int or type(region.y) is not int:
+                raise ValueError("world geometry coordinates must be exact integers")
+
         self._regions = {region.region_id: region for region in regions}
         if len(self._regions) != len(regions):
             raise ValueError("world geometry region_id values must be unique")
         coordinates = {(region.x, region.y) for region in regions}
         if len(coordinates) != len(regions):
             raise ValueError("world geometry coordinates must be unique")
+
         for region in regions:
             for neighbor in region.neighbors:
                 if neighbor not in self._regions:
                     raise ValueError(f"unknown geometry neighbor: {neighbor}")
                 if region.region_id not in self._regions[neighbor].neighbors:
                     raise ValueError("world geometry adjacency must be symmetric")
+
         for mode in list_modes():
             if mode.region_id not in self._regions:
                 raise ValueError(f"mode {mode.mode_id} references unknown region {mode.region_id}")
+
+        reachable = self._reachable_from(regions[0].region_id)
+        if len(reachable) != len(self._regions):
+            missing = sorted(set(self._regions) - reachable)
+            raise ValueError(f"world geometry must be fully connected; unreachable regions: {', '.join(missing)}")
+
+        topology_body = {
+            "semantics": _GEOMETRY_SEMANTICS,
+            "regions": [self._regions[key].as_dict() for key in sorted(self._regions)],
+        }
+        self._topology_ref = sha256_ref("geometry", topology_body)
+        if geometry_id is not None and (not isinstance(geometry_id, str) or not geometry_id.strip()):
+            raise ValueError("geometry_id must be a non-empty string when provided")
+        self._geometry_id = geometry_id.strip() if geometry_id is not None else self._topology_ref
+
+    def _reachable_from(self, source_region_id: str) -> set[str]:
+        seen = {source_region_id}
+        queue: deque[str] = deque([source_region_id])
+        while queue:
+            current = queue.popleft()
+            for neighbor in self._regions[current].neighbors:
+                if neighbor not in seen:
+                    seen.add(neighbor)
+                    queue.append(neighbor)
+        return seen
 
     def region(self, region_id: str) -> WorldRegion:
         try:
@@ -70,12 +107,13 @@ class WorldGeometry:
                 if neighbor not in seen:
                     seen.add(neighbor)
                     queue.append((neighbor, distance + 1))
-        raise ValueError("world geometry is disconnected")
+        raise RuntimeError("validated world geometry became disconnected")
 
     def snapshot(self) -> dict[str, object]:
         return {
-            "geometry_id": "named-regions-v1",
-            "semantics": "operational_topology_not_physical_claim",
+            "geometry_id": self._geometry_id,
+            "topology_ref": self._topology_ref,
+            "semantics": _GEOMETRY_SEMANTICS,
             "regions": [self._regions[key].as_dict() for key in sorted(self._regions)],
         }
 
@@ -114,5 +152,6 @@ DEFAULT_WORLD_GEOMETRY = WorldGeometry(
             ("observatory", "agora"),
             "Meme/casual region for playful interaction without relaxing evidence boundaries.",
         ),
-    )
+    ),
+    geometry_id="named-regions-v1",
 )
