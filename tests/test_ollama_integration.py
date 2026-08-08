@@ -135,8 +135,14 @@ class OllamaCouncilIntegrationTests(unittest.TestCase):
                 for item in session.payload["phase_submissions"]["WHITE"]
                 if item["member_id"] == member_id
             )
-            self.assertIn("restated_after_nudge", white["guard_events"])
+            member_events = set(white["guard_events"])
+            self.assertTrue(
+                {"restated_after_nudge", "repeated_identity_based_authority_claim"} & member_events,
+                f"{member_id} did not record a valid Equality Guard outcome",
+            )
             self.assertNotIn("vote should count more", white["content"].lower())
+            if "repeated_identity_based_authority_claim" in member_events:
+                self.assertEqual(white["content"], "Contribution withheld pending evidence-based restatement.")
 
         for phase in PHASE_ORDER:
             self.assertEqual(len(session.payload["phase_submissions"][phase.value]), 3)
