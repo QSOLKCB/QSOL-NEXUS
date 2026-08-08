@@ -11,7 +11,7 @@ use nexus_irc_tui::scripting::{expand_identifiers, IdentifierContext, VariableBo
 use nexus_irc_tui::{
     command_completions, load_document, normalize_action, parse_input, room_from_name,
     sanitize_terminal_text, AliasBook, DccCommand, DccKind, DccSession, GameCommand, InputCommand,
-    RoomSpec, ROOMS,
+    MudCommand, RoomSpec, ROOMS,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -197,6 +197,7 @@ struct App {
     members: Vec<MemberConfig>,
     room_evidence: BTreeMap<String, Vec<String>>,
     game_refs: BTreeMap<String, String>,
+    mud_refs: BTreeMap<String, String>,
     targeted_evidence: BTreeMap<String, Vec<String>>,
     dcc_sessions: Vec<DccSession>,
     private_target: Option<String>,
@@ -224,6 +225,7 @@ impl App {
             ],
             room_evidence: BTreeMap::new(),
             game_refs: BTreeMap::new(),
+            mud_refs: BTreeMap::new(),
             targeted_evidence: BTreeMap::new(),
             dcc_sessions: Vec::new(),
             private_target: None,
@@ -238,7 +240,7 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS 2.0 alpha6.2 IRC/TUI — local room, no IRC server");
+        app.append("*** NEXUS 2.0 alpha6.3 IRC/TUI — local room, no IRC server");
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );
@@ -402,6 +404,7 @@ impl App {
                 self.run_council(nexus, &question)?;
             }
             InputCommand::Game(command) => self.execute_game(nexus, command)?,
+            InputCommand::Mud(command) => self.execute_mud(nexus, command)?,
             InputCommand::Say(text) => {
                 if let Some(target) = self.private_target.clone() {
                     self.direct_message(nexus, &target, &text)?;
@@ -575,6 +578,276 @@ impl App {
                 self.scroll_offset = 0;
             }
             InputCommand::Quit => self.running = false,
+        }
+        Ok(())
+    }
+
+    fn current_mud_ref(&self) -> Option<&str> {
+        let channel = self.room.channel;
+        let mud_ref = self.mud_refs.get(channel).map(String::as_str)?;
+        let in_evidence = self
+            .room_evidence
+            .get(channel)
+            .map(|refs| refs.iter().any(|value| value == mud_ref))
+            .unwrap_or(false);
+        if in_evidence {
+            Some(mud_ref)
+        } else {
+            None
+        }
+    }
+
+    fn set_mud_ref(&mut self, mud_ref: String) {
+        let channel = self.room.channel.to_string();
+        if let Some(previous) = self.mud_refs.insert(channel.clone(), mud_ref.clone()) {
+            if let Some(refs) = self.room_evidence.get_mut(&channel) {
+                refs.retain(|value| value != &previous);
+            }
+        }
+        self.add_room_evidence(&channel, mud_ref);
+    }
+
+    fn require_mud_room(&self) -> Result<(), String> {
+        if self.room.mode_id != "game_mud" {
+            return Err("/mud commands are available in #mud; use /join #mud".to_string());
+        }
+        Ok(())
+    }
+
+    fn mud_roster(&self) -> Result<Vec<String>, String> {
+        let mut players = vec![self.nick.clone()];
+        players.extend(self.members.iter().map(|member| member.nick.clone()));
+        let mut folded = std::collections::BTreeSet::new();
+        for player in &players {
+            if player.is_empty()
+                || player.len() > 32
+                || !player
+                    .chars()
+                    .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '_' | '.' | '-'))
+            {
+                return Err(format!(
+                    "MUD avatar id {player:?} must use 1-32 ASCII letters, digits, _, . or -"
+                ));
+            }
+            if !folded.insert(player.to_ascii_lowercase()) {
+                return Err(format!("duplicate MUD avatar id: {player}"));
+            }
+        }
+        Ok(players)
+    }
+
+    fn execute_mud(&mut self, nexus: &mut NexusProcess, command: MudCommand) -> Result<(), String> {
+        self.require_mud_room()?;
+        match command {
+            MudCommand::Help => {
+                for line in [
+                    "*** HERESY MUD: /mud new [seed] | /mud look [player] | /mud who | /mud inventory [player]",
+                    "*** MOVE: /mud n|s|e|w OR /mud go <direction> | /mud take|get <item> | /mud drop <item>",
+                    "*** COMBAT: /mud attack <npc> [weapon] | /mud use <item> | /mud rest | /mud shitpost [npc] | /mud ratio <npc>",
+                    "*** PROXY: /mud as <player> <action> [args...] lets the operator drive any registered avatar.",
+                    "*** Current MUD state is shared Council evidence. Model narration never mutates the dungeon.",
+                ] {
+                    self.append(line);
+                }
+            }
+            MudCommand::New { seed } => {
+                let players = self.mud_roster()?;
+                let mut request = json!({"operation": "game.mud.new", "players": players});
+                if !seed.trim().is_empty() {
+                    request["seed"] = json!(seed);
+                }
+                let response = nexus.request(request)?;
+                let mud_ref = response
+                    .get("mud_ref")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "MUD response missing mud_ref".to_string())?
+                    .to_string();
+                self.set_mud_ref(mud_ref.clone());
+                self.append(&format!("*** New HERESY MUD state: {mud_ref}"));
+                self.render_mud_state(&response)?;
+            }
+            MudCommand::Status { player } | MudCommand::Inventory { player } => {
+                let mud_ref = self
+                    .current_mud_ref()
+                    .ok_or_else(|| "no shared MUD in #mud; use /mud new [seed]".to_string())?
+                    .to_string();
+                let player_id = player.unwrap_or_else(|| self.nick.clone());
+                let response = nexus.request(json!({
+                    "operation": "game.mud.inspect",
+                    "mud_ref": mud_ref,
+                    "player_id": player_id
+                }))?;
+                self.render_mud_state(&response)?;
+            }
+            MudCommand::Who => {
+                let mud_ref = self
+                    .current_mud_ref()
+                    .ok_or_else(|| "no shared MUD in #mud; use /mud new [seed]".to_string())?
+                    .to_string();
+                let response = nexus.request(json!({"operation": "game.mud.inspect", "mud_ref": mud_ref}))?;
+                self.render_mud_who(&response)?;
+            }
+            MudCommand::Act { player, action, args } => {
+                let mud_ref = self
+                    .current_mud_ref()
+                    .ok_or_else(|| "no shared MUD in #mud; use /mud new [seed]".to_string())?
+                    .to_string();
+                let player_id = player.unwrap_or_else(|| self.nick.clone());
+                let response = nexus.request(json!({
+                    "operation": "game.mud.act",
+                    "mud_ref": mud_ref,
+                    "player_id": player_id,
+                    "action": action,
+                    "args": args
+                }))?;
+                let next_ref = response
+                    .get("mud_ref")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "MUD response missing mud_ref".to_string())?
+                    .to_string();
+                self.set_mud_ref(next_ref);
+                self.render_mud_state(&response)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn render_mud_who(&mut self, response: &Value) -> Result<(), String> {
+        let mud = response
+            .get("mud")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "MUD response missing mud object".to_string())?;
+        let rooms = mud
+            .get("rooms")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "MUD rooms missing".to_string())?;
+        let players = mud
+            .get("players")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "MUD players missing".to_string())?;
+        self.append(&format!("--- MUD WHO | {} avatar(s) ---", players.len()));
+        let mut ids: Vec<&String> = players.keys().collect();
+        ids.sort_by_key(|value| value.to_ascii_lowercase());
+        for id in ids {
+            let player = &players[id];
+            let room_id = player.get("room_id").and_then(Value::as_str).unwrap_or("?");
+            let room_name = rooms
+                .get(room_id)
+                .and_then(Value::as_object)
+                .and_then(|room| room.get("name"))
+                .and_then(Value::as_str)
+                .unwrap_or(room_id);
+            let hp = player.get("hp").and_then(Value::as_u64).unwrap_or(0);
+            let max_hp = player.get("max_hp").and_then(Value::as_u64).unwrap_or(0);
+            let clout = player.get("clout").and_then(Value::as_i64).unwrap_or(0);
+            let score = player.get("score").and_then(Value::as_i64).unwrap_or(0);
+            self.append(&format!(
+                "*** {id}: HP {hp}/{max_hp} clout={clout} score={score} @ {room_name}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn render_mud_state(&mut self, response: &Value) -> Result<(), String> {
+        let mud = response
+            .get("mud")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "MUD response missing mud object".to_string())?;
+        let view = response
+            .get("view")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "MUD response missing player view".to_string())?;
+        let player = view
+            .get("player")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "MUD view missing player".to_string())?;
+        let room = view
+            .get("room")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "MUD view missing room".to_string())?;
+        let turn = mud.get("turn").and_then(Value::as_u64).unwrap_or(0);
+        let player_id = player
+            .get("player_id")
+            .and_then(Value::as_str)
+            .unwrap_or("?");
+        let hp = player.get("hp").and_then(Value::as_u64).unwrap_or(0);
+        let max_hp = player.get("max_hp").and_then(Value::as_u64).unwrap_or(0);
+        let clout = player.get("clout").and_then(Value::as_i64).unwrap_or(0);
+        let score = player.get("score").and_then(Value::as_i64).unwrap_or(0);
+        let room_id = room.get("room_id").and_then(Value::as_str).unwrap_or("?");
+        let room_name = room.get("name").and_then(Value::as_str).unwrap_or(room_id);
+        let realm = room.get("realm").and_then(Value::as_str).unwrap_or("?");
+        self.append(&format!("--- HERESY MUD TURN {turn} | {player_id} HP {hp}/{max_hp} clout={clout} score={score} ---"));
+        self.append(&format!("*** ROOM: {room_name} [{realm}/{room_id}]"));
+        if let Some(description) = room.get("description").and_then(Value::as_str) {
+            self.append(&format!("*** {description}"));
+        }
+        if let Some(exits) = room.get("exits").and_then(Value::as_object) {
+            let mut parts: Vec<String> = exits
+                .iter()
+                .map(|(direction, target)| {
+                    format!("{direction}={}", target.as_str().unwrap_or("?"))
+                })
+                .collect();
+            parts.sort();
+            self.append(&format!("*** EXITS: {}", parts.join(" | ")));
+        }
+        if let Some(items) = view.get("room_items").and_then(Value::as_array) {
+            let labels: Vec<&str> = items
+                .iter()
+                .filter_map(|item| item.get("item_id").and_then(Value::as_str))
+                .collect();
+            self.append(&format!(
+                "*** ITEMS: {}",
+                if labels.is_empty() {
+                    "-".to_string()
+                } else {
+                    labels.join(", ")
+                }
+            ));
+        }
+        if let Some(npcs) = view.get("room_npcs").and_then(Value::as_array) {
+            if npcs.is_empty() {
+                self.append("*** NPCS: -");
+            }
+            for npc in npcs {
+                let id = npc.get("npc_id").and_then(Value::as_str).unwrap_or("?");
+                let name = npc.get("name").and_then(Value::as_str).unwrap_or(id);
+                let npc_hp = npc.get("hp").and_then(Value::as_u64).unwrap_or(0);
+                let npc_max = npc.get("max_hp").and_then(Value::as_u64).unwrap_or(0);
+                self.append(&format!("*** NPC: {id} — {name} | HP {npc_hp}/{npc_max}"));
+            }
+        }
+        if let Some(inventory) = view.get("inventory").and_then(Value::as_array) {
+            let labels: Vec<&str> = inventory
+                .iter()
+                .filter_map(|item| item.get("item_id").and_then(Value::as_str))
+                .collect();
+            self.append(&format!(
+                "*** INVENTORY: {}",
+                if labels.is_empty() {
+                    "-".to_string()
+                } else {
+                    labels.join(", ")
+                }
+            ));
+        }
+        if let Some(quest) = view.get("quest").and_then(Value::as_object) {
+            let status = quest.get("status").and_then(Value::as_str).unwrap_or("?");
+            let objective = quest.get("objective").and_then(Value::as_str).unwrap_or("");
+            self.append(&format!("*** QUEST [{status}]: {objective}"));
+        }
+        if let Some(event) = mud
+            .get("event_log")
+            .and_then(Value::as_array)
+            .and_then(|events| events.last())
+            .and_then(|event| event.get("text"))
+            .and_then(Value::as_str)
+        {
+            self.append(&format!("*** LATEST: {event}"));
+        }
+        if let Some(mud_ref) = response.get("mud_ref").and_then(Value::as_str) {
+            self.append(&format!("*** MUD STATE: {mud_ref}"));
         }
         Ok(())
     }
@@ -1134,6 +1407,7 @@ impl App {
         for line in [
             "*** Core: /join #room | /mode mode | /topic text | /ask text | plain text = Council question",
             "*** Game: /join #un-sim | /game new [seed] | /game status | /game act ... | /game turn",
+            "*** MUD: /join #mud | /mud new [seed] | /mud look | /mud n|s|e|w | /mud attack ... | /mud help",
             "*** IRC: /me action | /msg nick text | /nick name | /who | /search text | /save file | /clear | /quit",
             "*** Models: /addmock nick [profile] | /addollama nick model | /kick nick",
             "*** Evidence: /upload file | /ref object:... | /unref object:... | /evidence",

@@ -19,7 +19,7 @@ pub struct RoomSpec {
     pub label: &'static str,
 }
 
-pub const ROOMS: [RoomSpec; 5] = [
+pub const ROOMS: [RoomSpec; 6] = [
     RoomSpec {
         channel: "#observatory",
         mode_id: "analytical",
@@ -50,9 +50,15 @@ pub const ROOMS: [RoomSpec; 5] = [
         region_id: "assembly",
         label: "Assembly Hall / UN Simulation Game",
     },
+    RoomSpec {
+        channel: "#mud",
+        mode_id: "game_mud",
+        region_id: "dungeon",
+        label: "Dungeon / HERESY MUD",
+    },
 ];
 
-pub const COMMANDS: [&str; 29] = [
+pub const COMMANDS: [&str; 30] = [
     "/help",
     "/join",
     "/mode",
@@ -60,6 +66,7 @@ pub const COMMANDS: [&str; 29] = [
     "/ask",
     "/council",
     "/game",
+    "/mud",
     "/me",
     "/msg",
     "/nick",
@@ -107,6 +114,26 @@ pub enum GameCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MudCommand {
+    Help,
+    New {
+        seed: String,
+    },
+    Status {
+        player: Option<String>,
+    },
+    Who,
+    Inventory {
+        player: Option<String>,
+    },
+    Act {
+        player: Option<String>,
+        action: String,
+        args: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputCommand {
     Noop,
     Help,
@@ -115,6 +142,7 @@ pub enum InputCommand {
     Topic(String),
     Ask(String),
     Game(GameCommand),
+    Mud(MudCommand),
     Me(String),
     Msg { target: String, text: String },
     Nick(String),
@@ -162,6 +190,7 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/topic" => require(rest, "/topic <question>").map(InputCommand::Topic),
         "/ask" | "/council" => Ok(InputCommand::Ask(rest.to_string())),
         "/game" => parse_game(rest).map(InputCommand::Game),
+        "/mud" => parse_mud(rest).map(InputCommand::Mud),
         "/me" => require(rest, "/me <action>").map(InputCommand::Me),
         "/nick" => require(rest, "/nick <name>").map(InputCommand::Nick),
         "/ref" => require(rest, "/ref <object:sha256>").map(InputCommand::Ref),
@@ -298,6 +327,75 @@ fn parse_game(rest: &str) -> Result<GameCommand, String> {
         _ => Err(
             "usage: /game <new [seed]|status|act <action> [country-id ...]|turn|help>".to_string(),
         ),
+    }
+}
+
+fn parse_mud(rest: &str) -> Result<MudCommand, String> {
+    let trimmed = rest.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("help") {
+        return Ok(MudCommand::Help);
+    }
+    let (sub, tail) = split_first(trimmed).expect("non-empty mud command");
+    let sub = sub.to_ascii_lowercase();
+    match sub.as_str() {
+        "new" => Ok(MudCommand::New {
+            seed: unquote(tail),
+        }),
+        "status" | "look" => Ok(MudCommand::Status {
+            player: if tail.is_empty() {
+                None
+            } else {
+                Some(tail.to_string())
+            },
+        }),
+        "who" if tail.is_empty() => Ok(MudCommand::Who),
+        "inventory" | "inv" | "i" => Ok(MudCommand::Inventory {
+            player: if tail.is_empty() {
+                None
+            } else {
+                Some(tail.to_string())
+            },
+        }),
+        "as" => {
+            let (player, action_tail) = split_first(tail)
+                .ok_or_else(|| "usage: /mud as <player> <action> [args...]".to_string())?;
+            let (action, args) = split_first(action_tail)
+                .ok_or_else(|| "usage: /mud as <player> <action> [args...]".to_string())?;
+            Ok(MudCommand::Act {
+                player: Some(player.to_string()),
+                action: normalize_mud_action(action),
+                args: mud_action_args(action, args),
+            })
+        }
+        "n" | "s" | "e" | "w" | "north" | "south" | "east" | "west" => Ok(MudCommand::Act {
+            player: None,
+            action: "go".to_string(),
+            args: vec![sub],
+        }),
+        _ => Ok(MudCommand::Act {
+            player: None,
+            action: normalize_mud_action(&sub),
+            args: mud_action_args(&sub, tail),
+        }),
+    }
+}
+
+fn normalize_mud_action(action: &str) -> String {
+    match action.to_ascii_lowercase().as_str() {
+        "get" => "take".to_string(),
+        "n" | "s" | "e" | "w" | "north" | "south" | "east" | "west" => "go".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn mud_action_args(action: &str, tail: &str) -> Vec<String> {
+    if matches!(
+        action.to_ascii_lowercase().as_str(),
+        "n" | "s" | "e" | "w" | "north" | "south" | "east" | "west"
+    ) {
+        vec![action.to_ascii_lowercase()]
+    } else {
+        tail.split_whitespace().map(str::to_string).collect()
     }
 }
 

@@ -7,6 +7,14 @@ from typing import Any
 from .adapters import OllamaActor, OllamaTransport
 from .council import CouncilCoordinator
 from .game_un import GAME_SCHEMA, action_catalog, advance_turn, apply_action, inspect_game, new_game
+from .game_mud import (
+    MUD_SCHEMA,
+    action_catalog as mud_action_catalog,
+    apply_action as apply_mud_action,
+    inspect_mud,
+    new_mud,
+    player_view,
+)
 from .geometry import DEFAULT_WORLD_GEOMETRY
 from .mock import DeterministicMockActor
 from .modes import get_mode, list_modes
@@ -16,8 +24,8 @@ from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.6"
-RUNTIME_VERSION = "2.0.0-alpha6.2"
+PROTOCOL_VERSION = "nexus/0.7"
+RUNTIME_VERSION = "2.0.0-alpha6.3"
 
 
 class NexusAPI:
@@ -54,7 +62,10 @@ class NexusAPI:
                     "world_modes": [mode.mode_id for mode in list_modes()],
                     "geometry": self.geometry.snapshot()["geometry_id"],
                     "telemetry": {"schema_version": TELEMETRY_SCHEMA_VERSION, "role": "observational_only"},
-                    "games": [{"game_id": "un_sim", "schema": GAME_SCHEMA, "room": "#un-sim", "fictional_only": True}],
+                    "games": [
+                        {"game_id": "un_sim", "schema": GAME_SCHEMA, "room": "#un-sim", "fictional_only": True},
+                        {"game_id": "mud", "schema": MUD_SCHEMA, "room": "#mud", "fictional_only": True},
+                    ],
                 }
             elif operation == "system.operations":
                 response = {
@@ -75,6 +86,10 @@ class NexusAPI:
                         "game.un.inspect",
                         "game.un.act",
                         "game.un.turn",
+                        "game.mud.catalog",
+                        "game.mud.new",
+                        "game.mud.inspect",
+                        "game.mud.act",
                         "actor.chat",
                         "council.run",
                     ],
@@ -185,6 +200,65 @@ class NexusAPI:
                 game_ref = self._require_str(request, "game_ref")
                 game = advance_turn(self.world, game_ref)
                 response = {"status": "ok", "game_ref": game.object_id, "game": game.payload}
+            elif operation == "game.mud.catalog":
+                response = {
+                    "status": "ok",
+                    "schema": MUD_SCHEMA,
+                    "fictional_only": True,
+                    "actions": mud_action_catalog(),
+                }
+            elif operation == "game.mud.new":
+                raw_seed = request.get("seed", "beige-dungeon")
+                if not isinstance(raw_seed, str) or not raw_seed.strip():
+                    raise ValueError("seed must be non-empty text")
+                players = request.get("players", ["operator"])
+                if not isinstance(players, list) or not players or not all(isinstance(player, str) for player in players):
+                    raise ValueError("players must be a non-empty list of MUD player ids")
+                scrubbed = self.scrubber.scrub(raw_seed)
+                mud = new_mud(self.world, scrubbed.text, list(players))
+                first_player = next(iter(mud.payload["players"]))
+                response = {
+                    "status": "ok",
+                    "mud_ref": mud.object_id,
+                    "mud": mud.payload,
+                    "player_id": first_player,
+                    "view": player_view(mud.payload, first_player),
+                    "secret_scrub": {
+                        "changed": scrubbed.changed,
+                        "events": [asdict(event) for event in scrubbed.events],
+                    },
+                }
+            elif operation == "game.mud.inspect":
+                mud_ref = self._require_str(request, "mud_ref")
+                mud = inspect_mud(self.world, mud_ref)
+                player_id = request.get("player_id")
+                if player_id is None:
+                    response = {"status": "ok", "mud_ref": mud.object_id, "mud": mud.payload}
+                else:
+                    if not isinstance(player_id, str) or not player_id:
+                        raise ValueError("player_id must be a non-empty string")
+                    response = {
+                        "status": "ok",
+                        "mud_ref": mud.object_id,
+                        "mud": mud.payload,
+                        "player_id": player_id,
+                        "view": player_view(mud.payload, player_id),
+                    }
+            elif operation == "game.mud.act":
+                mud_ref = self._require_str(request, "mud_ref")
+                player_id = self._require_str(request, "player_id")
+                action = self._require_str(request, "action")
+                args = request.get("args", [])
+                if not isinstance(args, list) or not all(isinstance(arg, str) and arg for arg in args):
+                    raise ValueError("args must be a list of non-empty strings")
+                mud = apply_mud_action(self.world, mud_ref, player_id, action, list(args))
+                response = {
+                    "status": "ok",
+                    "mud_ref": mud.object_id,
+                    "mud": mud.payload,
+                    "player_id": player_id,
+                    "view": player_view(mud.payload, player_id),
+                }
             elif operation == "actor.chat":
                 member_item = request.get("member")
                 actor = self._actor(member_item)

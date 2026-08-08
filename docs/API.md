@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.6
+nexus/0.7
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha6.2
+2.0.0-alpha6.3
 ```
 
 Current posture:
@@ -23,6 +23,7 @@ control transport -> JSON Lines over stdio
 mock actors       -> supported
 Ollama actors     -> supported only through loopback-local configuration
 UN simulation     -> supported as a deterministic fictional local game
+HERESY MUD        -> supported as a deterministic fictional multi-avatar local game
 remote providers  -> not implemented
 provider auth     -> not implemented
 ```
@@ -65,8 +66,8 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.6",
-  "runtime_version": "2.0.0-alpha6.2",
+  "protocol": "nexus/0.7",
+  "runtime_version": "2.0.0-alpha6.3",
   "control_transport": "jsonl_stdio",
   "network": "none_unless_explicit_loopback_ollama_actor",
   "adapters": ["mock", "ollama_loopback"],
@@ -77,6 +78,12 @@ Current response fields include:
       "game_id": "un_sim",
       "schema": "nexus-un-sim/1",
       "room": "#un-sim",
+      "fictional_only": true
+    },
+    {
+      "game_id": "mud",
+      "schema": "nexus-cursed-mud/1",
+      "room": "#mud",
       "fictional_only": true
     }
   ]
@@ -101,6 +108,10 @@ game.un.new
 game.un.inspect
 game.un.act
 game.un.turn
+game.mud.catalog
+game.mud.new
+game.mud.inspect
+game.mud.act
 actor.chat
 council.run
 ```
@@ -171,6 +182,39 @@ Each game state also stores a compact deterministic `content` board view. When t
 
 See [`UN_SIM.md`](UN_SIM.md).
 
+## HERESY MUD
+
+The local protocol exposes the deterministic multi-avatar `#mud` engine:
+
+```text
+game.mud.catalog
+game.mud.new
+game.mud.inspect
+game.mud.act
+```
+
+Create one shared dungeon state:
+
+```json
+{"operation":"game.mud.new","seed":"beige-night","players":["Trent","Alpha","Grok"]}
+```
+
+Inspect a player's current view:
+
+```json
+{"operation":"game.mud.inspect","mud_ref":"object:<sha256>","player_id":"Trent"}
+```
+
+Apply an authoritative action:
+
+```json
+{"operation":"game.mud.act","mud_ref":"object:<sha256>","player_id":"Grok","action":"go","args":["north"]}
+```
+
+Movement, loot, combat, `shitpost`, and `ratio` transitions are deterministic and content-addressed. Narration never mutates the dungeon. Item score is a one-time acquisition award, defeated avatars drop held items into their current room, and defeating the Dependency Dragon only drops the Crown; the quest becomes complete when a player subsequently takes `zero_dependency_crown`.
+
+See [`MUD.md`](MUD.md).
+
 ## World modes
 
 ```json
@@ -185,6 +229,7 @@ historical  -> Archive
 cultural    -> Agora
 meme_casual -> Commons
 game_un     -> Assembly Hall / #un-sim
+game_mud    -> Dungeon / #mud
 ```
 
 A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds.
@@ -195,7 +240,7 @@ A mode changes framing/context only. It does not change vote weight, evidence st
 {"operation":"world.geometry"}
 ```
 
-The current built-in geometry is `named-regions-v2`, an operational named-region topology rather than a physical claim. It includes the Assembly Hall used by `game_un`.
+The current built-in geometry is `named-regions-v3`, an operational named-region topology rather than a physical claim. It includes the Assembly Hall used by `game_un` and the Dungeon region used by `game_mud`.
 
 Distance example:
 
@@ -243,7 +288,7 @@ EvidenceSnapshot
   -> included_object_refs[]
 ```
 
-Alpha5 additionally derives a bounded, labelled model-readable view from those refs so actors can actually read attached document material. Alpha6.2 reuses that same generic mechanism for the compact current `#un-sim` board view.
+Alpha5 additionally derives a bounded, labelled model-readable view from those refs so actors can actually read attached document material. Alpha6.3 reuses that same generic mechanism for the compact current `#un-sim` board and `#mud` dungeon views.
 
 ```text
 content-addressed object ref

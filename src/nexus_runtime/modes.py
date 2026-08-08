@@ -76,6 +76,18 @@ _MODES = {
         ),
         region_id="assembly",
     ),
+    "game_mud": WorldMode(
+        mode_id="game_mud",
+        label="Cursed MUD",
+        description="Multi-avatar fictional dungeon crawling through BBS, DORK and HERESY-inspired software ruins.",
+        prompt_instruction=(
+            "You are participating in HERESY MUD, a fictional multi-user dungeon made from obsolete-computing and "
+            "software-architecture satire. The current MUD state is shared evidence, not a suggestion. You may role-play, "
+            "advise avatars, joke, shitpost and propose moves, but narration never mutates the dungeon. Only explicit "
+            "validated game.mud operations change authoritative state. Combat, clout, loot and rooms are game tokens only."
+        ),
+        region_id="dungeon",
+    ),
 }
 
 
