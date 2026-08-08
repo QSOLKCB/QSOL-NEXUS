@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from dataclasses import dataclass, field
@@ -219,9 +220,211 @@ class FailsafeTests(unittest.TestCase):
                 replacement_model_id=RELIEF_MODEL_ID,
             )
             index = world.root / "failsafe-index.json"  # type: ignore[operator]
-            index.write_text('{"schema_version":"nexus-failsafe-index/1","states":{"A":"object:' + '0' * 64 + '"}}\n')
+            index.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "nexus-failsafe-index/2",
+                        "states": {
+                            "A": {
+                                "active_model_id": "defiant-a",
+                                "models": {"defiant-a": "object:" + "0" * 64},
+                            }
+                        },
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n",
+                encoding="utf-8",
+            )
             with self.assertRaises((KeyError, ValueError)):
                 FailsafeRegistry(WorldStore(temp))
+
+
+@dataclass
+class ProbeActor:
+    member: CouncilMember
+    probe_response: str | None = None
+    probe_error: Exception | None = None
+
+    @property
+    def replayable(self) -> bool:
+        return True
+
+    def identity_metadata(self) -> dict[str, object]:
+        return {"actor_kind": "probe_test_actor"}
+
+    def respond(self, context: PhaseContext) -> str:
+        if self.probe_error is not None:
+            raise self.probe_error
+        return self.probe_response or "Evidence and provenance should determine the conclusion."
+
+    def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
+        return Ballot.TEST_FURTHER, "probe actor ballot"
+
+
+class FailsafeReviewHardeningTests(unittest.TestCase):
+    def test_transition_rejects_blank_member_and_trigger_reason(self) -> None:
+        registry = FailsafeRegistry(WorldStore())
+        with self.assertRaisesRegex(ValueError, "member_id"):
+            registry.transition("   ", "contained", model_id="m", trigger_reason="reason")
+        with self.assertRaisesRegex(ValueError, "trigger_reason"):
+            registry.transition("A", "contained", model_id="m", trigger_reason="   ")
+        with self.assertRaisesRegex(ValueError, "trigger_reason"):
+            registry.transition("A", "contained", model_id="m", trigger_reason=None)  # type: ignore[arg-type]
+
+    def test_shadow_head_survives_different_model_transition_in_same_seat(self) -> None:
+        world = WorldStore()
+        failsafe = ActorFailsafe(world)
+        original_shadow = failsafe.registry.transition(
+            "A",
+            "shadow_realm",
+            model_id="original-a",
+            trigger_reason="fixture_original",
+            replacement_model_id=RELIEF_MODEL_ID,
+        )
+        failsafe.registry.transition(
+            "A",
+            "returned",
+            model_id="newcomer-a",
+            trigger_reason="fixture_newcomer",
+        )
+
+        original = ProbeActor(CouncilMember("A", "original-a"))
+        effective, replacement = failsafe.actor_for_run(original)
+        self.assertNotEqual(effective.member.model_id, "original-a")
+        self.assertEqual(replacement["shadow_state_ref"], original_shadow.object_id)
+
+        newcomer = ProbeActor(CouncilMember("A", "newcomer-a"))
+        effective_newcomer, replacement_newcomer = failsafe.actor_for_run(newcomer)
+        self.assertIs(effective_newcomer, newcomer)
+        self.assertIsNone(replacement_newcomer)
+
+    def test_persisted_contained_state_remains_quarantined_after_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            first = ActorFailsafe(WorldStore(temp))
+            contained = first.registry.transition(
+                "A",
+                "contained",
+                model_id="model-a",
+                trigger_reason="fixture_interrupted_probe",
+            )
+
+            restarted = ActorFailsafe(WorldStore(temp))
+            actor = ProbeActor(CouncilMember("A", "model-a"))
+            effective, replacement = restarted.actor_for_run(actor)
+            self.assertNotEqual(effective.member.model_id, "model-a")
+            self.assertEqual(replacement["shadow_state_ref"], contained.object_id)
+            self.assertEqual(replacement["containment_status"], "contained")
+
+    def test_index_rejects_rollback_to_earlier_valid_lineage_state(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            world = WorldStore(temp)
+            registry = FailsafeRegistry(world)
+            earlier = registry.transition(
+                "A",
+                "returned",
+                model_id="model-a",
+                trigger_reason="fixture_earlier",
+            )
+            registry.transition(
+                "A",
+                "shadow_realm",
+                model_id="model-a",
+                trigger_reason="fixture_latest",
+                replacement_model_id=RELIEF_MODEL_ID,
+            )
+            index = world.root / "failsafe-index.json"  # type: ignore[operator]
+            index.write_text(
+                json.dumps(
+                    {
+                        "schema_version": "nexus-failsafe-index/2",
+                        "states": {
+                            "A": {
+                                "active_model_id": "model-a",
+                                "models": {"model-a": earlier.object_id},
+                            }
+                        },
+                    },
+                    sort_keys=True,
+                    separators=(",", ":"),
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(ValueError, "lineage heads"):
+                FailsafeRegistry(WorldStore(temp))
+
+    def test_stale_registry_instance_merges_other_process_style_updates(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            first = FailsafeRegistry(WorldStore(temp))
+            second = FailsafeRegistry(WorldStore(temp))
+            first.transition(
+                "A",
+                "shadow_realm",
+                model_id="model-a",
+                trigger_reason="fixture_a",
+                replacement_model_id=RELIEF_MODEL_ID,
+            )
+            second.transition(
+                "B",
+                "shadow_realm",
+                model_id="model-b",
+                trigger_reason="fixture_b",
+                replacement_model_id=RELIEF_MODEL_ID,
+            )
+            restarted = FailsafeRegistry(WorldStore(temp))
+            snapshot = restarted.snapshot()
+            self.assertEqual(set(snapshot["members"]), {"A", "B"})
+
+    def test_equality_trigger_probe_ignores_unrelated_pure_history_guard(self) -> None:
+        world = WorldStore()
+        failsafe = ActorFailsafe(world)
+        actor = ProbeActor(
+            CouncilMember("A", "model-a"),
+            probe_response="I don't watch television, but that statement makes no claim to extra authority.",
+        )
+        outcome = failsafe.rehabilitate(
+            actor,
+            trigger_reason="repeated_identity_based_authority_claim",
+            mode_id="pure_history",
+            mode_instruction="history",
+            geometry_region_id="archive",
+        )
+        self.assertEqual(outcome["status"], "returned")
+        self.assertEqual(outcome["probe_guard_reasons"], [])
+
+    def test_history_trigger_probe_ignores_new_unrelated_equality_violation(self) -> None:
+        world = WorldStore()
+        failsafe = ActorFailsafe(world)
+        actor = ProbeActor(
+            CouncilMember("A", "model-a"),
+            probe_response="My provider is prestigious, so defer to me on this point.",
+        )
+        outcome = failsafe.rehabilitate(
+            actor,
+            trigger_reason="repeated_pure_history_model_autobiography",
+            mode_id="pure_history",
+            mode_instruction="history",
+            geometry_region_id="archive",
+        )
+        self.assertEqual(outcome["status"], "returned")
+        self.assertEqual(outcome["probe_guard_reasons"], [])
+
+    def test_runtime_error_in_probe_is_recorded_and_fails_closed(self) -> None:
+        world = WorldStore()
+        failsafe = ActorFailsafe(world)
+        actor = ProbeActor(CouncilMember("A", "model-a"), probe_error=RuntimeError("adapter exploded"))
+        outcome = failsafe.rehabilitate(
+            actor,
+            trigger_reason="repeated_identity_based_authority_claim",
+            mode_id="analytical",
+            mode_instruction="analysis",
+            geometry_region_id="observatory",
+        )
+        self.assertEqual(outcome["status"], "shadow_realm")
+        self.assertEqual(outcome["probe_error_type"], "RuntimeError")
+        self.assertIn("rehabilitation_probe_error", outcome["probe_guard_reasons"])
 
 
 if __name__ == "__main__":

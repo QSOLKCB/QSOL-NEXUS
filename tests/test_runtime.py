@@ -226,7 +226,7 @@ class APITests(unittest.TestCase):
         self.assertEqual(result["status"], "ok")
         self.assertEqual(result["model_id"], "nexus-failsafe-relief-v1")
         self.assertEqual(result["failsafe_replacement"]["member_id"], "A")
-        self.assertIn("original actor for this seat is in the Shadow Realm", result["response"])
+        self.assertIn("original actor for this seat is under NEXUS Failsafe containment", result["response"])
 
     def test_failsafe_status_operation_reports_durable_state(self) -> None:
         api = NexusAPI()

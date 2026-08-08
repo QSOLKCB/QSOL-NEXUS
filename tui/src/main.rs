@@ -1295,7 +1295,7 @@ impl App {
                     .and_then(Value::as_str)
                     .unwrap_or("?");
                 self.append(&format!(
-                    "*** {member}: SHADOW REALM ACTIVE; Council seat operated by {model}"
+                    "*** {member}: FAILSAFE QUARANTINE ACTIVE; Council seat operated by {model}"
                 ));
             }
             for outcome in outcomes {

@@ -106,7 +106,7 @@ This is conceptually inspired by bait-software comedy: a bad actor expecting use
 
 ## Parole
 
-The rehabilitation probe is evaluated only by the same registered procedural guards that produced the trigger.
+The rehabilitation probe is evaluated only by the **single registered procedural guard that produced the trigger**. A different rule violation introduced inside the isolated probe is not retroactively treated as a repeated-after-nudge failure; it must go through its own ordinary guard/nudge lifecycle if the actor returns.
 
 A clean response creates an immutable `actor_failsafe_state` with:
 
@@ -124,7 +124,7 @@ If the isolated probe repeats the guard violation, returns no usable response, o
 status = shadow_realm
 ```
 
-The original actor is then contained for the rest of that Council session. It is not called for later hats, does not cast a model-generated ballot, and cannot be reached through `actor.chat`; that side channel also receives the relief actor. Its Council seat produces the explicit disposition:
+The original actor is then contained for the rest of that Council session. It is not called for later hats, does not cast a model-generated ballot, and cannot be reached through `actor.chat`; that side channel also receives the relief actor. A `contained` state persisted by a crash/interruption is also treated as active quarantine after restart rather than silently reactivating the original model. Its Council seat produces the explicit disposition:
 
 ```text
 UNDERDETERMINED
@@ -153,9 +153,13 @@ actor_failsafe_state
 
 Each state links to the previous state reference.
 
-When the WorldStore has a filesystem root, `failsafe-index.json` is only a mutable pointer index from `member_id` to the latest immutable state reference. The referenced object is revalidated when the runtime starts. Tampering with the pointer or referenced object causes validation failure rather than silent acceptance.
+When the WorldStore has a filesystem root, `failsafe-index.json` is only a mutable pointer index from `(member_id, model_id)` identities to their latest immutable state references, with a per-seat `active_model_id` used for status display. Replacing the model in a seat therefore cannot erase the previous model's containment lineage.
 
-This means restarting the TUI does not magically rehabilitate an actor already sent to the Shadow Realm.
+Persistent registry reads and writes are refreshed while holding an inter-process advisory lock. Before an update, the writer reloads the current index so a second runtime cannot overwrite another runtime's newer state from a stale private snapshot.
+
+On load, NEXUS scans immutable `actor_failsafe_state` objects and verifies that every indexed reference is the **actual lineage head** for that member/model pair. Pointing the index at an earlier-but-valid object, omitting a known lineage, crossing model identities, or referencing a malformed object fails closed instead of silently rolling containment backward.
+
+This means restarting the TUI does not magically rehabilitate an actor already sent to the Shadow Realm, and an interrupted `contained` probe remains quarantined on restart.
 
 ## API
 

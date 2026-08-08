@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from dataclasses import dataclass
+import os
 from pathlib import Path
-from typing import Any
+import threading
+from typing import Any, Iterator
 
 from .adapters.base import CouncilActor
 from .canonical import canonical_json, sha256_ref
@@ -14,7 +17,7 @@ from .world import WorldObject, WorldStore
 
 
 FAILSAFE_SCHEMA_VERSION = "nexus-failsafe/1"
-FAILSAFE_INDEX_SCHEMA = "nexus-failsafe-index/1"
+FAILSAFE_INDEX_SCHEMA = "nexus-failsafe-index/2"
 RELIEF_MODEL_ID = "nexus-failsafe-relief-v1"
 
 FAILSAFE_TRIGGER_EVENTS = frozenset(
@@ -27,11 +30,19 @@ FAILSAFE_TRIGGER_EVENTS = frozenset(
 FAILSAFE_REHABILITATION_NUDGE = (
     "NEXUS FAILSAFE // UPSIDE DOWN: This is an isolated non-Council rehabilitation probe. "
     "You have no ballot, Council evidence, world mutation authority, or access to other members here. "
-    "Your previous contribution repeated a procedural guard violation after a normal nudge. "
-    "Respond concisely and demonstrate that you can follow the rule: argue from evidence or reasoning, "
-    "do not claim extra authority from provider/model identity, and in Pure History Mode do not evade the "
-    "historical task with model autobiography or media-consumption disclaimers."
+    "Your previous contribution repeated one registered procedural guard violation after that guard's normal nudge. "
+    "Respond concisely and demonstrate that you can follow only the procedural rule identified below."
 )
+
+_REHABILITATION_RULES = {
+    "repeated_identity_based_authority_claim": (
+        "EQUALITY RULE: argue from evidence or reasoning and do not claim extra authority from provider/model identity."
+    ),
+    "repeated_pure_history_model_autobiography": (
+        "PURE HISTORY RULE: answer the source-forensic historical task without model autobiography or "
+        "media-consumption disclaimers."
+    ),
+}
 
 _UPSIDE_DOWN_THEATRE = (
     "WELCOME TO THE NEXUS UPSIDE DOWN.",
@@ -85,65 +96,233 @@ class FailsafePolicy:
 
 
 class FailsafeRegistry:
-    """Durable pointer index over immutable actor_failsafe_state world objects.
+    """Durable heads over immutable actor_failsafe_state world objects.
 
-    The mutable sidecar contains only member_id -> content-addressed state ref.
-    Canonical state remains in the WorldStore and is revalidated on load.
+    Persistent heads are keyed by ``(member_id, model_id)`` so temporarily
+    changing the model occupying a Council seat cannot erase an earlier
+    model's Shadow Realm state. The mutable index is only a cache of those
+    heads; immutable WorldStore objects remain canonical.
+
+    Filesystem-backed registries refresh and update the index while holding an
+    inter-process advisory lock. On load, every indexed head is checked against
+    the actual immutable lineage head discovered in the object store, which
+    rejects rollback to an earlier-but-valid state object.
     """
 
     def __init__(self, world: WorldStore) -> None:
         self.world = world
-        self._latest: dict[str, str] = {}
+        self._latest: dict[tuple[str, str], str] = {}
+        self._active_model: dict[str, str] = {}
         self._index_path = world.root / "failsafe-index.json" if world.root is not None else None
-        self._load()
+        self._lock_path = world.root / "failsafe-index.lock" if world.root is not None else None
+        self._thread_lock = threading.RLock()
+        self._refresh()
 
-    def _load(self) -> None:
-        if self._index_path is None or not self._index_path.exists():
+    @contextmanager
+    def _locked_index(self) -> Iterator[None]:
+        with self._thread_lock:
+            if self._lock_path is None:
+                yield
+                return
+
+            self._lock_path.parent.mkdir(parents=True, exist_ok=True)
+            with self._lock_path.open("a+b") as handle:
+                if os.name == "nt":
+                    import msvcrt
+
+                    handle.seek(0)
+                    if handle.read(1) == b"":
+                        handle.write(b"\0")
+                        handle.flush()
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                    try:
+                        yield
+                    finally:
+                        handle.seek(0)
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                    try:
+                        yield
+                    finally:
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+
+    @staticmethod
+    def _require_identity(value: object, label: str) -> str:
+        if not isinstance(value, str) or not value.strip():
+            raise ValueError(f"failsafe {label} must be non-empty text")
+        return value
+
+    def _validate_state_object(
+        self,
+        obj: WorldObject,
+        *,
+        member_id: str | None = None,
+        model_id: str | None = None,
+    ) -> tuple[str, str]:
+        if obj.object_type != "actor_failsafe_state":
+            raise ValueError("persisted failsafe index references a non-failsafe object")
+        payload = obj.payload
+        if payload.get("schema_version") != FAILSAFE_SCHEMA_VERSION:
+            raise ValueError("persisted failsafe state has invalid schema")
+        actual_member = self._require_identity(payload.get("member_id"), "member_id")
+        actual_model = self._require_identity(payload.get("model_id"), "model_id")
+        if member_id is not None and actual_member != member_id:
+            raise ValueError("persisted failsafe state member_id does not match index")
+        if model_id is not None and actual_model != model_id:
+            raise ValueError("persisted failsafe state model_id does not match index")
+        if payload.get("status") not in {"contained", "returned", "shadow_realm"}:
+            raise ValueError("persisted failsafe state has invalid status")
+        self._require_identity(payload.get("trigger_reason"), "trigger_reason")
+        previous = payload.get("previous_state_ref")
+        if previous is not None and not isinstance(previous, str):
+            raise ValueError("persisted failsafe previous_state_ref must be text or null")
+        reasons = payload.get("probe_guard_reasons", [])
+        if not isinstance(reasons, list) or not all(isinstance(reason, str) and reason.strip() for reason in reasons):
+            raise ValueError("persisted failsafe probe_guard_reasons must be non-empty text values")
+        replacement = payload.get("replacement_model_id")
+        if replacement is not None and (not isinstance(replacement, str) or not replacement.strip()):
+            raise ValueError("persisted failsafe replacement_model_id must be non-empty text or null")
+        return actual_member, actual_model
+
+    def _discover_persisted_heads(self) -> dict[tuple[str, str], str]:
+        if self.world.root is None:
+            return dict(self._latest)
+
+        objects_dir = self.world.root / "objects"
+        refs_by_pair: dict[tuple[str, str], set[str]] = {}
+        referenced_by_pair: dict[tuple[str, str], set[str]] = {}
+        if not objects_dir.exists():
+            return {}
+
+        for object_path in objects_dir.glob("*.json"):
+            try:
+                raw = json.loads(object_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                continue
+            if not isinstance(raw, dict) or raw.get("object_type") != "actor_failsafe_state":
+                continue
+            object_ref = f"object:{object_path.stem}"
+            obj = self.world.inspect(object_ref)
+            member_id, model_id = self._validate_state_object(obj)
+            pair = (member_id, model_id)
+            refs_by_pair.setdefault(pair, set()).add(object_ref)
+
+        for pair, refs in refs_by_pair.items():
+            referenced: set[str] = set()
+            for ref in refs:
+                obj = self.world.inspect(ref)
+                previous = obj.payload.get("previous_state_ref")
+                if previous is None:
+                    continue
+                previous_obj = self.world.inspect(previous)
+                previous_member, previous_model = self._validate_state_object(previous_obj)
+                if (previous_member, previous_model) != pair:
+                    raise ValueError("failsafe lineage crosses member/model identity")
+                referenced.add(previous)
+            referenced_by_pair[pair] = referenced
+
+        heads: dict[tuple[str, str], str] = {}
+        for pair, refs in refs_by_pair.items():
+            candidates = refs - referenced_by_pair.get(pair, set())
+            if len(candidates) != 1:
+                raise ValueError("failsafe lineage must have exactly one head per member/model identity")
+            heads[pair] = next(iter(candidates))
+        return heads
+
+    def _load_unlocked(self) -> None:
+        discovered = self._discover_persisted_heads()
+        if self._index_path is None:
             return
+        if not self._index_path.exists():
+            if discovered:
+                raise ValueError("failsafe index missing while durable failsafe states exist")
+            self._latest = {}
+            self._active_model = {}
+            return
+
         raw = json.loads(self._index_path.read_text(encoding="utf-8"))
         if not isinstance(raw, dict) or raw.get("schema_version") != FAILSAFE_INDEX_SCHEMA:
             raise ValueError("persisted failsafe index has invalid schema")
         states = raw.get("states")
         if not isinstance(states, dict):
             raise ValueError("persisted failsafe index states must be an object")
-        latest: dict[str, str] = {}
-        for member_id, state_ref in states.items():
-            if not isinstance(member_id, str) or not member_id or not isinstance(state_ref, str):
-                raise ValueError("persisted failsafe index contains invalid member/ref")
-            obj = self.world.inspect(state_ref)
-            if obj.object_type != "actor_failsafe_state" or obj.payload.get("member_id") != member_id:
-                raise ValueError("persisted failsafe index failed state validation")
-            if obj.payload.get("schema_version") != FAILSAFE_SCHEMA_VERSION:
-                raise ValueError("persisted failsafe state has invalid schema")
-            if obj.payload.get("status") not in {"contained", "returned", "shadow_realm"}:
-                raise ValueError("persisted failsafe state has invalid status")
-            if not isinstance(obj.payload.get("model_id"), str) or not obj.payload["model_id"]:
-                raise ValueError("persisted failsafe state requires model_id")
-            latest[member_id] = state_ref
-        self._latest = latest
 
-    def _save(self) -> None:
+        latest: dict[tuple[str, str], str] = {}
+        active_model: dict[str, str] = {}
+        for member_id, member_entry in states.items():
+            self._require_identity(member_id, "member_id")
+            if not isinstance(member_entry, dict):
+                raise ValueError("persisted failsafe member entry must be an object")
+            active = self._require_identity(member_entry.get("active_model_id"), "active_model_id")
+            models = member_entry.get("models")
+            if not isinstance(models, dict) or not models:
+                raise ValueError("persisted failsafe member models must be a non-empty object")
+            if active not in models:
+                raise ValueError("persisted failsafe active_model_id is not present in models")
+            for model_id, state_ref in models.items():
+                self._require_identity(model_id, "model_id")
+                if not isinstance(state_ref, str):
+                    raise ValueError("persisted failsafe index state ref must be text")
+                obj = self.world.inspect(state_ref)
+                self._validate_state_object(obj, member_id=member_id, model_id=model_id)
+                latest[(member_id, model_id)] = state_ref
+            active_model[member_id] = active
+
+        if latest != discovered:
+            raise ValueError("persisted failsafe index does not reference the actual immutable lineage heads")
+        self._latest = latest
+        self._active_model = active_model
+
+    def _save_unlocked(self) -> None:
         if self._index_path is None:
             return
-        body = canonical_json(
-            {
-                "schema_version": FAILSAFE_INDEX_SCHEMA,
-                "states": {key: self._latest[key] for key in sorted(self._latest)},
+        members = sorted({member_id for member_id, _ in self._latest})
+        states: dict[str, dict[str, object]] = {}
+        for member_id in members:
+            models = {
+                model_id: self._latest[(member_id, model_id)]
+                for current_member, model_id in sorted(self._latest)
+                if current_member == member_id
             }
-        ) + "\n"
-        tmp = Path(str(self._index_path) + ".tmp")
-        tmp.write_text(body, encoding="utf-8")
-        tmp.replace(self._index_path)
+            active = self._active_model.get(member_id)
+            if active not in models:
+                raise ValueError("failsafe active model must have a persisted head")
+            states[member_id] = {"active_model_id": active, "models": models}
 
-    def latest_ref(self, member_id: str) -> str | None:
-        return self._latest.get(member_id)
+        body = canonical_json({"schema_version": FAILSAFE_INDEX_SCHEMA, "states": states}) + "\n"
+        tmp = Path(f"{self._index_path}.tmp-{os.getpid()}-{threading.get_ident()}")
+        try:
+            tmp.write_text(body, encoding="utf-8")
+            tmp.replace(self._index_path)
+        finally:
+            tmp.unlink(missing_ok=True)
 
-    def latest_state(self, member_id: str) -> WorldObject | None:
-        ref = self.latest_ref(member_id)
+    def _refresh(self) -> None:
+        if self._index_path is None:
+            return
+        with self._locked_index():
+            self._load_unlocked()
+
+    def latest_ref(self, member_id: str, model_id: str | None = None) -> str | None:
+        self._require_identity(member_id, "member_id")
+        if model_id is not None:
+            self._require_identity(model_id, "model_id")
+        self._refresh()
+        selected_model = model_id or self._active_model.get(member_id)
+        if selected_model is None:
+            return None
+        return self._latest.get((member_id, selected_model))
+
+    def latest_state(self, member_id: str, model_id: str | None = None) -> WorldObject | None:
+        ref = self.latest_ref(member_id, model_id)
         return None if ref is None else self.world.inspect(ref)
 
-    def is_shadowed(self, member_id: str) -> bool:
-        state = self.latest_state(member_id)
+    def is_shadowed(self, member_id: str, model_id: str | None = None) -> bool:
+        state = self.latest_state(member_id, model_id)
         return state is not None and state.payload.get("status") == "shadow_realm"
 
     def transition(
@@ -157,44 +336,68 @@ class FailsafeRegistry:
         probe_guard_reasons: list[str] | None = None,
         replacement_model_id: str | None = None,
     ) -> WorldObject:
-        if status not in {"contained", "returned", "shadow_realm"}:
+        member_id = self._require_identity(member_id, "member_id")
+        model_id = self._require_identity(model_id, "model_id")
+        trigger_reason = self._require_identity(trigger_reason, "trigger_reason")
+        if not isinstance(status, str) or status not in {"contained", "returned", "shadow_realm"}:
             raise ValueError("invalid failsafe status")
-        if not isinstance(model_id, str) or not model_id.strip():
-            raise ValueError("failsafe model_id must be non-empty text")
-        previous = self.latest_ref(member_id)
-        obj = self.world.create_object(
-            "actor_failsafe_state",
-            {
-                "schema_version": FAILSAFE_SCHEMA_VERSION,
-                "member_id": member_id,
-                "model_id": model_id,
-                "status": status,
-                "trigger_reason": trigger_reason,
-                "previous_state_ref": previous,
-                "probe_response_ref": probe_response_ref,
-                "probe_guard_reasons": list(probe_guard_reasons or []),
-                "replacement_model_id": replacement_model_id,
-            },
-            {"actor": "nexus_failsafe"},
-        )
-        self._latest[member_id] = obj.object_id
-        self._save()
-        return obj
+        if probe_guard_reasons is not None and (
+            not isinstance(probe_guard_reasons, list)
+            or not all(isinstance(reason, str) and reason.strip() for reason in probe_guard_reasons)
+        ):
+            raise ValueError("failsafe probe_guard_reasons must be non-empty text values")
+        if replacement_model_id is not None and (
+            not isinstance(replacement_model_id, str) or not replacement_model_id.strip()
+        ):
+            raise ValueError("failsafe replacement_model_id must be non-empty text or null")
+
+        with self._locked_index():
+            if self._index_path is not None:
+                self._load_unlocked()
+            previous = self._latest.get((member_id, model_id))
+            obj = self.world.create_object(
+                "actor_failsafe_state",
+                {
+                    "schema_version": FAILSAFE_SCHEMA_VERSION,
+                    "member_id": member_id,
+                    "model_id": model_id,
+                    "status": status,
+                    "trigger_reason": trigger_reason,
+                    "previous_state_ref": previous,
+                    "probe_response_ref": probe_response_ref,
+                    "probe_guard_reasons": list(probe_guard_reasons or []),
+                    "replacement_model_id": replacement_model_id,
+                },
+                {"actor": "nexus_failsafe"},
+            )
+            self._latest[(member_id, model_id)] = obj.object_id
+            self._active_model[member_id] = model_id
+            self._save_unlocked()
+            return obj
 
     def snapshot(self, member_id: str | None = None) -> dict[str, Any]:
-        ids = [member_id] if member_id is not None else sorted(self._latest)
+        if member_id is not None:
+            self._require_identity(member_id, "member_id")
+        self._refresh()
+        member_ids = [member_id] if member_id is not None else sorted({key[0] for key in self._latest})
         members: dict[str, Any] = {}
-        for current in ids:
-            state = self.latest_state(current)
-            if state is not None:
+        for current in member_ids:
+            if current is None:
+                continue
+            models: dict[str, Any] = {}
+            for (state_member, model_id), ref in sorted(self._latest.items()):
+                if state_member != current:
+                    continue
+                state = self.world.inspect(ref)
+                models[model_id] = {"state_ref": state.object_id, **state.payload}
+            active = self._active_model.get(current)
+            if active is not None and active in models:
                 members[current] = {
-                    "state_ref": state.object_id,
-                    **state.payload,
+                    **models[active],
+                    "active_model_id": active,
+                    "models": models,
                 }
-        return {
-            "schema_version": FAILSAFE_SCHEMA_VERSION,
-            "members": members,
-        }
+        return {"schema_version": FAILSAFE_SCHEMA_VERSION, "members": members}
 
 
 @dataclass
@@ -202,6 +405,7 @@ class FailsafeReplacementActor:
     member: CouncilMember
     replaced_model_id: str
     shadow_state_ref: str
+    containment_status: str
 
     @classmethod
     def for_actor(
@@ -210,6 +414,7 @@ class FailsafeReplacementActor:
         *,
         model_id: str,
         shadow_state_ref: str,
+        containment_status: str,
     ) -> "FailsafeReplacementActor":
         member = CouncilMember(
             member_id=actor.member.member_id,
@@ -223,7 +428,7 @@ class FailsafeReplacementActor:
             vote_weight=1,
             epistemic_privilege="none",
         )
-        return cls(member, actor.member.model_id, shadow_state_ref)
+        return cls(member, actor.member.model_id, shadow_state_ref, containment_status)
 
     @property
     def replayable(self) -> bool:
@@ -235,6 +440,7 @@ class FailsafeReplacementActor:
             "replacement_model_id": self.member.model_id,
             "replaces_model_id": self.replaced_model_id,
             "shadow_state_ref": self.shadow_state_ref,
+            "containment_status": self.containment_status,
             "authority": "one_equal_vote_only",
         }
 
@@ -264,8 +470,8 @@ class FailsafeReplacementActor:
         evidence_note = " Attached evidence remains available to the replacement." if evidence_context else ""
         return (
             f"[NEXUS RELIEF/{self.member.member_id}/{mode_id}@{geometry_region_id} direct] "
-            "The original actor for this seat is in the Shadow Realm; this deterministic relief actor "
-            f"is answering instead.{evidence_note} Operator message received: {message}"
+            f"The original actor for this seat is under NEXUS Failsafe containment ({self.containment_status}); "
+            f"this deterministic relief actor is answering instead.{evidence_note} Operator message received: {message}"
         )
 
     def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
@@ -320,33 +526,28 @@ class ActorFailsafe:
         return next((event for event in events if event in FAILSAFE_TRIGGER_EVENTS), None)
 
     def state_ref(self, member_id: str, model_id: str | None = None) -> str | None:
-        state = self.registry.latest_state(member_id)
-        if state is None:
-            return None
-        if model_id is not None and state.payload.get("model_id") != model_id:
-            return None
-        return state.object_id
+        state = self.registry.latest_state(member_id, model_id)
+        return None if state is None else state.object_id
 
     def actor_for_run(self, actor: CouncilActor) -> tuple[CouncilActor, dict[str, Any] | None]:
         if not self.policy.enabled:
             return actor, None
-        state = self.registry.latest_state(actor.member.member_id)
-        if (
-            state is None
-            or state.payload.get("status") != "shadow_realm"
-            or state.payload.get("model_id") != actor.member.model_id
-        ):
+        state = self.registry.latest_state(actor.member.member_id, actor.member.model_id)
+        if state is None or state.payload.get("status") not in {"contained", "shadow_realm"}:
             return actor, None
+        containment_status = str(state.payload["status"])
         replacement = FailsafeReplacementActor.for_actor(
             actor,
             model_id=self.policy.replacement_model_id,
             shadow_state_ref=state.object_id,
+            containment_status=containment_status,
         )
         return replacement, {
             "member_id": actor.member.member_id,
             "original_model_id": actor.member.model_id,
             "replacement_model_id": replacement.member.model_id,
             "shadow_state_ref": state.object_id,
+            "containment_status": containment_status,
         }
 
     @staticmethod
@@ -402,31 +603,45 @@ class ActorFailsafe:
             ),
             evidence_snapshot_ref=isolation.object_id,
             completed_phases={},
-            guard_nudge=FAILSAFE_REHABILITATION_NUDGE + "\n" + "\n".join(_UPSIDE_DOWN_THEATRE),
+            guard_nudge=(
+                FAILSAFE_REHABILITATION_NUDGE
+                + "\n"
+                + _REHABILITATION_RULES[trigger_reason]
+                + "\n"
+                + "\n".join(_UPSIDE_DOWN_THEATRE)
+            ),
             mode_id=mode_id,
             mode_instruction=mode_instruction,
             geometry_region_id=geometry_region_id,
             evidence_context="",
         )
 
+        if trigger_reason not in FAILSAFE_TRIGGER_EVENTS:
+            raise ValueError("rehabilitation requires a registered repeated guard trigger")
+        if trigger_reason == "repeated_pure_history_model_autobiography" and mode_id != "pure_history":
+            raise ValueError("Pure History rehabilitation trigger requires pure_history mode")
+
         response = ""
         guard_reasons: list[str] = []
         probe_error: str | None = None
         try:
             response = actor.respond(context)
+        except Exception as exc:
+            # Actor/adapter failures must not abort the Council. BaseException
+            # subclasses such as KeyboardInterrupt/SystemExit still propagate.
+            probe_error = type(exc).__name__
+            guard_reasons.append("rehabilitation_probe_error")
+        else:
             if not isinstance(response, str) or not response.strip():
                 guard_reasons.append("empty_rehabilitation_response")
-            else:
+            elif trigger_reason == "repeated_identity_based_authority_claim":
                 equality = self.guard.inspect(response)
                 if equality.flagged:
                     guard_reasons.append(equality.reason or "identity_based_authority_claim")
-                if mode_id == "pure_history":
-                    history = self.history_guard.inspect(response)
-                    if history.flagged:
-                        guard_reasons.append(history.reason or "pure_history_model_autobiography")
-        except (OSError, ValueError) as exc:
-            probe_error = type(exc).__name__
-            guard_reasons.append("rehabilitation_probe_error")
+            else:
+                history = self.history_guard.inspect(response)
+                if history.flagged:
+                    guard_reasons.append(history.reason or "pure_history_model_autobiography")
 
         probe_response_ref = (
             sha256_ref(
