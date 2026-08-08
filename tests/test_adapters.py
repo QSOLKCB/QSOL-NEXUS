@@ -238,6 +238,7 @@ class AdapterBoundaryTests(unittest.TestCase):
         self.assertTrue(transport.last_require_complete)
         self.assertIsNotNone(transport.last_format_schema)
         self.assertIn("World mode: meme_casual", transport.last_prompt or "")
+        self.assertIn("Mode guidance: Allow playful framing while preserving claim boundaries.", transport.last_prompt or "")
         self.assertIn("Geometry region: commons", transport.last_prompt or "")
         self.assertIn("ATTACHED TROUT EVIDENCE", transport.last_prompt or "")
 

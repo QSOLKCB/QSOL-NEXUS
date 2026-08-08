@@ -24,8 +24,8 @@ from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.7"
-RUNTIME_VERSION = "2.0.0-alpha6.3"
+PROTOCOL_VERSION = "nexus/0.8"
+RUNTIME_VERSION = "2.0.0-alpha6.4"
 
 
 class NexusAPI:

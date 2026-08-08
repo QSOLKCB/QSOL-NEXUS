@@ -19,7 +19,7 @@ pub struct RoomSpec {
     pub label: &'static str,
 }
 
-pub const ROOMS: [RoomSpec; 6] = [
+pub const ROOMS: [RoomSpec; 7] = [
     RoomSpec {
         channel: "#observatory",
         mode_id: "analytical",
@@ -31,6 +31,12 @@ pub const ROOMS: [RoomSpec; 6] = [
         mode_id: "historical",
         region_id: "archive",
         label: "Archive / Historical",
+    },
+    RoomSpec {
+        channel: "#pure-history",
+        mode_id: "pure_history",
+        region_id: "archive",
+        label: "Archive / Pure History — No Ancient Aliens",
     },
     RoomSpec {
         channel: "#agora",

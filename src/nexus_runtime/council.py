@@ -10,6 +10,7 @@ from .adapters.base import CouncilActor
 from .canonical import canonical_json, sha256_ref
 from .geometry import DEFAULT_WORLD_GEOMETRY, WorldGeometry
 from .guard import EqualityGuard
+from .history_guard import PureHistoryGuard
 from .modes import get_mode
 from .scrub import SecretScrubber
 from .telemetry import build_council_telemetry
@@ -31,6 +32,7 @@ class CouncilCoordinator:
         world: WorldStore,
         policy: CouncilPolicy | None = None,
         guard: EqualityGuard | None = None,
+        history_guard: PureHistoryGuard | None = None,
         scrubber: SecretScrubber | None = None,
         geometry: WorldGeometry | None = None,
         max_parallel_workers: int = DEFAULT_COUNCIL_PARALLEL_WORKERS,
@@ -42,6 +44,7 @@ class CouncilCoordinator:
         self.world = world
         self.policy = policy or CouncilPolicy()
         self.guard = guard or EqualityGuard()
+        self.history_guard = history_guard or PureHistoryGuard()
         self.scrubber = scrubber or SecretScrubber()
         self.geometry = geometry or DEFAULT_WORLD_GEOMETRY
         self.max_parallel_workers = max_parallel_workers
@@ -318,31 +321,58 @@ class CouncilCoordinator:
             return tuple(executor.map(operation, actors))
 
     def _collect_guarded(self, actor: CouncilActor, context: PhaseContext) -> tuple[str, list[str]]:
-        first = actor.respond(context)
-        inspected = self.guard.inspect(first)
-        if not inspected.flagged:
-            return first, []
+        content = actor.respond(context)
+        events: list[str] = []
 
-        events = [inspected.reason or "identity_based_authority_claim"]
+        inspected = self.guard.inspect(content)
+        if inspected.flagged:
+            events.append(inspected.reason or "identity_based_authority_claim")
+            retry_context = PhaseContext(
+                session_id=context.session_id,
+                phase=context.phase,
+                question=context.question,
+                evidence_snapshot_ref=context.evidence_snapshot_ref,
+                completed_phases=context.completed_phases,
+                guard_nudge=inspected.nudge,
+                mode_id=context.mode_id,
+                mode_instruction=context.mode_instruction,
+                geometry_region_id=context.geometry_region_id,
+                evidence_context=context.evidence_context,
+            )
+            content = actor.respond(retry_context)
+            inspected_again = self.guard.inspect(content)
+            if inspected_again.flagged:
+                events.append("repeated_identity_based_authority_claim")
+                return "Contribution withheld pending evidence-based restatement.", events
+            events.append("restated_after_nudge")
+
+        if context.mode_id != "pure_history":
+            return content, events
+
+        history = self.history_guard.inspect(content)
+        if not history.flagged:
+            return content, events
+
+        events.append(history.reason or "pure_history_model_autobiography")
         retry_context = PhaseContext(
             session_id=context.session_id,
             phase=context.phase,
             question=context.question,
             evidence_snapshot_ref=context.evidence_snapshot_ref,
             completed_phases=context.completed_phases,
-            guard_nudge=inspected.nudge,
+            guard_nudge=history.nudge,
             mode_id=context.mode_id,
             mode_instruction=context.mode_instruction,
             geometry_region_id=context.geometry_region_id,
             evidence_context=context.evidence_context,
         )
-        second = actor.respond(retry_context)
-        inspected_again = self.guard.inspect(second)
-        if inspected_again.flagged:
-            events.append("repeated_identity_based_authority_claim")
-            return "Contribution withheld pending evidence-based restatement.", events
-        events.append("restated_after_nudge")
-        return second, events
+        restated = actor.respond(retry_context)
+        history_again = self.history_guard.inspect(restated)
+        if history_again.flagged:
+            events.append("repeated_pure_history_model_autobiography")
+            return "Contribution withheld pending source-focused historical restatement.", events
+        events.append("restated_after_pure_history_nudge")
+        return restated, events
 
     def _collect_ballots(
         self,

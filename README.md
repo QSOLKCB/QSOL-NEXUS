@@ -24,17 +24,18 @@ NEXUS now has:
 - a first **Rust operator TUI** using an old-school IRC interface;
 - deterministic **Council information telemetry**;
 - bounded ordered-parallel Council execution;
-- explicit game rooms: **`#un-sim`** and the cursed multi-avatar **`#mud`**.
+- explicit game rooms: **`#un-sim`** and the cursed multi-avatar **`#mud`**;
+- **Pure History Mode — No Ancient Aliens Edition** for source-forensic historical deliberation.
 
 Current posture:
 
 ```text
-protocol: nexus/0.7
-runtime version: 2.0.0-alpha6.3
+protocol: nexus/0.8
+runtime version: 2.0.0-alpha6.4
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
 actor backends: mock + explicit loopback Ollama
-world modes: analytical / historical / cultural / meme_casual / game_un / game_mud
+world modes: analytical / historical / pure_history / cultural / meme_casual / game_un / game_mud
 geometry: named-regions-v3
 game rooms: #un-sim / Assembly Hall + #mud / Dungeon
 remote/cloud providers: deferred
@@ -99,9 +100,11 @@ NEXUS should not be all work and no play.
 |---|---|---|
 | `analytical` | Observatory / `#observatory` | evidence-first technical reasoning |
 | `historical` | Archive / `#archive` | chronology, source context, change over time |
+| `pure_history` | Archive / `#pure-history` | source-forensic history; no myth/retelling/speculation promotion |
 | `cultural` | Agora / `#agora` | norms, ambiguity, social meaning, cultural comparison |
 | `meme_casual` | Commons / `#commons` | playful, irreverent, meme-aware interaction |
 | `game_un` | Assembly Hall / `#un-sim` | fictional UN-style strategy game, crises, Risk-like state and memes |
+| `game_mud` | Dungeon / `#mud` | deterministic multi-avatar HERESY MUD |
 
 The important invariant is:
 
@@ -526,6 +529,22 @@ All countries, conflicts, territory, military values and arms packages are game 
 
 See [`docs/UN_SIM.md`](docs/UN_SIM.md).
 
+## `#pure-history` — No Ancient Aliens Edition
+
+Pure History is a stricter sibling of ordinary Historical Mode. Both occupy the Archive region, but `pure_history` forces source categories to stay separate: primary/near-primary attestation, chronology and provenance, later interpretation, modern retelling, and unsupported speculation.
+
+A mythic or literary text is evidence that a text/tradition existed and said something; it is not automatically evidence that the narrated event occurred. Small models that evade the task with chatbot autobiography such as “As a Large Language Model…” receive one deterministic source-discipline retry. This guard does not decide historical truth or alter voting authority.
+
+```text
+/join #pure-history
+/topic I heard the Anunnaki totally had sex with human women and bore giants. Is that historically supported?
+/ask
+```
+
+> **Same archive. Stricter source discipline. Same vote.**
+
+See [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md).
+
 ## `#mud` — HERESY MUD
 
 The second explicit game room is a deterministic multi-avatar dungeon built from old BBS/MUD interaction grammar plus DORK/HERESY satire:
@@ -571,6 +590,7 @@ Remote provider auth is intentionally postponed until the shared-world, operator
 - [`THREAT_MODEL.md`](THREAT_MODEL.md) — executable adapter threat model
 - [`docs/API.md`](docs/API.md) — JSONL control API
 - [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) — World Modes and named-region geometry
+- [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md) — source-forensic `#pure-history` mode and discipline guard
 - [`docs/IRC_TUI.md`](docs/IRC_TUI.md) — implemented Rust IRC-style operator interface
 - [`docs/CLI_TUI.md`](docs/CLI_TUI.md) — broader operator-shell direction
 - [`docs/ADAPTERS.md`](docs/ADAPTERS.md) — provider-neutral actor/adapter contract

@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.7
+nexus/0.8
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha6.3
+2.0.0-alpha6.4
 ```
 
 Current posture:
@@ -66,8 +66,8 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.7",
-  "runtime_version": "2.0.0-alpha6.3",
+  "protocol": "nexus/0.8",
+  "runtime_version": "2.0.0-alpha6.4",
   "control_transport": "jsonl_stdio",
   "network": "none_unless_explicit_loopback_ollama_actor",
   "adapters": ["mock", "ollama_loopback"],
@@ -225,14 +225,17 @@ Built-in modes:
 
 ```text
 analytical  -> Observatory
-historical  -> Archive
+historical   -> Archive / #archive
+pure_history -> Archive / #pure-history
 cultural    -> Agora
 meme_casual -> Commons
 game_un     -> Assembly Hall / #un-sim
 game_mud    -> Dungeon / #mud
 ```
 
-A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds.
+A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds. `pure_history` additionally applies a narrow retry guard only to chatbot-autobiography/media-habit evasions; it does not adjudicate historical truth.
+
+See [`PURE_HISTORY.md`](PURE_HISTORY.md) for the source-discipline contract.
 
 ## Geometry
 

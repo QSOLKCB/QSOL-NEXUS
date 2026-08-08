@@ -240,7 +240,7 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS 2.0 alpha6.3 IRC/TUI — local room, no IRC server");
+        app.append("*** NEXUS 2.0 alpha6.4 IRC/TUI — local room, no IRC server");
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );

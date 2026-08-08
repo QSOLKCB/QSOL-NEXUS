@@ -43,6 +43,20 @@ _MODES = {
         ),
         region_id="archive",
     ),
+    "pure_history": WorldMode(
+        mode_id="pure_history",
+        label="Pure History / No Ancient Aliens",
+        description="Source-forensic history that separates attestation, chronology, interpretation, retelling, and speculation.",
+        prompt_instruction=(
+            "Reason as a source-forensic historian. Separate primary or near-primary source attestation, chronology, "
+            "and provenance from later interpretation, transmission, modern retelling, pop-history media, and unsupported "
+            "speculation. A mythic, religious, or literary text is historical evidence that a text or tradition existed and "
+            "said something; it is not automatically evidence that the narrated event occurred as described. Do not answer "
+            "with model autobiography, media-consumption disclaimers, or appeals to being trained on the topic. If evidence "
+            "is insufficient, state exactly what source evidence is missing and give the narrowest conclusion supported."
+        ),
+        region_id="archive",
+    ),
     "cultural": WorldMode(
         mode_id="cultural",
         label="Cultural",
