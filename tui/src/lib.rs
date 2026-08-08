@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use zip::ZipArchive;
 
 pub const MAX_UPLOAD_BYTES: u64 = 8 * 1024 * 1024;
+pub const MAX_ARCHIVE_MEMBER_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_EVIDENCE_CHARS: usize = 120_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -544,6 +545,13 @@ fn extract_zip_xml(path: &Path, member: &str) -> Result<String, String> {
     let mut entry = archive
         .by_name(member)
         .map_err(|e| format!("document is missing {member}: {e}"))?;
+    if entry.size() > MAX_ARCHIVE_MEMBER_BYTES {
+        return Err(format!(
+            "document member {member} expands to {} bytes; limit is {} bytes",
+            entry.size(),
+            MAX_ARCHIVE_MEMBER_BYTES
+        ));
+    }
     let mut xml = String::new();
     entry
         .read_to_string(&mut xml)
