@@ -13,7 +13,7 @@ nexus/0.5
 Runtime identifier:
 
 ```text
-2.0.0-alpha5
+2.0.0-alpha6
 ```
 
 Current posture:
@@ -65,7 +65,7 @@ Current response fields include:
 {
   "status": "ok",
   "protocol": "nexus/0.5",
-  "runtime_version": "2.0.0-alpha5",
+  "runtime_version": "2.0.0-alpha6",
   "control_transport": "jsonl_stdio",
   "network": "none_unless_explicit_loopback_ollama_actor",
   "adapters": ["mock", "ollama_loopback"],
