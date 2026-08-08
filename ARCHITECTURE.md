@@ -4,7 +4,7 @@
 
 QSOL NEXUS is a model-independent cognitive substrate: a persistent computational world that humans and heterogeneous machine intelligences can inspect, extend, test, and revisit through a common protocol.
 
-NEXUS does not attempt to define how a model must think internally. It defines how participants interact with shared objects, evidence, experiments, instruments, Council sessions, and durable state.
+NEXUS does not attempt to define how a model must think internally. It defines how participants interact with shared objects, evidence, experiments, instruments, Council sessions, durable state, world modes, and geometry.
 
 ## Top-level architecture
 
@@ -13,19 +13,20 @@ NEXUS does not attempt to define how a model must think internally. It defines h
                                  |
                                  v
                     +-------------------------+
-                    |      RUST TUI / CLI     |
-                    | status · Council · auth |
-                    | world · receipts · logs |
+                    |   CLI / future RUST TUI |
+                    | Council · world · modes |
+                    | receipts · logs · tools |
                     +------------+------------+
                                  |
                          local IPC / JSONL
                                  |
                                  v
                     +-------------------------+
-                    |     PYTHON TOOLING      |
+                    |     PYTHON RUNTIME      |
                     |-------------------------|
                     | Council orchestration   |
                     | world object service    |
+                    | modes + geometry        |
                     | memory / lineage        |
                     | instrument dispatch     |
                     | evidence / receipts     |
@@ -43,18 +44,19 @@ NEXUS does not attempt to define how a model must think internally. It defines h
                 |                |                |
                 v                v                v
              Model A          Model B          Model C
-             remote           remote/local     local
 ```
 
-The Rust TUI is an operator interface, not an epistemic authority. The Python layer is planned as the first reference tooling/runtime because it is easy to inspect, script, test, and connect to the existing scientific Python ecosystem. Rust may later absorb performance-sensitive or security-sensitive components after contracts stabilize.
+The future Rust TUI is an operator interface, not an epistemic authority. The Python layer remains the first reference tooling/runtime because it is easy to inspect, script, test, and connect to the existing scientific Python ecosystem.
+
+Provider authentication is deliberately deferred until the shared-world contracts have matured further.
 
 ## Trust domains
 
 ```text
 UNTRUSTED / EXTERNAL
 +---------------------------------------------------------+
-| model providers · remote APIs · model-generated prose  |
-| provider SDKs · network transport · local model servers|
+| model providers · local model servers · generated prose|
+| provider SDKs · network transport · model self-claims  |
 +---------------------------+-----------------------------+
                             |
                       adapter boundary
@@ -62,14 +64,92 @@ UNTRUSTED / EXTERNAL
 TRUSTED NEXUS CONTROL PLANE
 +---------------------------v-----------------------------+
 | roster · equal voting · phase ordering · sealed ballot |
-| canonical objects · evidence refs · receipts · lineage |
-| deterministic instruments · replay · verification      |
+| world mode · geometry placement · evidence snapshots   |
+| canonical objects · receipts · lineage · verification  |
 +---------------------------+-----------------------------+
                             |
                     durable world state
 ```
 
-A model response is a **proposal** until NEXUS records it under the applicable phase and evidence state. Corporate identity, provider branding, or model self-description cannot alter protocol authority.
+A model response is a **proposal** until NEXUS records it under the applicable phase and evidence state. Corporate identity, provider branding, model self-description, selected world mode, or geometry location cannot alter protocol authority.
+
+## Modes and geometry
+
+NEXUS separates **how a session is framed** from **where it exists in the shared world**.
+
+```text
+MODE
+  reasoning posture · context · tone
+
+GEOMETRY
+  region · coordinate · adjacency · presence
+```
+
+Initial map:
+
+```text
+                         ARCHIVE
+                       Historical
+                         (-2,1)
+                        /      \
+                       /        \
+                 AGORA ---------- OBSERVATORY
+                Cultural           Analytical
+                 (0,2)               (0,0)
+                      \             /
+                       \           /
+                        COMMONS
+                      Meme/Casual
+                         (2,1)
+```
+
+Built-in modes:
+
+```text
+analytical  -> Observatory
+historical  -> Archive
+cultural    -> Agora
+meme_casual -> Commons
+```
+
+The geometry is deliberately an **operational topology**, not a claim that cognition, history, culture, or humor literally occupy Euclidean coordinates.
+
+Mode invariants:
+
+```text
+mode may change framing
+mode may change tone
+mode may change contextual instructions
+
+mode may NOT change vote_weight
+mode may NOT change epistemic_privilege
+mode may NOT change evidence_state
+mode may NOT disable verification
+mode may NOT disable the Equality Guard
+mode may NOT bypass the Secret Scrubber
+```
+
+This distinction is important because model prompts are guidance, not the source of runtime authority.
+
+See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md).
+
+## World presence
+
+A Council session is placed into the world through a content-addressed presence object:
+
+```text
+WorldPresence
+├── mode_id
+├── mode_label
+├── region_id
+├── region_label
+├── coordinates
+├── member_ids[]
+├── question_ref
+└── geometry_id
+```
+
+The presence reference becomes part of the frozen Council session identity. Identical questions run in different modes therefore form distinct world lineage.
 
 ## Council architecture
 
@@ -77,6 +157,8 @@ A model response is a **proposal** until NEXUS records it under the applicable p
                        CANONICAL QUESTION
                               |
                     frozen evidence snapshot
+                              |
+                      MODE + WORLD REGION
                               |
                               v
             +-----------------------------------+
@@ -115,7 +197,7 @@ A model response is a **proposal** until NEXUS records it under the applicable p
                        NEXUS WORLD
 ```
 
-Council equality is structural, not aspirational. Each registered Council member has exactly one ballot and `vote_weight = 1`.
+Council equality is structural, not aspirational. Each registered Council member has exactly one ballot and `vote_weight = 1` regardless of provider, model size, mode, or region.
 
 ## Consensus and evidence are orthogonal
 
@@ -150,9 +232,11 @@ Verification: FAILED
 => Council agreement does not override the failed check
 ```
 
+The same rule applies in Meme/Casual Mode: a very funny unanimous answer is still not evidence.
+
 ## World model
 
-The planned fundamental unit is a content-addressable **World Object**.
+The fundamental unit is a content-addressable **World Object**.
 
 ```text
 WorldObject
@@ -178,6 +262,24 @@ WorldObject
 
 No representation is automatically privileged as the ontology of the world. Golay, Leech lattice, E8, ternary systems, embeddings, graphs, spectral representations, and other structures may be useful views or instruments without becoming mandatory metaphysics.
 
+The alpha4 named-region map is therefore a minimal navigational substrate rather than a scientific claim.
+
+## Geometry-inspired telemetry
+
+Research concepts such as basins, bottlenecks, branching multiplicity, perturbation sensitivity, recovery time and control-gain collapse may later inspire measurable NEXUS telemetry.
+
+They must remain operationally typed:
+
+```text
+measured response diversity -> telemetry
+measured branching          -> telemetry
+measured recovery time      -> telemetry
+
+analogy to spectral gap     != measured physical/operator spectrum
+```
+
+Council-response entropy is a particularly promising future observation channel: low entropy can indicate convergent responses, while higher entropy can indicate greater informational diversity. It must not be interpreted as truth or quality by itself.
+
 ## Model adapter boundary
 
 ```text
@@ -187,7 +289,7 @@ NEXUS envelope
 +------------------+
 | provider adapter |
 |------------------|
-| auth capability  |
+| auth capability  |  # later milestone
 | model discovery  |
 | prompt transport |
 | response parsing |
@@ -206,7 +308,9 @@ Adapters translate between provider-specific APIs and one NEXUS contract. They m
 - claim epistemic privilege for their provider;
 - write secrets into world state;
 - silently add evidence unavailable to other Council members;
-- mutate a frozen evidence snapshot.
+- mutate a frozen evidence snapshot;
+- redefine the active world mode;
+- move the Council to a different region without a recorded world transition.
 
 ## CLI/TUI rather than WebUI
 
@@ -222,7 +326,7 @@ Reasons:
 - the TUI can remain a thin operator shell over stable tooling;
 - the trusted world does not depend on DOM state, browser extensions, CORS, or front-end frameworks.
 
-A future visualization viewer may exist, but it should consume completed world objects and receipts rather than become the trusted orchestration surface.
+A future visualization viewer may exist, but it should consume completed world objects and geometry rather than become the trusted orchestration surface.
 
 ## Proposed process layout
 
@@ -231,47 +335,34 @@ nexus                         # Rust CLI/TUI (future)
   |
   +-- starts / connects to
   |
-python -m nexus_runtime       # Python reference tooling (future)
+python -m nexus_runtime       # Python reference runtime
   |
   +-- world service
   +-- Council coordinator
+  +-- mode registry
+  +-- geometry service
   +-- equality guard
   +-- instrument registry
   +-- receipt/replay service
   +-- adapter manager
-        |
-        +-- openai adapter
-        +-- anthropic adapter
-        +-- gemini adapter
-        +-- xai adapter
-        +-- ollama adapter
-        +-- generic adapter
 ```
 
-The exact IPC mechanism is intentionally undecided in this documentation pull. JSON Lines over stdio is the simplest reference candidate; a local socket may later be justified by concurrency needs.
+JSON Lines over stdio remains the simplest reference IPC. A local socket may later be justified by concurrency needs.
 
-## Provider authentication boundary
+## Provider authentication boundary — deferred
 
-The desired operator experience is similar to modern coding CLIs:
+The long-term operator experience remains coding-CLI-like:
 
 ```text
-$ nexus auth add
-
-Choose provider:
-  OpenAI
-  Anthropic / Claude
-  Google / Gemini
-  xAI / Grok
-  Ollama / local
-  Generic OpenAI-compatible endpoint
-
-Adapter reports supported setup methods.
-Operator authenticates.
-NEXUS tests capability.
-Credentials are stored outside world state.
+nexus auth add
+nexus auth list
+nexus auth test
+nexus models list
 ```
 
-NEXUS must not hard-code an assumption that every provider supports the same login method. An adapter may expose API-key, provider-supported interactive authentication, local endpoint configuration, or another explicit method.
+But authentication is intentionally **not** the next architectural priority. NEXUS should first develop the shared world, geometry, modes, telemetry, instruments and operator shell enough that remote providers are arriving into a stable place rather than defining that place.
+
+Credentials will remain outside world state, Council prompts, receipts and lineage when this layer is implemented.
 
 ## Instrument boundary
 
@@ -302,17 +393,18 @@ A model may suggest an experiment. NEXUS executes the instrument under its own c
 
 A model may leave the Council permanently. Its durable contributions remain as attributed world objects. A new model may enter later and inspect the same evidence and lineage without inheriting the previous model's hidden chain of thought or provider-specific context.
 
-## Architecture rule for the first implementation
+## Architecture rule
 
 Build the smallest correct path first:
 
 ```text
 object
+  -> placement
   -> operation
   -> result
   -> observation
   -> receipt
-  -> replay
+  -> replay where applicable
 ```
 
-Then add Council orchestration. Then add provider adapters. Then add the Rust TUI. Performance work comes after the contracts survive real use.
+Then expand the world. Authentication and optimization come after the world contracts survive real use.

@@ -40,6 +40,8 @@ class _StubTransport:
 
     def __init__(self, raw: str) -> None:
         self.raw = raw
+        self.last_prompt: str | None = None
+        self.last_format_schema: dict[str, object] | None = None
         self.last_options: dict[str, object] | None = None
         self.last_require_complete: bool | None = None
 
@@ -52,6 +54,8 @@ class _StubTransport:
         options: dict[str, object] | None = None,
         require_complete: bool = True,
     ) -> str:
+        self.last_prompt = prompt
+        self.last_format_schema = format_schema
         self.last_options = options
         self.last_require_complete = require_complete
         return self.raw
@@ -182,7 +186,8 @@ class AdapterBoundaryTests(unittest.TestCase):
             "A bounded but usable Council contribution",
         )
 
-    def test_ollama_phase_response_uses_nexus_budget_and_allows_bound(self) -> None:
+    def test_ollama_phase_response_uses_nexus_budget_and_propagates_world_context(self) -> None:
+        guidance = "Interpret norms and ambiguity comparatively while keeping factual claims evidence-bounded."
         context = PhaseContext(
             "session",
             Phase.WHITE,
@@ -190,6 +195,9 @@ class AdapterBoundaryTests(unittest.TestCase):
             "object:" + "a" * 64,
             {},
             guard_nudge="NEXUS EQUALITY GUARD: restate on evidence alone.",
+            mode_id="cultural",
+            mode_instruction=guidance,
+            geometry_region_id="agora",
         )
         transport = _StubTransport("Evidence-based restatement.")
         actor = OllamaActor(
@@ -200,9 +208,22 @@ class AdapterBoundaryTests(unittest.TestCase):
         self.assertEqual(actor.respond(context), "Evidence-based restatement.")
         self.assertEqual(transport.last_options, {"num_predict": 192})
         self.assertFalse(transport.last_require_complete)
+        self.assertIsNotNone(transport.last_prompt)
+        self.assertIn("World mode: cultural", transport.last_prompt or "")
+        self.assertIn(f"Mode guidance: {guidance}", transport.last_prompt or "")
+        self.assertIn("Geometry region: agora", transport.last_prompt or "")
 
-    def test_ollama_ballot_validates_local_schema_and_budget(self) -> None:
-        context = PhaseContext("session", Phase.BLUE, "question", "object:" + "a" * 64, {})
+    def test_ollama_ballot_validates_local_schema_budget_and_world_context(self) -> None:
+        context = PhaseContext(
+            "session",
+            Phase.BLUE,
+            "question",
+            "object:" + "a" * 64,
+            {},
+            mode_id="meme_casual",
+            mode_instruction="Allow playful framing while preserving claim boundaries.",
+            geometry_region_id="commons",
+        )
         transport = _StubTransport('{"choice":"TEST_FURTHER","rationale":"Needs replication."}')
         actor = OllamaActor(
             CouncilMember("member", "fixture", adapter_id="ollama"),
@@ -214,6 +235,9 @@ class AdapterBoundaryTests(unittest.TestCase):
         self.assertEqual(rationale, "Needs replication.")
         self.assertEqual(transport.last_options, {"num_predict": 256, "temperature": 0})
         self.assertTrue(transport.last_require_complete)
+        self.assertIsNotNone(transport.last_format_schema)
+        self.assertIn("World mode: meme_casual", transport.last_prompt or "")
+        self.assertIn("Geometry region: commons", transport.last_prompt or "")
 
     def test_ollama_ballot_rejects_malformed_non_object_and_extra_keys(self) -> None:
         context = PhaseContext("session", Phase.BLUE, "question", "object:" + "a" * 64, {})

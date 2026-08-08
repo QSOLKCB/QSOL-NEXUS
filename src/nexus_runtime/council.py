@@ -6,7 +6,9 @@ from typing import Iterable
 
 from .adapters.base import CouncilActor
 from .canonical import sha256_ref
+from .geometry import DEFAULT_WORLD_GEOMETRY, WorldGeometry
 from .guard import EqualityGuard
+from .modes import get_mode
 from .scrub import SecretScrubber
 from .types import BallotRecord, CouncilPolicy, PHASE_ORDER, Phase, PhaseContext, PhaseSubmission
 from .world import WorldStore
@@ -19,11 +21,13 @@ class CouncilCoordinator:
         policy: CouncilPolicy | None = None,
         guard: EqualityGuard | None = None,
         scrubber: SecretScrubber | None = None,
+        geometry: WorldGeometry | None = None,
     ) -> None:
         self.world = world
         self.policy = policy or CouncilPolicy()
         self.guard = guard or EqualityGuard()
         self.scrubber = scrubber or SecretScrubber()
+        self.geometry = geometry or DEFAULT_WORLD_GEOMETRY
 
     def run(
         self,
@@ -32,9 +36,13 @@ class CouncilCoordinator:
         *,
         evidence_refs: list[str] | None = None,
         evidence_state: str = "UNTESTED",
+        mode_id: str = "analytical",
     ) -> dict:
         actors = tuple(actors)
         self._validate_roster(actors)
+        mode = get_mode(mode_id)
+        region = self.geometry.region_for_mode(mode.mode_id)
+        geometry_snapshot = self.geometry.snapshot()
 
         scrubbed = self.scrubber.scrub(question)
         question_obj = self.world.create_object(
@@ -68,9 +76,28 @@ class CouncilCoordinator:
                 }
             )
 
+        presence = self.world.create_object(
+            "world_presence",
+            {
+                "mode_id": mode.mode_id,
+                "mode_label": mode.label,
+                "region_id": region.region_id,
+                "region_label": region.label,
+                "coordinates": [region.x, region.y],
+                "member_ids": [actor.member.member_id for actor in actors],
+                "question_ref": question_obj.object_id,
+                "geometry_id": geometry_snapshot["geometry_id"],
+                "geometry_topology_ref": geometry_snapshot["topology_ref"],
+            },
+            {"actor": "nexus"},
+        )
+
         frozen_inputs = {
             "question_ref": question_obj.object_id,
             "evidence_snapshot_ref": evidence.object_id,
+            "world_presence_ref": presence.object_id,
+            "world_mode": mode.as_dict(),
+            "geometry_region": region.as_dict(),
             "roster": roster,
             "policy": self._policy_dict(),
         }
@@ -91,6 +118,9 @@ class CouncilCoordinator:
                     question=scrubbed.text,
                     evidence_snapshot_ref=evidence.object_id,
                     completed_phases={name: dict(values) for name, values in completed.items()},
+                    mode_id=mode.mode_id,
+                    mode_instruction=mode.prompt_instruction,
+                    geometry_region_id=region.region_id,
                 )
                 content, member_guard_events = self._collect_guarded(actor, context)
                 current[actor.member.member_id] = content
@@ -113,7 +143,16 @@ class CouncilCoordinator:
             completed[phase.value] = current
             phase_records[phase.value] = records
 
-        ballots = self._collect_ballots(session_id, actors, scrubbed.text, evidence.object_id, completed)
+        ballots = self._collect_ballots(
+            session_id,
+            actors,
+            scrubbed.text,
+            evidence.object_id,
+            completed,
+            mode_id=mode.mode_id,
+            mode_instruction=mode.prompt_instruction,
+            geometry_region_id=region.region_id,
+        )
         result = self._tally(ballots, evidence_state)
 
         session_payload = {
@@ -141,10 +180,10 @@ class CouncilCoordinator:
             "receipt",
             {
                 "operation": "council.run",
-                "input_refs": [question_obj.object_id, evidence.object_id],
+                "input_refs": [question_obj.object_id, evidence.object_id, presence.object_id],
                 "result_ref": session_obj.object_id,
                 "replayable": execution_replayable,
-                "protocol": "nexus/0.2",
+                "protocol": "nexus/0.3",
             },
             {"actor": "nexus"},
         )
@@ -154,6 +193,9 @@ class CouncilCoordinator:
             "session_id": session_id,
             "question_ref": question_obj.object_id,
             "evidence_snapshot_ref": evidence.object_id,
+            "world_presence_ref": presence.object_id,
+            "mode_id": mode.mode_id,
+            "geometry_region_id": region.region_id,
             "session_ref": session_obj.object_id,
             "receipt_ref": receipt_obj.object_id,
             "execution_replayable": execution_replayable,
@@ -190,6 +232,9 @@ class CouncilCoordinator:
             evidence_snapshot_ref=context.evidence_snapshot_ref,
             completed_phases=context.completed_phases,
             guard_nudge=inspected.nudge,
+            mode_id=context.mode_id,
+            mode_instruction=context.mode_instruction,
+            geometry_region_id=context.geometry_region_id,
         )
         second = actor.respond(retry_context)
         inspected_again = self.guard.inspect(second)
@@ -206,6 +251,10 @@ class CouncilCoordinator:
         question: str,
         evidence_snapshot_ref: str,
         completed: dict[str, dict[str, str]],
+        *,
+        mode_id: str,
+        mode_instruction: str,
+        geometry_region_id: str,
     ) -> tuple[BallotRecord, ...]:
         records: list[BallotRecord] = []
         for actor in actors:
@@ -215,6 +264,9 @@ class CouncilCoordinator:
                 question=question,
                 evidence_snapshot_ref=evidence_snapshot_ref,
                 completed_phases={name: dict(values) for name, values in completed.items()},
+                mode_id=mode_id,
+                mode_instruction=mode_instruction,
+                geometry_region_id=geometry_region_id,
             )
             choice, rationale = actor.ballot(context)
             commitment = sha256_ref(

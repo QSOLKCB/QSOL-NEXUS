@@ -5,14 +5,16 @@ from pathlib import Path
 from typing import Any
 
 from .council import CouncilCoordinator
+from .geometry import DEFAULT_WORLD_GEOMETRY
 from .mock import DeterministicMockActor
+from .modes import get_mode, list_modes
 from .scrub import ScrubEvent, SecretScrubber
 from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.2"
-RUNTIME_VERSION = "2.0.0-alpha3"
+PROTOCOL_VERSION = "nexus/0.3"
+RUNTIME_VERSION = "2.0.0-alpha4"
 
 
 class NexusAPI:
@@ -21,7 +23,8 @@ class NexusAPI:
     def __init__(self, world_root: str | Path | None = None) -> None:
         self.world = WorldStore(world_root)
         self.scrubber = SecretScrubber()
-        self.council = CouncilCoordinator(self.world, scrubber=self.scrubber)
+        self.geometry = DEFAULT_WORLD_GEOMETRY
+        self.council = CouncilCoordinator(self.world, scrubber=self.scrubber, geometry=self.geometry)
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("request_id")
@@ -38,6 +41,8 @@ class NexusAPI:
                     "network": "none",
                     "adapters": ["mock"],
                     "actor_backends_available": ["mock", "ollama"],
+                    "world_modes": [mode.mode_id for mode in list_modes()],
+                    "geometry": self.geometry.snapshot()["geometry_id"],
                 }
             elif operation == "system.operations":
                 response = {
@@ -48,6 +53,9 @@ class NexusAPI:
                         "security.scrub_preview",
                         "world.create",
                         "world.inspect",
+                        "world.modes",
+                        "world.geometry",
+                        "world.geometry.distance",
                         "receipt.verify",
                         "council.run",
                     ],
@@ -87,6 +95,23 @@ class NexusAPI:
             elif operation == "world.inspect":
                 object_ref = self._require_str(request, "object_ref")
                 response = {"status": "ok", "object": self.world.inspect(object_ref).as_dict()}
+            elif operation == "world.modes":
+                response = {
+                    "status": "ok",
+                    "invariant": "mode_changes_framing_not_evidence_or_authority",
+                    "modes": [mode.as_dict() for mode in list_modes()],
+                }
+            elif operation == "world.geometry":
+                response = {"status": "ok", **self.geometry.snapshot()}
+            elif operation == "world.geometry.distance":
+                source = self._require_str(request, "source_region_id")
+                target = self._require_str(request, "target_region_id")
+                response = {
+                    "status": "ok",
+                    "source_region_id": source,
+                    "target_region_id": target,
+                    "hop_distance": self.geometry.distance(source, target),
+                }
             elif operation == "receipt.verify":
                 receipt_ref = self._require_str(request, "receipt_ref")
                 response = self._verify_receipt(receipt_ref)
@@ -102,11 +127,16 @@ class NexusAPI:
                 evidence_state = request.get("evidence_state", "UNTESTED")
                 if not isinstance(evidence_state, str):
                     raise ValueError("evidence_state must be a string")
+                mode_id = request.get("mode", "analytical")
+                if not isinstance(mode_id, str):
+                    raise ValueError("mode must be a string")
+                get_mode(mode_id)
                 response = self.council.run(
                     question,
                     actors,
                     evidence_refs=evidence_refs,
                     evidence_state=evidence_state,
+                    mode_id=mode_id,
                 )
             else:
                 return self._error(request_id, "unknown_operation", operation)

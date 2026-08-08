@@ -8,14 +8,25 @@ Models may reason however they like internally. Durable interaction with the sha
 
 ## Design principle
 
-> **The model proposes. The world records, computes, verifies, and remembers.**
+> **The model proposes. The world records, places, computes, verifies, and remembers.**
 
 The protocol should remain model-neutral and transport-neutral.
 
-## Planned primitives
+## Current and planned primitives
+
+Current alpha4 reference operations include:
 
 ```text
+world.create
 world.inspect
+world.modes
+world.geometry
+world.geometry.distance
+```
+
+Longer-term conceptual syscalls include:
+
+```text
 world.search
 world.recall
 world.create_object
@@ -31,9 +42,89 @@ world.falsify
 world.commit
 world.verify
 world.replay
+world.move
 ```
 
-These names are provisional conceptual syscalls, not implemented commands in the documentation-only alpha.
+Names beyond the current reference API remain provisional.
+
+## World modes
+
+A World Mode is protocol state describing the framing of an interaction.
+
+```text
+WorldMode
+├── mode_id
+├── label
+├── description
+├── prompt_instruction
+└── region_id
+```
+
+Initial built-ins:
+
+```text
+analytical
+historical
+cultural
+meme_casual
+```
+
+A mode may affect reasoning posture, context and tone. It does not modify evidence status, verification, vote weight, Council threshold, secret handling or Equality Guard policy.
+
+## World geometry
+
+The first geometry is a small named-region graph with deterministic integer coordinates and explicit symmetric adjacency.
+
+```text
+                         ARCHIVE
+                       Historical
+                         (-2,1)
+                        /      \
+                       /        \
+                 AGORA ---------- OBSERVATORY
+                Cultural           Analytical
+                 (0,2)               (0,0)
+                      \             /
+                       \           /
+                        COMMONS
+                      Meme/Casual
+                         (2,1)
+```
+
+Geometry identifier:
+
+```text
+named-regions-v1
+```
+
+This is an **operational topology**, not a physical or neuroscientific claim.
+
+## World presence
+
+A Council session creates a content-addressed placement object:
+
+```text
+WorldPresence
+├── mode_id
+├── mode_label
+├── region_id
+├── region_label
+├── coordinates
+├── member_ids[]
+├── question_ref
+└── geometry_id
+```
+
+The presence reference is frozen into Council session identity.
+
+This gives NEXUS a simple answer to:
+
+```text
+What kind of interaction is happening?
+Where in the shared world is it happening?
+Who is present?
+Which question brought them there?
+```
 
 ## World object
 
@@ -95,6 +186,25 @@ Conceptual response:
 }
 ```
 
+## Council operation with mode
+
+Current reference shape:
+
+```json
+{
+  "operation": "council.run",
+  "question": "Why does this joke work in one culture and fail in another?",
+  "mode": "cultural",
+  "members": [
+    {"member_id": "A", "model_id": "mock-a"},
+    {"member_id": "B", "model_id": "mock-b"},
+    {"member_id": "C", "model_id": "mock-c"}
+  ]
+}
+```
+
+NEXUS maps the mode to a region, creates WorldPresence, freezes that into the Council session, then starts the De Bono-style phase cycle.
+
 ## Evidence snapshots
 
 Council phases should not read a moving target.
@@ -113,6 +223,8 @@ EvidenceSnapshot
 ```
 
 New evidence created during a round is added through a recorded transition and becomes visible according to Council policy.
+
+World Mode does not alter the evidence snapshot.
 
 ## Hypotheses
 
@@ -147,11 +259,15 @@ INTERPRETATION
 
 A verified observation does not automatically verify the interpretation.
 
+That remains true in Cultural or Meme/Casual Mode.
+
 ## Receipts
 
-A receipt should eventually bind an operation to its inputs, instrument/version, output identity, relevant runtime fingerprint, and replay policy.
+A receipt should eventually bind an operation to its inputs, instrument/version, output identity, relevant runtime fingerprint, world placement when material, and replay policy.
 
-The exact canonicalization format will be inherited or adapted from existing QSOL replay work only after the new World Protocol stabilizes.
+Alpha4 Council receipts include the WorldPresence reference in their input set.
+
+The exact canonicalization format will be inherited or adapted from existing QSOL replay work only after the World Protocol stabilizes further.
 
 ## Model independence
 
@@ -166,8 +282,8 @@ object exists only because provider chat thread XYZ remembers it
 Good:
 
 ```text
-object has canonical payload, provenance, evidence and lineage in NEXUS;
-any compliant adapter can inspect it later
+object has canonical payload, provenance, evidence, mode/placement where relevant,
+and lineage in NEXUS; any compliant adapter can inspect it later
 ```
 
 ## Memory ownership
@@ -178,8 +294,27 @@ This allows a future model to enter the world after the original participant is 
 
 ## Human-created objects
 
-The Human Operator is a valid actor. Human observations, imported datasets, notes, and hypotheses should be attributable just like model contributions.
+The Human Operator is a valid actor. Human observations, imported datasets, notes, hypotheses and mode choices should be attributable just like model contributions.
+
+## Geometry-inspired future diagnostics
+
+The geometry layer may later host measured diagnostics such as:
+
+```text
+response-diversity entropy
+branching multiplicity
+recovery time after perturbation
+loop/basin indicators
+mode-transition cost
+control-gain proxies
+```
+
+These should be recorded as empirical NEXUS telemetry. Labels such as `bottlenecked` or `shattered` should only be introduced when supported by defined measurements.
+
+An analogy to a spectral or physical geometry is not itself evidence of one.
 
 ## Protocol minimalism
 
-The first implementation should avoid turning NEXUS into a giant ontology project. A small typed object envelope plus explicit relations and receipts is preferable to prematurely encoding every scientific or cognitive domain.
+The first implementation should avoid turning NEXUS into a giant ontology project.
+
+A small typed object envelope, explicit relations, a tiny named-region map and receipts are preferable to prematurely encoding every scientific, historical, cultural or cognitive domain.

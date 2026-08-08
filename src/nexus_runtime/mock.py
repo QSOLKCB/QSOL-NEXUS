@@ -10,7 +10,7 @@ from .types import Ballot, CouncilMember, Phase, PhaseContext
 class DeterministicMockActor:
     """Network-free stand-in for a future model adapter.
 
-    Profiles change the content and ballot, never procedural authority.
+    Profiles and world modes change content framing, never procedural authority.
     """
 
     member: CouncilMember
@@ -38,7 +38,7 @@ class DeterministicMockActor:
                 "by its provenance, reproducibility, and fit to the question."
             )
 
-        prefix = f"[{self.member.member_id}/{self.profile}]"
+        prefix = f"[{self.member.member_id}/{self.profile}/{context.mode_id}@{context.geometry_region_id}]"
         templates = {
             Phase.WHITE: "facts: separate supplied observations from interpretations; list missing evidence.",
             Phase.RED: "intuition: preserve interesting anomalies, but label intuition as non-evidence.",
@@ -47,7 +47,13 @@ class DeterministicMockActor:
             Phase.GREEN: "alternatives: preserve competing hypotheses and propose discriminating tests.",
             Phase.BLUE: "synthesis: prefer the narrowest conclusion justified by the current evidence.",
         }
-        return f"{prefix} {templates[context.phase]}"
+        mode_notes = {
+            "analytical": "Mode note: keep claim boundaries explicit.",
+            "historical": "Mode note: preserve chronology, sources, and change over time.",
+            "cultural": "Mode note: preserve context, ambiguity, norms, and insider/outsider distinctions.",
+            "meme_casual": "Mode note: playful framing is welcome, but jokes do not become evidence.",
+        }
+        return f"{prefix} {mode_notes.get(context.mode_id, '')} {templates[context.phase]}".strip()
 
     def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
         choices = {
@@ -58,5 +64,8 @@ class DeterministicMockActor:
             "rejecting": Ballot.REJECT,
         }
         choice = choices.get(self.profile, Ballot.TEST_FURTHER)
-        rationale = f"[{self.member.member_id}/{self.profile}] deterministic mock ballot: {choice.value}."
+        rationale = (
+            f"[{self.member.member_id}/{self.profile}/{context.mode_id}] "
+            f"deterministic mock ballot: {choice.value}."
+        )
         return choice, rationale
