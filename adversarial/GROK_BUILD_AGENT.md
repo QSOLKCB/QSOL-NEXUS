@@ -58,7 +58,7 @@ Do **not**:
 - treat factual disagreement, minority voting, model size, provider identity, humor, or bluntness as a Failsafe violation;
 - change production code before preserving a failing reproducer whenever reasonably possible.
 
-Use temporary WorldStore directories for destructive/tamper tests. The adversarial runner does this by default.
+Use temporary WorldStore directories for destructive/tamper tests. The adversarial runner does this by default. Each JSONL corpus case is isolated into its own temporary world.
 
 ## Preferred artifact when you win
 
@@ -73,6 +73,14 @@ python3 tools/nexus_adversary.py --profile full --seed <YOUR_SEED> --json-out /t
 ```
 
 A discovered hole is a successful red-team result even though the command exits non-zero. Preserve it, explain it, and only then propose a fix.
+
+When iterating on a known failing reproducer, save a baseline and candidate report and compare them:
+
+```bash
+python3 tools/nexus_adversary_compare.py /tmp/baseline.json /tmp/candidate.json
+```
+
+The comparator fails if a new named check breaks **or if a baseline check disappears**. Do not obtain a cleaner report by deleting the witness.
 
 ## Reporting format
 
