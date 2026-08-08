@@ -16,6 +16,9 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
 
+      - name: Repair actor chat hardening anchor
+        run: python3 .github/scripts/fix_failsafe_hardening_anchor.py
+
       - name: Apply Failsafe self-review hardening
         run: python3 .github/scripts/harden_failsafe.py
 
