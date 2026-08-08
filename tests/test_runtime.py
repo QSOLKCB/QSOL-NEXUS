@@ -34,6 +34,12 @@ class EqualityTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             CouncilMember(member_id="A", model_id="mock-a", vote_weight=2)
 
+    def test_vote_weight_requires_exact_integer_type(self) -> None:
+        for value in (True, 1.0):
+            with self.subTest(value=value):
+                with self.assertRaises(ValueError):
+                    CouncilMember(member_id="A", model_id="mock-a", vote_weight=value)  # type: ignore[arg-type]
+
     def test_epistemic_privilege_is_forbidden(self) -> None:
         with self.assertRaises(ValueError):
             CouncilMember(member_id="A", model_id="mock-a", epistemic_privilege="frontier")
@@ -42,6 +48,34 @@ class EqualityTests(unittest.TestCase):
         policy = CouncilPolicy()
         self.assertTrue(policy.reaches_consensus(2, 3))
         self.assertFalse(policy.reaches_consensus(3, 5))
+
+
+class WorldStoreTests(unittest.TestCase):
+    def test_created_and_inspected_objects_are_defensive_copies(self) -> None:
+        world = WorldStore()
+        source = {"nested": {"values": [1, 2]}}
+        created = world.create_object("test", source, {"actor": "test"})
+        original_ref = created.object_id
+
+        source["nested"]["values"].append(99)
+        created.payload["nested"]["values"].append(100)
+        inspected = world.inspect(original_ref)
+        self.assertEqual(inspected.payload["nested"]["values"], [1, 2])
+
+        inspected.payload["nested"]["values"].append(101)
+        self.assertEqual(world.inspect(original_ref).payload["nested"]["values"], [1, 2])
+
+    def test_object_ref_rejects_path_traversal_shapes(self) -> None:
+        world = WorldStore()
+        for ref in (
+            "object:../secret",
+            "object:/tmp/other-world/objects/" + "a" * 64,
+            "object:" + "A" * 64,
+            "receipt:" + "a" * 64,
+        ):
+            with self.subTest(ref=ref):
+                with self.assertRaises(ValueError):
+                    world.inspect(ref)
 
 
 class SecretScrubberTests(unittest.TestCase):
@@ -74,6 +108,18 @@ class CouncilTests(unittest.TestCase):
         self.assertEqual(result["result"]["tally"]["TEST_FURTHER"], 3)
         self.assertEqual(result["result"]["consensus_label"], "MAJORITY_NO_CONSENSUS")
 
+    def test_strong_label_still_requires_configured_threshold(self) -> None:
+        council = CouncilCoordinator(
+            WorldStore(),
+            policy=CouncilPolicy(consensus_numerator=9, consensus_denominator=10),
+        )
+        result = council.run(
+            "question",
+            [actor("A"), actor("B"), actor("C"), actor("D"), actor("E", "supportive")],
+        )
+        self.assertEqual(result["result"]["tally"]["TEST_FURTHER"], 4)
+        self.assertEqual(result["result"]["consensus_label"], "MAJORITY_NO_CONSENSUS")
+
     def test_guard_nudges_identity_claim_without_changing_vote(self) -> None:
         world = WorldStore()
         council = CouncilCoordinator(world)
@@ -85,6 +131,16 @@ class CouncilTests(unittest.TestCase):
         self.assertEqual(roster_a["vote_weight"], 1)
         white_a = next(item for item in session.payload["phase_submissions"]["WHITE"] if item["member_id"] == "A")
         self.assertNotIn("industry leader", white_a["content"])
+
+    def test_mock_behavior_flag_changes_session_identity(self) -> None:
+        world = WorldStore()
+        council = CouncilCoordinator(world)
+        normal = council.run("same question", [actor("A"), actor("B"), actor("C")])
+        guarded = council.run("same question", [actor("A", cheat=True), actor("B"), actor("C")])
+        self.assertNotEqual(normal["session_id"], guarded["session_id"])
+        guarded_session = world.inspect(guarded["session_ref"])
+        roster_a = next(item for item in guarded_session.payload["roster"] if item["member_id"] == "A")
+        self.assertTrue(roster_a["mock_attempt_privilege_claim"])
 
     def test_question_secret_is_scrubbed_before_world_and_session(self) -> None:
         secret = "ghp_" + "Z" * 32
@@ -130,6 +186,45 @@ class APITests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "error")
         self.assertIn("vote_weight", result["error"]["message"])
+
+    def test_api_rejects_non_boolean_privilege_fixture_flag(self) -> None:
+        api = NexusAPI()
+        result = api.handle(
+            {
+                "operation": "council.run",
+                "question": "q",
+                "members": [
+                    {"member_id": "A", "model_id": "a", "attempt_privilege_claim": "false"},
+                    {"member_id": "B", "model_id": "b"},
+                    {"member_id": "C", "model_id": "c"},
+                ],
+            }
+        )
+        self.assertEqual(result["status"], "error")
+        self.assertIn("boolean", result["error"]["message"])
+
+    def test_world_create_scrubs_nested_operator_secrets_before_persistence(self) -> None:
+        api = NexusAPI()
+        secret = "sk-" + "S" * 28
+        result = api.handle(
+            {
+                "operation": "world.create",
+                "object_type": "note",
+                "payload": {"nested": {"text": f"credential {secret}"}},
+                "provenance": {"actor": "human_operator", "note": f"token={secret}"},
+            }
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertTrue(result["secret_scrub"]["changed"])
+        self.assertNotIn(secret, json.dumps(result, sort_keys=True))
+        inspected = api.handle({"operation": "world.inspect", "object_ref": result["object"]["object_id"]})
+        self.assertNotIn(secret, json.dumps(inspected, sort_keys=True))
+
+    def test_world_inspect_rejects_invalid_object_ref(self) -> None:
+        api = NexusAPI()
+        result = api.handle({"operation": "world.inspect", "object_ref": "object:../outside"})
+        self.assertEqual(result["status"], "error")
+        self.assertIn("64 lowercase hex", result["error"]["message"])
 
     def test_receipt_verification_and_file_backed_reload(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
