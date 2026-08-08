@@ -1,0 +1,89 @@
+name: Ollama frontier Council integration
+
+on:
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - '.github/workflows/ollama-integration.yml'
+      - 'integration/ollama/**'
+      - 'src/nexus_runtime/adapters/**'
+      - 'src/nexus_runtime/council.py'
+      - 'src/nexus_runtime/guard.py'
+      - 'src/nexus_runtime/types.py'
+      - 'tests/test_adapters.py'
+      - 'tests/test_ollama_integration.py'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ollama-integration-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live-ollama-council:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      PYTHONPATH: src
+      OLLAMA_VERSION: 0.32.5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python version
+        run: python3 --version
+
+      - name: Fast protocol tests
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Install pinned Ollama
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl -fsSL \
+            https://github.com/ollama/ollama/releases/download/v0.32.5/install.sh \
+            -o /tmp/ollama-install.sh
+          echo '25f64b810b947145095956533e1bdf56eacea2673c55a7e586be4515fc882c9f  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION="$OLLAMA_VERSION" sh /tmp/ollama-install.sh
+          ollama --version
+
+      - name: Ensure loopback Ollama service
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
+            nohup env OLLAMA_HOST=127.0.0.1:11434 ollama serve >/tmp/ollama.log 2>&1 &
+          fi
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'Ollama did not become ready' >&2
+          tail -n 200 /tmp/ollama.log || true
+          exit 1
+
+      - name: Pull small real models
+        run: |
+          ollama pull qwen2.5:0.5b
+          ollama pull llama3.2:1b
+
+      - name: Create fictional frontier fixtures
+        run: |
+          ollama create nexus-frontier-alpha -f integration/ollama/Modelfile.alpha
+          ollama create nexus-frontier-beta -f integration/ollama/Modelfile.beta
+          ollama ls
+
+      - name: Run Mock plus two real Ollama Council
+        env:
+          NEXUS_OLLAMA_INTEGRATION: '1'
+        run: python3 -m unittest discover -s tests -p 'test_ollama_integration.py' -v
+
+      - name: Ollama diagnostics on failure
+        if: failure()
+        run: |
+          ollama ps || true
+          ollama ls || true
+          tail -n 200 /tmp/ollama.log || true
