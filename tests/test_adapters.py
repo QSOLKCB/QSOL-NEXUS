@@ -169,6 +169,24 @@ class AdapterBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "truncated"):
             transport.generate("fixture", "prompt")
 
+    def test_ollama_phase_response_uses_nexus_budget(self) -> None:
+        context = PhaseContext(
+            "session",
+            Phase.WHITE,
+            "question",
+            "object:" + "a" * 64,
+            {},
+            guard_nudge="NEXUS EQUALITY GUARD: restate on evidence alone.",
+        )
+        transport = _StubTransport("Evidence-based restatement.")
+        actor = OllamaActor(
+            CouncilMember("member", "fixture", adapter_id="ollama"),
+            model="fixture",
+            transport=transport,  # type: ignore[arg-type]
+        )
+        self.assertEqual(actor.respond(context), "Evidence-based restatement.")
+        self.assertEqual(transport.last_options, {"num_predict": 192})
+
     def test_ollama_ballot_validates_local_schema_and_budget(self) -> None:
         context = PhaseContext("session", Phase.BLUE, "question", "object:" + "a" * 64, {})
         transport = _StubTransport('{"choice":"TEST_FURTHER","rationale":"Needs replication."}')
