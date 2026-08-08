@@ -42,6 +42,7 @@ class CouncilCoordinator:
         self._validate_roster(actors)
         mode = get_mode(mode_id)
         region = self.geometry.region_for_mode(mode.mode_id)
+        geometry_snapshot = self.geometry.snapshot()
 
         scrubbed = self.scrubber.scrub(question)
         question_obj = self.world.create_object(
@@ -85,7 +86,8 @@ class CouncilCoordinator:
                 "coordinates": [region.x, region.y],
                 "member_ids": [actor.member.member_id for actor in actors],
                 "question_ref": question_obj.object_id,
-                "geometry_id": self.geometry.snapshot()["geometry_id"],
+                "geometry_id": geometry_snapshot["geometry_id"],
+                "geometry_topology_ref": geometry_snapshot["topology_ref"],
             },
             {"actor": "nexus"},
         )
