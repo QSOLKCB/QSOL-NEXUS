@@ -125,7 +125,7 @@ DEFAULT_WORLD_GEOMETRY = WorldGeometry(
             "Observatory",
             0,
             0,
-            ("archive", "agora", "commons", "assembly"),
+            ("archive", "agora", "commons", "assembly", "dungeon"),
             "Default evidence-first analytical region.",
         ),
         WorldRegion(
@@ -149,7 +149,7 @@ DEFAULT_WORLD_GEOMETRY = WorldGeometry(
             "Commons",
             2,
             1,
-            ("observatory", "agora", "assembly"),
+            ("observatory", "agora", "assembly", "dungeon"),
             "Meme/casual region for playful interaction without relaxing evidence boundaries.",
         ),
         WorldRegion(
@@ -157,9 +157,17 @@ DEFAULT_WORLD_GEOMETRY = WorldGeometry(
             "Assembly Hall",
             0,
             -2,
-            ("observatory", "commons"),
+            ("observatory", "commons", "dungeon"),
             "Fictional game region for UN-style strategy simulation, motions, crises and memes.",
         ),
+        WorldRegion(
+            "dungeon",
+            "Dungeon",
+            2,
+            -2,
+            ("observatory", "commons", "assembly"),
+            "Fictional MUD region containing a separate internal room graph owned by the game substrate.",
+        ),
     ),
-    geometry_id="named-regions-v2",
+    geometry_id="named-regions-v3",
 )
