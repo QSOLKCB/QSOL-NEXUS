@@ -6,6 +6,7 @@ from typing import Any
 
 from .adapters import OllamaActor, OllamaTransport
 from .council import CouncilCoordinator
+from .game_un import GAME_SCHEMA, action_catalog, advance_turn, apply_action, inspect_game, new_game
 from .geometry import DEFAULT_WORLD_GEOMETRY
 from .mock import DeterministicMockActor
 from .modes import get_mode, list_modes
@@ -15,16 +16,16 @@ from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.5"
-RUNTIME_VERSION = "2.0.0-alpha6"
+PROTOCOL_VERSION = "nexus/0.6"
+RUNTIME_VERSION = "2.0.0-alpha6.2"
 
 
 class NexusAPI:
     """Small transport-neutral API surface used by JSONL/stdio.
 
-    The control transport remains local stdio. Alpha5 may explicitly instantiate
-    the already-hardened loopback-only Ollama actor. Remote-provider auth and
-    remote model endpoints remain out of scope.
+    The control transport remains local stdio. Explicit loopback Ollama actors
+    and deterministic fictional game state are available without adding remote
+    provider authentication or a network server.
     """
 
     def __init__(self, world_root: str | Path | None = None) -> None:
@@ -53,6 +54,7 @@ class NexusAPI:
                     "world_modes": [mode.mode_id for mode in list_modes()],
                     "geometry": self.geometry.snapshot()["geometry_id"],
                     "telemetry": {"schema_version": TELEMETRY_SCHEMA_VERSION, "role": "observational_only"},
+                    "games": [{"game_id": "un_sim", "schema": GAME_SCHEMA, "room": "#un-sim", "fictional_only": True}],
                 }
             elif operation == "system.operations":
                 response = {
@@ -68,6 +70,11 @@ class NexusAPI:
                         "world.geometry.distance",
                         "receipt.verify",
                         "telemetry.verify",
+                        "game.un.catalog",
+                        "game.un.new",
+                        "game.un.inspect",
+                        "game.un.act",
+                        "game.un.turn",
                         "actor.chat",
                         "council.run",
                     ],
@@ -140,6 +147,44 @@ class NexusAPI:
                     "schema_version": TELEMETRY_SCHEMA_VERSION,
                     "recomputed": recomputed,
                 }
+            elif operation == "game.un.catalog":
+                response = {
+                    "status": "ok",
+                    "schema": GAME_SCHEMA,
+                    "fictional_only": True,
+                    "actions": action_catalog(),
+                }
+            elif operation == "game.un.new":
+                raw_seed = request.get("seed", "trout-council")
+                if not isinstance(raw_seed, str) or not raw_seed.strip():
+                    raise ValueError("seed must be non-empty text")
+                scrubbed = self.scrubber.scrub(raw_seed)
+                game = new_game(self.world, scrubbed.text)
+                response = {
+                    "status": "ok",
+                    "game_ref": game.object_id,
+                    "game": game.payload,
+                    "secret_scrub": {
+                        "changed": scrubbed.changed,
+                        "events": [asdict(event) for event in scrubbed.events],
+                    },
+                }
+            elif operation == "game.un.inspect":
+                game_ref = self._require_str(request, "game_ref")
+                game = inspect_game(self.world, game_ref)
+                response = {"status": "ok", "game_ref": game.object_id, "game": game.payload}
+            elif operation == "game.un.act":
+                game_ref = self._require_str(request, "game_ref")
+                action = self._require_str(request, "action")
+                targets = request.get("targets", [])
+                if not isinstance(targets, list) or not all(isinstance(target, str) for target in targets):
+                    raise ValueError("targets must be a list of fictional country ids")
+                game = apply_action(self.world, game_ref, action, list(targets))
+                response = {"status": "ok", "game_ref": game.object_id, "game": game.payload}
+            elif operation == "game.un.turn":
+                game_ref = self._require_str(request, "game_ref")
+                game = advance_turn(self.world, game_ref)
+                response = {"status": "ok", "game_ref": game.object_id, "game": game.payload}
             elif operation == "actor.chat":
                 member_item = request.get("member")
                 actor = self._actor(member_item)
