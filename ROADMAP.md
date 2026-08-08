@@ -388,3 +388,36 @@ NEXUS 2.0 should not be called stable until:
 Accuracy and contract clarity come first.
 
 Performance optimization must preserve semantic invariants. Ordered parallel Council execution is admitted because deterministic scalar/parallel equivalence is tested and canonical roster ordering remains stable. Further concurrency, token routing, model batching, binary formats, distributed execution, or provider-specific shortcuts should only be added when measured bottlenecks justify them.
+
+Architecture Roadmap:
+
+Council - Done
+  ↓
+shared evidence - Done
+  ↓
+modes + geometry - Done
+  ↓
+IRC operator world - Done.
+  ↓
+telemetry - Done.
+  ↓
+ordered parallel execution - Done.
+  ↓
+UN simulation - Done.
+  ↓
+MUD - Done.
+  ↓
+PURE HISTORY / epistemic discipline - In Progress.
+  ↓
+==============================
+      HARDEN THE SUBSTRATE
+==============================
+  ↓
+credentials / adapters - TBA
+provider isolation - TBA
+failure containment - TBA
+rate limits - TBA
+cloud trust boundaries - TBA
+big-model onboarding - TBA
+  ↓
+GPT / Claude / Gemini / Grok / etc. - TBA
