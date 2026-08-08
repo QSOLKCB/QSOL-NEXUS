@@ -81,6 +81,9 @@ class PhaseContext:
     evidence_snapshot_ref: str
     completed_phases: Mapping[str, Mapping[str, str]]
     guard_nudge: str | None = None
+    mode_id: str = "analytical"
+    mode_instruction: str = ""
+    geometry_region_id: str = "observatory"
 
 
 @dataclass(frozen=True)
