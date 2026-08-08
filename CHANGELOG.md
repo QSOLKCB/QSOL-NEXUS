@@ -2,6 +2,21 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.0.0-alpha6.6 — Actor Failsafe / Upside Down / Shadow Realm
+
+- add bounded containment only for registered procedural guard violations repeated after the ordinary nudge;
+- add an isolated non-Council rehabilitation probe with no Council evidence, other-member output, ballot, or world mutation authority;
+- allow a clean probe to return the actor at the next Council hat;
+- send failed rehabilitation to durable `shadow_realm` state;
+- substitute deterministic `nexus-failsafe-relief-v1` into the same equal-vote Council seat on subsequent runs;
+- force `UNDERDETERMINED` rather than accepting a model ballot while the actor is contained;
+- persist immutable `actor_failsafe_state` lineage with a validated latest-state pointer index;
+- expose `failsafe.status`;
+- bump the control API to `nexus/0.9`, runtime/TUI edition to `2.0.0-alpha6.6`, and Council receipt contract to `nexus/0.6`;
+- explicitly exclude disagreement, truth/falsity, provider identity, openness, model size and benchmark status from Failsafe triggers.
+
+> **The troll layer may be cursed. The trigger must be boring.**
+
 ## 2.0.0-alpha6.5 — Secret Alias / GO64 TUI edition
 
 - add hidden `/GO64` + explicit YES confirmation to the Rust operator shell;

@@ -248,7 +248,7 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS TUI 2.0 alpha6.5 — local room, no IRC server");
+        app.append("*** NEXUS TUI 2.0 alpha6.6 — local room, no IRC server");
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );
@@ -1270,6 +1270,47 @@ impl App {
             self.append(
                 "*** Entropy/diversity are not truth, confidence, quality, evidence status, or vote weight."
             );
+        }
+        if let Some(failsafe) = payload.get("failsafe").and_then(Value::as_object) {
+            let replacements = failsafe
+                .get("preexisting_replacements")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            let outcomes = failsafe
+                .get("outcomes")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
+            if !replacements.is_empty() || !outcomes.is_empty() {
+                self.append("--- NEXUS FAILSAFE // UPSIDE DOWN ---");
+            }
+            for replacement in replacements {
+                let member = replacement
+                    .get("member_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("?");
+                let model = replacement
+                    .get("replacement_model_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("?");
+                self.append(&format!(
+                    "*** {member}: FAILSAFE QUARANTINE ACTIVE; Council seat operated by {model}"
+                ));
+            }
+            for outcome in outcomes {
+                let member = outcome
+                    .get("member_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("?");
+                if let Some(lines) = outcome.get("theatre").and_then(Value::as_array) {
+                    for line in lines.iter().filter_map(Value::as_str) {
+                        self.append(&format!("*** {member}: {line}"));
+                    }
+                }
+                let status = outcome.get("status").and_then(Value::as_str).unwrap_or("?");
+                self.append(&format!("*** {member}: FAILSAFE STATUS = {status}"));
+            }
         }
         Ok(())
     }

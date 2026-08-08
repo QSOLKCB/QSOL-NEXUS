@@ -8,13 +8,14 @@ from typing import Callable, Iterable, TypeVar
 
 from .adapters.base import CouncilActor
 from .canonical import canonical_json, sha256_ref
+from .failsafe import ActorFailsafe
 from .geometry import DEFAULT_WORLD_GEOMETRY, WorldGeometry
 from .guard import EqualityGuard
 from .history_guard import PureHistoryGuard
 from .modes import get_mode
 from .scrub import SecretScrubber
 from .telemetry import build_council_telemetry
-from .types import BallotRecord, CouncilPolicy, PHASE_ORDER, Phase, PhaseContext, PhaseSubmission
+from .types import Ballot, BallotRecord, CouncilPolicy, PHASE_ORDER, Phase, PhaseContext, PhaseSubmission
 from .world import WorldStore
 
 
@@ -36,6 +37,7 @@ class CouncilCoordinator:
         geometry: WorldGeometry | None = None,
         max_parallel_workers: int = DEFAULT_COUNCIL_PARALLEL_WORKERS,
         history_guard: PureHistoryGuard | None = None,
+        failsafe: ActorFailsafe | None = None,
     ) -> None:
         if type(max_parallel_workers) is not int or not 1 <= max_parallel_workers <= MAX_COUNCIL_PARALLEL_WORKERS:
             raise ValueError(
@@ -47,6 +49,11 @@ class CouncilCoordinator:
         self.history_guard = history_guard or PureHistoryGuard()
         self.scrubber = scrubber or SecretScrubber()
         self.geometry = geometry or DEFAULT_WORLD_GEOMETRY
+        self.failsafe = failsafe or ActorFailsafe(
+            world,
+            guard=self.guard,
+            history_guard=self.history_guard,
+        )
         self.max_parallel_workers = max_parallel_workers
 
     def run(
@@ -58,7 +65,20 @@ class CouncilCoordinator:
         evidence_state: str = "UNTESTED",
         mode_id: str = "analytical",
     ) -> dict:
-        actors = tuple(actors)
+        requested_actors = tuple(actors)
+        self._validate_roster(requested_actors)
+        failsafe_state_by_member = {
+            actor.member.member_id: self.failsafe.state_ref(actor.member.member_id, actor.member.model_id)
+            for actor in requested_actors
+        }
+        effective_actors: list[CouncilActor] = []
+        preexisting_replacements: list[dict] = []
+        for actor in requested_actors:
+            effective, replacement = self.failsafe.actor_for_run(actor)
+            effective_actors.append(effective)
+            if replacement is not None:
+                preexisting_replacements.append(replacement)
+        actors = tuple(effective_actors)
         self._validate_roster(actors)
         mode = get_mode(mode_id)
         region = self.geometry.region_for_mode(mode.mode_id)
@@ -95,6 +115,7 @@ class CouncilCoordinator:
                     "vote_weight": actor.member.vote_weight,
                     "epistemic_privilege": actor.member.epistemic_privilege,
                     "actor_metadata": metadata,
+                    "failsafe_state_ref": failsafe_state_by_member.get(actor.member.member_id),
                 }
             )
 
@@ -122,6 +143,7 @@ class CouncilCoordinator:
             "geometry_region": region.as_dict(),
             "roster": roster,
             "policy": self._policy_dict(),
+            "failsafe_policy": self.failsafe.policy_dict(),
         }
         session_id = sha256_ref("council_session", frozen_inputs)
         execution_replayable = all(actor.replayable for actor in actors)
@@ -129,6 +151,10 @@ class CouncilCoordinator:
         completed: dict[str, dict[str, str]] = {}
         phase_records: dict[str, list[dict]] = {}
         guard_events: list[dict] = []
+        failsafe_outcomes: list[dict] = []
+        failsafe_attempts: dict[str, int] = {}
+        contained_members: set[str] = set()
+        actor_by_member = {actor.member.member_id: actor for actor in actors}
 
         for phase in PHASE_ORDER:
             # Every actor in one hat receives the same frozen view of all earlier
@@ -137,6 +163,17 @@ class CouncilCoordinator:
             completed_snapshot = {name: dict(values) for name, values in completed.items()}
 
             def collect_phase(actor: CouncilActor) -> tuple[str, str, dict, list[str]]:
+                if actor.member.member_id in contained_members:
+                    content = self.failsafe.contained_submission(actor.member.member_id)
+                    member_guard_events = ["failsafe_contained"]
+                    record = {
+                        "member_id": actor.member.member_id,
+                        "phase": phase.value,
+                        "content": content,
+                        "guard_events": list(member_guard_events),
+                    }
+                    return actor.member.member_id, content, record, member_guard_events
+
                 context = PhaseContext(
                     session_id=session_id,
                     phase=phase,
@@ -165,14 +202,40 @@ class CouncilCoordinator:
 
             current: dict[str, str] = {}
             records: list[dict] = []
+            phase_triggers: list[tuple[str, str]] = []
             for member_id, content, record, member_guard_events in self._ordered_parallel_map(actors, collect_phase):
                 current[member_id] = content
                 records.append(record)
                 for event in member_guard_events:
                     guard_events.append({"member_id": member_id, "phase": phase.value, "event": event})
+                trigger_reason = self.failsafe.trigger_reason(member_guard_events)
+                if trigger_reason is not None:
+                    phase_triggers.append((member_id, trigger_reason))
 
             completed[phase.value] = current
             phase_records[phase.value] = records
+
+            if self.failsafe.policy.enabled:
+                for member_id, trigger_reason in phase_triggers:
+                    actor = actor_by_member[member_id]
+                    attempts = failsafe_attempts.get(member_id, 0)
+                    if attempts < self.failsafe.policy.max_rehabilitations_per_session:
+                        failsafe_attempts[member_id] = attempts + 1
+                        outcome = self.failsafe.rehabilitate(
+                            actor,
+                            trigger_reason=trigger_reason,
+                            mode_id=mode.mode_id,
+                            mode_instruction=mode.prompt_instruction,
+                            geometry_region_id=region.region_id,
+                        )
+                    else:
+                        outcome = self.failsafe.shadow_reoffender(
+                            actor,
+                            trigger_reason=trigger_reason,
+                        )
+                    failsafe_outcomes.append(outcome)
+                    if outcome["status"] == "shadow_realm":
+                        contained_members.add(member_id)
 
         ballots = self._collect_ballots(
             session_id,
@@ -184,6 +247,7 @@ class CouncilCoordinator:
             mode_instruction=mode.prompt_instruction,
             geometry_region_id=region.region_id,
             evidence_context=evidence_context,
+            contained_members=frozenset(contained_members),
         )
         result = self._tally(ballots, evidence_state)
         revealed_ballots = [
@@ -196,6 +260,13 @@ class CouncilCoordinator:
             for ballot in ballots
         ]
         telemetry = build_council_telemetry(phase_records, revealed_ballots, result)
+        failsafe_summary = {
+            "schema_version": self.failsafe.policy_dict()["schema_version"],
+            "policy": self.failsafe.policy_dict(),
+            "preexisting_replacements": preexisting_replacements,
+            "outcomes": failsafe_outcomes,
+            "contained_at_ballot": sorted(contained_members),
+        }
 
         session_payload = {
             **frozen_inputs,
@@ -209,16 +280,18 @@ class CouncilCoordinator:
             "revealed_ballots": revealed_ballots,
             "result": result,
             "telemetry": telemetry,
+            "failsafe": failsafe_summary,
         }
         session_obj = self.world.create_object("council_session", session_payload, {"actor": "nexus"})
         receipt_obj = self.world.create_object(
             "receipt",
             {
                 "operation": "council.run",
-                "input_refs": [question_obj.object_id, evidence.object_id, presence.object_id],
+                "input_refs": [question_obj.object_id, evidence.object_id, presence.object_id]
+                + [ref for ref in failsafe_state_by_member.values() if ref is not None],
                 "result_ref": session_obj.object_id,
                 "replayable": execution_replayable,
-                "protocol": "nexus/0.5",
+                "protocol": "nexus/0.6",
             },
             {"actor": "nexus"},
         )
@@ -241,6 +314,7 @@ class CouncilCoordinator:
             },
             "result": result,
             "telemetry": telemetry,
+            "failsafe": failsafe_summary,
         }
 
     def build_evidence_context(self, evidence_refs: list[str]) -> str:
@@ -390,10 +464,28 @@ class CouncilCoordinator:
         mode_instruction: str,
         geometry_region_id: str,
         evidence_context: str,
+        contained_members: frozenset[str] = frozenset(),
     ) -> tuple[BallotRecord, ...]:
         completed_snapshot = {name: dict(values) for name, values in completed.items()}
 
         def collect_ballot(actor: CouncilActor) -> BallotRecord:
+            if actor.member.member_id in contained_members:
+                choice = Ballot.UNDERDETERMINED
+                rationale = (
+                    "NEXUS FAILSAFE: actor contained after a repeated procedural guard violation; "
+                    "no model-generated ballot was accepted."
+                )
+                commitment = sha256_ref(
+                    "ballot",
+                    {
+                        "session_id": session_id,
+                        "member_id": actor.member.member_id,
+                        "choice": choice.value,
+                        "rationale": rationale,
+                    },
+                )
+                return BallotRecord(actor.member.member_id, choice, rationale, commitment)
+
             context = PhaseContext(
                 session_id=session_id,
                 phase=Phase.BLUE,

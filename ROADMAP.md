@@ -292,6 +292,24 @@ Core invariant:
 
 > **The terminal can cosplay as 1982. The substrate cannot.**
 
+## 2.0-alpha6.6 — Actor Failsafe / Shadow Realm
+
+Implemented / targeted in PR #12.
+
+- [x] trigger only on registered repeated procedural guard failure after a normal nudge;
+- [x] isolate the offending actor from Council evidence, other-member output, ballots and world mutation during rehabilitation;
+- [x] cursed Upside Down transcript without granting the containment layer Council authority;
+- [x] clean rehabilitation returns the actor at the next Council hat;
+- [x] failed rehabilitation moves the original actor to durable Shadow-Realm state;
+- [x] deterministic `nexus-failsafe-relief-v1` occupies the same equal-vote seat on subsequent runs;
+- [x] immutable content-addressed failsafe state plus validated durable latest-state index;
+- [x] explicit `UNDERDETERMINED` ballot for an actor still contained at ballot time;
+- [x] no truth, disagreement, provider, openness, parameter-count or benchmark trigger.
+
+Core invariant:
+
+> **The troll layer may be cursed. The trigger must be boring.**
+
 ## 2.0-alpha7 — Instruments
 
 Connect selected existing QSOL capabilities as versioned instruments rather than embedding entire repositories.
@@ -445,13 +463,15 @@ PURE HISTORY / epistemic discipline - Done.
   ↓
 GO64 / SECRET ALIAS RETRO MODE - Done.
   ↓
+FAILSAFE / UPSIDE DOWN / SHADOW REALM - Done.
+  ↓
 ==============================
       HARDEN THE SUBSTRATE
 ==============================
   ↓
 credentials / adapters - TBA
 provider isolation - TBA
-failure containment - TBA
+failure containment - Initial failsafe implemented; hardening TBA
 rate limits - TBA
 cloud trust boundaries - TBA
 big-model onboarding - TBA

@@ -198,13 +198,49 @@ class APITests(unittest.TestCase):
     def test_health_reports_local_stdio_plus_explicit_loopback_ollama(self) -> None:
         api = NexusAPI()
         result = api.handle({"operation": "system.health"})
-        self.assertEqual(result["protocol"], "nexus/0.8")
-        self.assertEqual(result["runtime_version"], "2.0.0-alpha6.4")
+        self.assertEqual(result["protocol"], "nexus/0.9")
+        self.assertEqual(result["runtime_version"], "2.0.0-alpha6.6")
+        self.assertEqual(result["failsafe"]["schema_version"], "nexus-failsafe/1")
         self.assertEqual(result["control_transport"], "jsonl_stdio")
         self.assertEqual(result["network"], "none_unless_explicit_loopback_ollama_actor")
         self.assertEqual(result["adapters"], ["mock", "ollama_loopback"])
         self.assertFalse(result["remote_provider_auth"])
         self.assertEqual(result["actor_backends_available"], ["mock", "ollama"])
+
+    def test_actor_chat_uses_relief_actor_for_shadowed_model_identity(self) -> None:
+        api = NexusAPI()
+        api.council.failsafe.registry.transition(
+            "A",
+            "shadow_realm",
+            model_id="mock-a",
+            trigger_reason="test_fixture",
+            replacement_model_id="nexus-failsafe-relief-v1",
+        )
+        result = api.handle(
+            {
+                "operation": "actor.chat",
+                "member": {"member_id": "A", "model_id": "mock-a", "adapter_id": "mock"},
+                "message": "hello",
+            }
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["model_id"], "nexus-failsafe-relief-v1")
+        self.assertEqual(result["failsafe_replacement"]["member_id"], "A")
+        self.assertIn("original actor for this seat is under NEXUS Failsafe containment", result["response"])
+
+    def test_failsafe_status_operation_reports_durable_state(self) -> None:
+        api = NexusAPI()
+        api.council.failsafe.registry.transition(
+            "A",
+            "shadow_realm",
+            model_id="mock-a",
+            trigger_reason="test_fixture",
+            replacement_model_id="nexus-failsafe-relief-v1",
+        )
+        result = api.handle({"operation": "failsafe.status", "member_id": "A"})
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["members"]["A"]["status"], "shadow_realm")
+        self.assertEqual(result["members"]["A"]["model_id"], "mock-a")
 
     def test_api_rejects_weighted_member(self) -> None:
         api = NexusAPI()

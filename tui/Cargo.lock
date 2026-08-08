@@ -552,7 +552,7 @@ dependencies = [
 
 [[package]]
 name = "nexus-irc-tui"
-version = "2.0.0-alpha6.5"
+version = "2.0.0-alpha6.6"
 dependencies = [
  "chrono",
  "crossterm",

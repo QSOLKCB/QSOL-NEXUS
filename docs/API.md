@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.8
+nexus/0.9
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha6.4
+2.0.0-alpha6.6
 ```
 
 Current posture:
@@ -24,6 +24,7 @@ mock actors       -> supported
 Ollama actors     -> supported only through loopback-local configuration
 UN simulation     -> supported as a deterministic fictional local game
 HERESY MUD        -> supported as a deterministic fictional multi-avatar local game
+Failsafe          -> bounded repeated-guard containment + deterministic relief actor
 remote providers  -> not implemented
 provider auth     -> not implemented
 ```
@@ -66,13 +67,17 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.8",
-  "runtime_version": "2.0.0-alpha6.4",
+  "protocol": "nexus/0.9",
+  "runtime_version": "2.0.0-alpha6.6",
   "control_transport": "jsonl_stdio",
   "network": "none_unless_explicit_loopback_ollama_actor",
   "adapters": ["mock", "ollama_loopback"],
   "remote_provider_auth": false,
   "actor_backends_available": ["mock", "ollama"],
+  "failsafe": {
+    "schema_version": "nexus-failsafe/1",
+    "trigger": "registered_repeated_guard_failure_after_nudge_only"
+  },
   "games": [
     {
       "game_id": "un_sim",
@@ -103,6 +108,7 @@ world.geometry
 world.geometry.distance
 receipt.verify
 telemetry.verify
+failsafe.status
 game.un.catalog
 game.un.new
 game.un.inspect
@@ -115,6 +121,24 @@ game.mud.act
 actor.chat
 council.run
 ```
+
+## Failsafe status
+
+Inspect current actor containment state:
+
+```json
+{"operation":"failsafe.status"}
+```
+
+Optionally filter by Council member seat:
+
+```json
+{"operation":"failsafe.status","member_id":"Grok"}
+```
+
+Failsafe triggers only after a registered procedural guard violation is repeated after its ordinary nudge. The isolated rehabilitation probe receives no Council evidence or completed phase material and has no ballot or world mutation authority. A clean probe returns the actor at the next hat; failure records `shadow_realm` and causes `nexus-failsafe-relief-v1` to occupy the same equal-vote seat on later Council runs.
+
+See [`FAILSAFE.md`](FAILSAFE.md).
 
 ## Fictional UN simulation game
 
