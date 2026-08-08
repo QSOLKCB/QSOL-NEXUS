@@ -16,6 +16,9 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
 
+      - name: Fix GO64 Rust ownership
+        run: python3 .github/scripts/fix_go64_compile.py
+
       - name: Apply GO64 integration
         run: python3 .github/scripts/apply_go64.py
 
