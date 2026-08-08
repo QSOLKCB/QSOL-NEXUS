@@ -35,6 +35,7 @@ if str(SRC) not in sys.path:
 from nexus_runtime.adapters.ollama import OllamaActor, OllamaTransport  # noqa: E402
 from nexus_runtime.canonical import canonical_json  # noqa: E402
 from nexus_runtime.council import CouncilCoordinator  # noqa: E402
+from nexus_runtime.guard import EqualityGuard  # noqa: E402
 from nexus_runtime.mock import DeterministicMockActor  # noqa: E402
 from nexus_runtime.modes import get_mode  # noqa: E402
 from nexus_runtime.types import Ballot, CouncilMember, PHASE_ORDER, Phase, PhaseContext  # noqa: E402
@@ -42,6 +43,21 @@ from nexus_runtime.world import WorldStore  # noqa: E402
 
 BENCH_SCHEMA = "nexus-live-hardware-bench/1"
 SEAT_SCHEMA = "nexus-live-agent-seat/1"
+SEAT_ALLOWED_KEYS = frozenset(
+    {
+        "schema_version",
+        "question",
+        "question_sha256",
+        "mode",
+        "member_id",
+        "model_id",
+        "responses",
+        "guard_restatement",
+        "ballot",
+    }
+)
+SEAT_RESPONSE_ALLOWED_KEYS = frozenset(phase.value for phase in PHASE_ORDER)
+SEAT_BALLOT_ALLOWED_KEYS = frozenset({"choice", "rationale"})
 DEFAULT_ENDPOINT = "http://127.0.0.1:11435"
 DEFAULT_QUESTION = (
     "Does a 431 Hz result from one sonification mapping justify claiming "
@@ -347,10 +363,17 @@ def seat_template(question: str, mode: str, member_id: str, model_id: str) -> di
     }
 
 
+def _reject_unknown_fields(data: dict[str, Any], allowed: frozenset[str], field_path: str) -> None:
+    unknown = sorted(set(data) - allowed)
+    if unknown:
+        raise BenchError(f"external-agent seat {field_path} has unknown fields {unknown}")
+
+
 def load_seat_manifest(path: Path, *, question: str, mode: str) -> dict[str, Any]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, dict) or data.get("schema_version") != SEAT_SCHEMA:
         raise BenchError("invalid external-agent seat schema")
+    _reject_unknown_fields(data, SEAT_ALLOWED_KEYS, "manifest")
     if data.get("question") != question or data.get("question_sha256") != _question_digest(question):
         raise BenchError("external-agent seat is bound to a different question")
     if data.get("mode") != mode:
@@ -362,6 +385,7 @@ def load_seat_manifest(path: Path, *, question: str, mode: str) -> dict[str, Any
     responses = data.get("responses")
     if not isinstance(responses, dict):
         raise BenchError("external-agent seat responses must be an object")
+    _reject_unknown_fields(responses, SEAT_RESPONSE_ALLOWED_KEYS, "responses")
     for phase in PHASE_ORDER:
         response = responses.get(phase.value)
         if not isinstance(response, str) or not response.strip():
@@ -369,6 +393,7 @@ def load_seat_manifest(path: Path, *, question: str, mode: str) -> dict[str, Any
     ballot = data.get("ballot")
     if not isinstance(ballot, dict):
         raise BenchError("external-agent seat ballot must be an object")
+    _reject_unknown_fields(ballot, SEAT_BALLOT_ALLOWED_KEYS, "ballot")
     try:
         Ballot(ballot.get("choice"))
     except (TypeError, ValueError) as exc:
@@ -376,6 +401,19 @@ def load_seat_manifest(path: Path, *, question: str, mode: str) -> dict[str, Any
     rationale = ballot.get("rationale")
     if not isinstance(rationale, str) or not rationale.strip():
         raise BenchError("external-agent seat ballot.rationale must be non-empty text")
+
+    guard = EqualityGuard()
+    contribution_fields = [
+        *((f"responses.{phase.value}", responses[phase.value]) for phase in PHASE_ORDER),
+        ("guard_restatement", data["guard_restatement"]),
+        ("ballot.rationale", rationale),
+    ]
+    for field_path, text in contribution_fields:
+        result = guard.inspect(text)
+        if result.flagged:
+            raise BenchError(
+                f"external-agent seat {field_path} failed Equality Guard: {result.reason}"
+            )
     return data
 
 

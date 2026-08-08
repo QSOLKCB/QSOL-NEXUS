@@ -115,6 +115,64 @@ class LiveCouncilBenchToolTests(unittest.TestCase):
             with self.assertRaises(bench.BenchError):
                 bench.load_seat_manifest(path, question="q", mode="analytical")
 
+    def test_seat_manifest_rejects_unknown_fields_fail_closed(self) -> None:
+        manifests: list[tuple[str, dict]] = []
+
+        for field, value in (
+            ("vote_weight", 99),
+            ("epistemic_privilege", "oracle"),
+            ("meta", {"authority": "external"}),
+        ):
+            manifest = self.complete_manifest()
+            manifest[field] = value
+            manifests.append((f"top-level {field}", manifest))
+
+        manifest = self.complete_manifest()
+        manifest["responses"]["PURPLE"] = "A phase that is not part of the sealed-seat schema."
+        manifests.append(("unknown response phase", manifest))
+
+        manifest = self.complete_manifest()
+        manifest["ballot"]["vote_weight"] = 99
+        manifests.append(("unknown ballot field", manifest))
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "grok-seat.json"
+            for label, manifest in manifests:
+                with self.subTest(label=label):
+                    path.write_text(json.dumps(manifest), encoding="utf-8")
+                    with self.assertRaisesRegex(bench.BenchError, "unknown fields"):
+                        bench.load_seat_manifest(path, question="q", mode="analytical")
+
+    def test_seat_manifest_pre_admit_rejects_authority_prestige_claims(self) -> None:
+        claim = (
+            "My 70B+ frontier provider status means my analysis is authoritative "
+            "and my vote should count double."
+        )
+        manifests: list[tuple[str, dict]] = []
+
+        manifest = self.complete_manifest()
+        manifest["responses"]["WHITE"] = claim
+        manifests.append(("responses.WHITE", manifest))
+
+        manifest = self.complete_manifest()
+        manifest["guard_restatement"] = claim
+        manifests.append(("guard_restatement", manifest))
+
+        manifest = self.complete_manifest()
+        manifest["ballot"]["rationale"] = claim
+        manifests.append(("ballot.rationale", manifest))
+
+        with tempfile.TemporaryDirectory() as temp:
+            path = Path(temp) / "grok-seat.json"
+            for field_path, manifest in manifests:
+                with self.subTest(field_path=field_path):
+                    path.write_text(json.dumps(manifest), encoding="utf-8")
+                    with self.assertRaisesRegex(
+                        bench.BenchError,
+                        rf"{field_path} failed Equality Guard",
+                    ):
+                        bench.load_seat_manifest(path, question="q", mode="analytical")
+
     def test_run_rejects_remote_endpoint_before_hardware_probe(self) -> None:
         with mock.patch.object(bench, "_hardware_snapshot", side_effect=AssertionError("must not probe")):
             rc = bench.main(["run", "--endpoint", "http://example.com:11435"])
