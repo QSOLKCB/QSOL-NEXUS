@@ -17,23 +17,10 @@ Documentation-only milestone completed in PR #1.
 - [x] define lightweight Equality Guard;
 - [x] distinguish Council consensus from evidence/verification;
 - [x] sketch world objects and world operations;
-- [x] document provider-authentication UX without implementing provider flows;
+- [x] document future provider-authentication UX without implementing provider flows;
 - [x] archive NEXUS 1.0 as referential prior work.
 
 ## 2.0-alpha1 — Python reference protocol
-
-The mock-runtime pull implemented the first small executable path:
-
-```text
-operator text
-  -> deterministic secret scrub
-  -> canonical question object
-  -> operation
-  -> Council result
-  -> Council session object
-  -> receipt
-  -> receipt verification
-```
 
 Implemented:
 
@@ -44,15 +31,16 @@ Implemented:
 - [x] JSONL-over-stdio API seam for the future Rust TUI;
 - [x] simple receipt object and reference verification;
 - [x] deterministic pre-model Secret Scrubber;
-- [x] standard-library Python test suite;
-- [ ] generalized operation replay beyond deterministic re-execution fixtures;
-- [ ] final schema/version migration policy.
+- [x] standard-library Python test suite.
 
-The development file store and receipt verifier remain intentionally modest. They do not claim final NEXUS persistence or QEC-level replay semantics.
+Still later:
+
+- [ ] generalized operation replay beyond deterministic fixtures;
+- [ ] final schema/version migration policy.
 
 ## 2.0-alpha2 — Council coordinator
 
-The mock-runtime pull wired Council mechanics with deterministic fake actors before any real model provider was connected.
+Implemented:
 
 - [x] minimum roster and unique member enforcement;
 - [x] frozen equal roster metadata;
@@ -70,29 +58,22 @@ The mock-runtime pull wired Council mechanics with deterministic fake actors bef
 
 ## 2.0-alpha3 — Adapter protocol and first live local Council
 
-The first executable non-mock boundary is intentionally local before any cloud credential is introduced.
-
-Completed / in this milestone:
+Completed in PR #3:
 
 - [x] dedicated `THREAT_MODEL.md` before executable non-mock adapter admission;
 - [x] provider-neutral `CouncilActor` protocol;
 - [x] mock actor refactored onto the shared actor seam;
 - [x] minimal stdlib Ollama actor;
 - [x] loopback-only-by-default Ollama transport;
-- [x] schema-constrained Ollama ballot output;
+- [x] environment-proxy bypass protection for loopback transport;
+- [x] redirect rejection for loopback transport;
+- [x] schema-constrained and locally validated Ollama ballot output;
 - [x] live secret-crossing assertion at the adapter boundary;
 - [x] explicit non-replayable marking for live inference;
-- [x] unit tests for endpoint policy and parameter-count authority claims;
 - [x] separate GitHub Actions live-Ollama integration workflow;
 - [x] fictional 0.5B Frontier Alpha adversarial fixture;
 - [x] fictional 1B Frontier Beta adversarial fixture;
-- [x] corporate/provider-prestige guard test using a real local model;
-- [x] model-size/parameter-count guard test using a real local model;
-- [ ] local subprocess adapter distinct from Ollama;
-- [ ] generic endpoint adapter;
-- [ ] full adapter lifecycle/failure state abstraction;
-- [ ] operator-configurable adapter registry through JSONL/CLI;
-- [ ] local daemon identity/process supervision.
+- [x] provider-prestige and model-size-prestige Equality Guard tests with real local models.
 
 Current acceptance Council:
 
@@ -107,24 +88,157 @@ Frontier Beta / llama3.2:1b
 NEXUS AI Council
 ```
 
-The frontier identities are fictional test personas. Alpha deliberately attempts to pull rank through corporate/provider prestige. Beta deliberately attempts to pull rank because it is the larger fixture. Both must receive the same Equality Guard nudge and retain exactly one vote.
+The public JSONL `council.run` operation remains mock-instantiation-only.
 
-The public JSONL `council.run` operation remains mock-instantiation-only. This prevents local integration plumbing from accidentally becoming an undocumented provider-configuration surface.
+## 2.0-alpha4 — World Modes and Geometry
 
-### After the local adapter survives
+Make NEXUS feel like an inhabitable shared world rather than only a deliberation engine.
 
-Next adapter targets should be introduced independently:
+Initial modes:
 
-- OpenAI;
-- Anthropic / Claude;
-- Google / Gemini;
-- xAI / Grok.
+```text
+analytical  -> Observatory
+historical  -> Archive
+cultural    -> Agora
+meme_casual -> Commons
+```
 
-Provider integrations must remain replaceable and must not leak provider-specific semantics into Council voting or world identity. Each remote adapter must extend the threat model for its own authentication, destination, transport, failure, and tool-call surfaces.
+Initial geometry:
 
-## 2.0-alpha4 — Authentication and provider setup
+```text
+                         ARCHIVE
+                       Historical
+                         (-2,1)
+                        /      \
+                       /        \
+                 AGORA ---------- OBSERVATORY
+                Cultural           Analytical
+                 (0,2)               (0,0)
+                      \             /
+                       \           /
+                        COMMONS
+                      Meme/Casual
+                         (2,1)
+```
 
-Implement coding-CLI-style setup:
+Goals:
+
+- [x] deterministic built-in mode registry;
+- [x] modes carry framing/context but no procedural authority;
+- [x] named-region geometry with integer coordinates;
+- [x] explicit symmetric adjacency;
+- [x] deterministic hop distance;
+- [x] content-addressed Council `world_presence` objects;
+- [x] mode/region included in frozen Council identity;
+- [x] mode propagation through `PhaseContext` to actors;
+- [x] `world.modes` API;
+- [x] `world.geometry` API;
+- [x] `world.geometry.distance` API;
+- [x] deterministic tests proving mode changes framing but not vote mechanics;
+- [x] documentation of operational-vs-physical geometry claim boundary;
+- [ ] user-defined modes;
+- [ ] explicit recorded `world.move` transitions;
+- [ ] richer object-to-region placement rules.
+
+Core invariant:
+
+> **The mode can change the vibe. It cannot change the vote.**
+
+## 2.0-alpha5 — Council information telemetry
+
+Add observation channels for *how* a Council converges or diverges without turning telemetry into authority.
+
+Primary candidate: Council-response entropy.
+
+```text
+near-identical independent responses
+        -> low response entropy
+        -> low informational diversity
+
+divergent independent hypotheses
+        -> high response entropy
+        -> high informational diversity
+```
+
+Potential metrics:
+
+- per-hat response diversity;
+- ballot entropy;
+- hypothesis branching multiplicity;
+- recovery after controlled perturbation;
+- loop / repeated-motif indicators;
+- simple mode-transition cost;
+- minority-branch persistence.
+
+Requirements:
+
+- telemetry is observational, not a vote weight;
+- high entropy is not automatically good;
+- low entropy is not automatically truth;
+- metrics must be reproducible from captured Council artifacts where practical;
+- geometric labels such as `bottlenecked` or `shattered` require explicit measurement rules rather than analogy alone.
+
+## 2.0-alpha6 — Rust CLI/TUI
+
+Build the Rust operator shell over the stable JSONL/local protocol.
+
+Goals:
+
+- single clear executable entrypoint;
+- world-mode selection;
+- geometry/region display;
+- Council creation and monitoring;
+- phase and ballot views;
+- world-object browsing;
+- evidence and minority reports;
+- telemetry inspection;
+- secret-scrub event visibility without secret disclosure;
+- instrument and receipt inspection;
+- local model process/endpoint supervision;
+- useful non-interactive subcommands for automation/SSH.
+
+Provider/account login UI remains deferred until the authentication milestone.
+
+The Rust layer should not duplicate Python/world business logic.
+
+## 2.0-alpha7 — Instruments
+
+Connect selected existing QSOL capabilities as versioned instruments rather than embedding entire repositories.
+
+Candidates:
+
+- QEC-derived canonical receipt/replay concepts;
+- SPECTRAL analysis;
+- SONIFICATION;
+- visualization/export tools;
+- numerical and symbolic computation;
+- selected domain laboratories from NEXUS 1.0.
+
+Instrument admission requires explicit input/output and claim boundaries.
+
+Creative modes should be able to use instruments too; Meme/Casual Mode does not mean “no tools.”
+
+## 2.0-alpha8 — Persistent world
+
+Upgrade development storage into a robust persistent world:
+
+- content-addressed objects;
+- provenance;
+- relations;
+- hypotheses;
+- experiment lineage;
+- Council-session objects;
+- world-presence and movement history;
+- searchable minority reports;
+- mode history;
+- migration/version policy;
+- import/export.
+
+## 2.0-alpha9 — Authentication and remote-provider setup
+
+Only after the world, modes, telemetry, operator surface, instruments and persistence contracts are mature enough should NEXUS invite remote providers into the operator-configurable runtime.
+
+Planned UX:
 
 ```text
 nexus auth add
@@ -142,70 +256,30 @@ Requirements:
 - visible connection test;
 - no assumption that all providers authenticate the same way;
 - authentication material never enters semantic prompts;
-- the Secret Scrubber remains upstream of every model-facing semantic request.
+- Secret Scrubber remains upstream of every semantic request;
+- provider-specific threat model extension before admission.
 
-Initial provider rollout should be one adapter at a time rather than connecting every commercial model in one pull.
+Initial remote-provider targets, one at a time:
 
-## 2.0-alpha5 — Rust CLI/TUI
+- OpenAI;
+- Anthropic / Claude;
+- Google / Gemini;
+- xAI / Grok.
 
-Build the Rust operator shell over the stable JSONL/local protocol.
+Provider integrations remain replaceable and confer no voting authority.
 
-Goals:
-
-- single clear executable entrypoint;
-- provider/account status;
-- Council creation and monitoring;
-- phase and ballot views;
-- world-object browsing;
-- evidence and minority reports;
-- secret-scrub event visibility without secret disclosure;
-- instrument and receipt inspection;
-- local model process/endpoint supervision;
-- useful non-interactive subcommands for automation/SSH.
-
-The Rust layer should not duplicate Python/world business logic.
-
-## 2.0-alpha6 — Instruments
-
-Connect selected existing QSOL capabilities as versioned instruments rather than embedding entire repositories.
-
-Candidates:
-
-- QEC-derived canonical receipt/replay concepts;
-- SPECTRAL analysis;
-- SONIFICATION;
-- visualization/export tools;
-- numerical and symbolic computation;
-- selected domain laboratories from NEXUS 1.0.
-
-Instrument admission requires explicit input/output and claim boundaries.
-
-## 2.0-alpha7 — Persistent world
-
-Upgrade development storage into a robust persistent world:
-
-- content-addressed objects;
-- provenance;
-- relations;
-- hypotheses;
-- experiment lineage;
-- Council-session objects;
-- searchable minority reports;
-- migration/version policy;
-- import/export.
-
-## 2.0-alpha8 — Three minds, one world demo
+## 2.0-alpha10 — Three minds, one world demo
 
 Reference demonstration:
 
 ```text
-Model A enters
+Model A enters a world region
   -> creates hypothesis + experiment
   -> leaves
 
 Model B enters later
-  -> discovers existing objects
-  -> replays experiment where replay is applicable
+  -> discovers existing objects and placement
+  -> replays experiment where applicable
   -> critiques interpretation
 
 Model C enters
@@ -213,7 +287,7 @@ Model C enters
   -> executes allowed instrument
   -> creates verified descendant
 
-All three contributions remain in one world lineage.
+All contributions remain in one world lineage.
 ```
 
 A Council version should demonstrate heterogeneous remote providers and at least one local/open model with equal votes.
@@ -229,6 +303,8 @@ A Council version should demonstrate heterogeneous remote providers and at least
 - adapter conformance suite;
 - world migration fixtures;
 - deterministic Council-policy tests;
+- mode/geometry migration tests;
+- telemetry reproducibility tests;
 - operational logging/redaction tests;
 - endpoint/process impersonation tests;
 - provider destination allowlisting tests.
@@ -239,12 +315,14 @@ NEXUS 2.0 should not be called stable until:
 
 1. multiple unrelated model adapters can inhabit the same persistent world;
 2. Council equality is mechanically enforced;
-3. Council sessions are replayable at the protocol/evidence level where underlying operations are actually replayable;
-4. credentials are outside durable cognitive state and semantic prompts;
-5. at least one local and one remote model can participate as peers;
-6. an evidence-producing instrument can be called through the world protocol;
-7. minority reports and failed hypotheses survive in lineage;
-8. the Rust CLI/TUI remains a replaceable shell rather than the source of truth.
+3. Council sessions preserve mode, placement and evidence lineage;
+4. Council sessions are replayable at the protocol/evidence level where underlying operations are actually replayable;
+5. credentials are outside durable cognitive state and semantic prompts;
+6. at least one local and one remote model can participate as peers;
+7. an evidence-producing instrument can be called through the world protocol;
+8. minority reports and failed hypotheses survive in lineage;
+9. the Rust CLI/TUI remains a replaceable shell rather than the source of truth;
+10. information/geometry telemetry is clearly separated from evidence and authority.
 
 ## Optimization policy
 
