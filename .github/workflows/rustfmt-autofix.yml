@@ -25,22 +25,38 @@ jobs:
         run: |
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
           path = Path('tui/src/lib.rs')
           text = path.read_text()
 
           constant = 'pub const MAX_UPLOAD_BYTES: u64 = 8 * 1024 * 1024;\n'
-          replacement = constant + 'pub const MAX_ARCHIVE_MEMBER_BYTES: u64 = 8 * 1024 * 1024;\n'
           if 'MAX_ARCHIVE_MEMBER_BYTES' not in text:
               if constant not in text:
                   raise SystemExit('MAX_UPLOAD_BYTES anchor not found')
-              text = text.replace(constant, replacement, 1)
+              text = text.replace(
+                  constant,
+                  constant + 'pub const MAX_ARCHIVE_MEMBER_BYTES: u64 = 8 * 1024 * 1024;\n',
+                  1,
+              )
 
-          anchor = '''    let mut entry = archive
-              .by_name(member)
-              .map_err(|e| format!("document is missing {member}: {e}"))?;
-          '''
-          hardened = anchor + '''    if entry.size() > MAX_ARCHIVE_MEMBER_BYTES {
+          if 'document member {member} expands to' not in text:
+              pattern = re.compile(
+                  r'(\s+let mut entry = archive\s*\n'
+                  r'\s*\.by_name\(member\)\s*\n'
+                  r'\s*\.map_err\(\|e\| format!\("document is missing \{member\}: \{e\}"\)\)\?;\s*\n)'
+              )
+              match = pattern.search(text)
+              if not match:
+                  location = text.find('.by_name(member)')
+                  print('Current content around .by_name(member):')
+                  if location >= 0:
+                      print(text[max(0, location - 160): location + 260])
+                  else:
+                      print('.by_name(member) not present')
+                  raise SystemExit('ZIP member anchor not found')
+
+              guard = '''    if entry.size() > MAX_ARCHIVE_MEMBER_BYTES {
               return Err(format!(
                   "document member {member} expands to {} bytes; limit is {} bytes",
                   entry.size(),
@@ -48,10 +64,7 @@ jobs:
               ));
           }
           '''
-          if 'document member {member} expands to' not in text:
-              if anchor not in text:
-                  raise SystemExit('ZIP member anchor not found')
-              text = text.replace(anchor, hardened, 1)
+              text = text[:match.end()] + guard + text[match.end():]
 
           path.write_text(text)
           PY
