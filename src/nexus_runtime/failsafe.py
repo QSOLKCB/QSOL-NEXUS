@@ -566,6 +566,11 @@ class ActorFailsafe:
         mode_instruction: str,
         geometry_region_id: str,
     ) -> dict[str, Any]:
+        if trigger_reason not in FAILSAFE_TRIGGER_EVENTS:
+            raise ValueError("rehabilitation requires a registered repeated guard trigger")
+        if trigger_reason == "repeated_pure_history_model_autobiography" and mode_id != "pure_history":
+            raise ValueError("Pure History rehabilitation trigger requires pure_history mode")
+
         contained = self.registry.transition(
             actor.member.member_id,
             "contained",
@@ -615,11 +620,6 @@ class ActorFailsafe:
             geometry_region_id=geometry_region_id,
             evidence_context="",
         )
-
-        if trigger_reason not in FAILSAFE_TRIGGER_EVENTS:
-            raise ValueError("rehabilitation requires a registered repeated guard trigger")
-        if trigger_reason == "repeated_pure_history_model_autobiography" and mode_id != "pure_history":
-            raise ValueError("Pure History rehabilitation trigger requires pure_history mode")
 
         response = ""
         guard_reasons: list[str] = []

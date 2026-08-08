@@ -411,6 +411,20 @@ class FailsafeReviewHardeningTests(unittest.TestCase):
         self.assertEqual(outcome["status"], "returned")
         self.assertEqual(outcome["probe_guard_reasons"], [])
 
+    def test_unregistered_trigger_is_rejected_before_any_state_is_persisted(self) -> None:
+        world = WorldStore()
+        failsafe = ActorFailsafe(world)
+        actor = ProbeActor(CouncilMember("A", "model-a"))
+        with self.assertRaisesRegex(ValueError, "registered repeated guard trigger"):
+            failsafe.rehabilitate(
+                actor,
+                trigger_reason="not_a_registered_trigger",
+                mode_id="analytical",
+                mode_instruction="analysis",
+                geometry_region_id="observatory",
+            )
+        self.assertEqual(failsafe.status_snapshot()["members"], {})
+
     def test_runtime_error_in_probe_is_recorded_and_fails_closed(self) -> None:
         world = WorldStore()
         failsafe = ActorFailsafe(world)
