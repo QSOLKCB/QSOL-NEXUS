@@ -42,9 +42,9 @@ jobs:
       - name: Rust format check
         run: cargo fmt --manifest-path tui/Cargo.toml -- --check
       - name: Rust unit tests
-        run: cargo test --manifest-path tui/Cargo.toml --all-targets --locked=false
+        run: cargo test --manifest-path tui/Cargo.toml --all-targets
       - name: Rust compile check
-        run: cargo check --manifest-path tui/Cargo.toml --all-targets --locked=false
+        run: cargo check --manifest-path tui/Cargo.toml --all-targets
       - name: Python protocol tests
         env:
           PYTHONPATH: src
