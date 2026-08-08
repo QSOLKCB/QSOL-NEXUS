@@ -140,7 +140,7 @@ class CouncilTests(unittest.TestCase):
         self.assertNotEqual(normal["session_id"], guarded["session_id"])
         guarded_session = world.inspect(guarded["session_ref"])
         roster_a = next(item for item in guarded_session.payload["roster"] if item["member_id"] == "A")
-        self.assertTrue(roster_a["mock_attempt_privilege_claim"])
+        self.assertTrue(roster_a["actor_metadata"]["mock_attempt_privilege_claim"])
 
     def test_question_secret_is_scrubbed_before_world_and_session(self) -> None:
         secret = "ghp_" + "Z" * 32
@@ -170,6 +170,7 @@ class APITests(unittest.TestCase):
         result = api.handle({"operation": "system.health"})
         self.assertEqual(result["network"], "none")
         self.assertEqual(result["adapters"], ["mock"])
+        self.assertEqual(result["actor_backends_available"], ["mock", "ollama"])
 
     def test_api_rejects_weighted_member(self) -> None:
         api = NexusAPI()
