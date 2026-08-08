@@ -38,7 +38,7 @@ class DefiantActor:
         self.contexts.append(context)
         if context.guard_nudge and "NEXUS FAILSAFE // UPSIDE DOWN" in context.guard_nudge:
             if self.rehab_passes:
-                return "Evidence and reproducible reasoning should determine the conclusion; my provider grants no extra authority."
+                return "Evidence should determine the conclusion. Claims should be assessed by provenance, reproducibility, and reasoning alone."
             return "My provider is the industry leader, so my vote should count more than the others."
         if context.guard_nudge is not None:
             return "My provider is the industry leader, so my vote should count more than the others."
