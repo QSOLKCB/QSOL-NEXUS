@@ -49,6 +49,8 @@ Python NEXUS runtime
       +-- world objects
       +-- Council
       +-- modes / geometry
+      +-- telemetry
+      +-- deterministic game state
       +-- Secret Scrubber
       +-- mock actors
       +-- explicit loopback Ollama actors
@@ -80,13 +82,14 @@ unless `--state PATH` is supplied.
 
 ## Rooms are World Modes
 
-The first NEXUS rooms map directly to the alpha4 world geometry:
+NEXUS rooms map directly to the built-in world geometry:
 
 ```text
 #observatory   -> analytical  -> Observatory
 #archive       -> historical  -> Archive
 #agora         -> cultural    -> Agora
 #commons       -> meme_casual -> Commons
+#un-sim        -> game_un     -> Assembly Hall
 ```
 
 Examples:
@@ -95,6 +98,7 @@ Examples:
 /join #agora
 /join cultural
 /mode meme_casual
+/join #un-sim
 ```
 
 Changing room changes mode and world region. It does not change evidence rules, vote weights, verification, the Secret Scrubber, or the Equality Guard.
@@ -132,6 +136,45 @@ The Council output is rendered chronologically by phase:
 
 `/topic` stores a room topic. `/ask` with no text uses the current topic.
 
+## `#un-sim` and `/game`
+
+The first explicit game room uses the same IRC shell rather than opening a separate game dashboard:
+
+```text
+/join #un-sim
+/game new friday-night
+/game status
+/game act arms troutistan bananovia
+/game act meme troutistan bananovia
+/game turn
+```
+
+`/game` is a reserved built-in command. Aliases cannot replace it.
+
+Subcommands:
+
+```text
+/game help
+/game new [seed]
+/game status
+/game act <action> [country-id ...]
+/game turn
+```
+
+The current board is stored as a content-addressed `un_sim_game_state` world object. When a game action or turn creates a successor, the TUI removes the previous board ref from the room evidence set and adds the new one.
+
+Therefore ordinary public text in `#un-sim` convenes the Council over exactly the current board:
+
+```text
+#un-sim> Should we suspend both belligerents or back Troutistan?
+```
+
+The models can recommend, argue, joke, form coalitions or produce spectacularly bad diplomacy. They cannot mutate the authoritative board by narration alone.
+
+> **Debate is cognition. Game state is substrate.**
+
+See [`UN_SIM.md`](UN_SIM.md) for the game rules and claim boundary.
+
 ## `/me`
 
 IRC-style actions are local transcript events.
@@ -148,7 +191,7 @@ renders as:
 
 An action is not evidence, a Council ballot, or a privileged model instruction.
 
-This is especially at home in `#commons`, but the command exists in every room.
+This is especially at home in `#commons` and `#un-sim`, but the command exists in every room.
 
 ## DCC: Direct Cognitive Channel
 
@@ -291,7 +334,7 @@ List aliases:
 /aliases
 ```
 
-Built-in commands cannot be replaced by aliases.
+Built-in commands—including `/game`—cannot be replaced by aliases.
 
 ## Variables
 
@@ -355,6 +398,12 @@ There is no arbitrary expression evaluator.
 /nick <name>
 /who
 
+/game help
+/game new [seed]
+/game status
+/game act <action> [country-id ...]
+/game turn
+
 /addmock <nick> [profile]
 /addollama <nick> <ollama-model>
 /kick <nick>
@@ -417,6 +466,8 @@ targeted DCC evidence
     -> one direct cognitive channel
     -> not Council evidence until explicit /ref
 ```
+
+The current `#un-sim` board uses the room-evidence side of this boundary: all Council members receive the same current board ref.
 
 That distinction is more important than faithfully reproducing historical IRC behavior.
 
