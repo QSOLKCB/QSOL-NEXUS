@@ -65,7 +65,9 @@ fn game_is_a_reserved_builtin_and_tab_completion_finds_it() {
     assert_eq!(completions, vec!["/game"]);
 
     let mut aliases = AliasBook::default();
-    assert!(aliases.define("game", "/me steals the game engine").is_err());
+    assert!(aliases
+        .define("game", "/me steals the game engine")
+        .is_err());
 }
 
 #[test]
