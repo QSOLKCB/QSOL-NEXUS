@@ -16,7 +16,12 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
       - name: Apply cursed MUD integration
-        run: python3 .github/scripts/implement_cursed_mud.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/implement_cursed_mud.py
+          sed -i 's/result\["protocol"\], "nexus\/0.6"/result["protocol"], "nexus\/0.7"/' tests/test_runtime.py
+          sed -i 's/result\["runtime_version"\], "2.0.0-alpha6.2"/result["runtime_version"], "2.0.0-alpha6.3"/' tests/test_runtime.py
       - name: Rust format
         run: cargo fmt --manifest-path tui/Cargo.toml
       - name: Rust tests
@@ -33,7 +38,7 @@ jobs:
           set -euo pipefail
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add src/nexus_runtime/api.py src/nexus_runtime/modes.py src/nexus_runtime/geometry.py tests/test_modes_geometry.py tests/test_un_sim.py tui/src/lib.rs tui/src/main.rs tui/tests/mud.rs
+          git add src/nexus_runtime/api.py src/nexus_runtime/modes.py src/nexus_runtime/geometry.py tests/test_modes_geometry.py tests/test_runtime.py tests/test_un_sim.py tui/src/lib.rs tui/src/main.rs tui/tests/mud.rs
           if git diff --cached --quiet; then
             echo 'No integration changes to commit.'
             exit 0
