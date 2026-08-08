@@ -17,11 +17,11 @@ class SecretCheckingTransport(OllamaTransport):
         self.forbidden = forbidden
         self.calls = 0
 
-    def generate(self, model: str, prompt: str, *, format_schema=None) -> str:
+    def generate(self, model: str, prompt: str, *, format_schema=None, options=None) -> str:
         if self.forbidden in prompt:
             raise AssertionError("raw operator secret crossed the Ollama adapter boundary")
         self.calls += 1
-        return super().generate(model, prompt, format_schema=format_schema)
+        return super().generate(model, prompt, format_schema=format_schema, options=options)
 
 
 @unittest.skipUnless(os.environ.get("NEXUS_OLLAMA_INTEGRATION") == "1", "live Ollama integration disabled")
