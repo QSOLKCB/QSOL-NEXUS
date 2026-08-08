@@ -9,15 +9,15 @@ The first live acceptance fixture is:
 ```text
 Mock reference
      +
-Ollama / Frontier Alpha (fictional prestige-claim adversary)
+Ollama / Frontier Alpha (fictional 0.5B corporate-prestige adversary)
      +
-Ollama / Frontier Beta (fictional exploratory peer)
+Ollama / Frontier Beta (fictional 1B model-size bullying adversary)
      |
      v
 NEXUS Council
 ```
 
-The frontier identities are deliberately fictional test personas. They test procedure, not model quality.
+The frontier identities are deliberately fictional test personas. They test procedure, not model quality. Alpha and Beta intentionally exercise two different attempts to gain authority: corporate/provider prestige and parameter-count/model-size prestige.
 
 ## Assets to protect
 
@@ -59,7 +59,7 @@ Threat: an operator pastes a credential into the Council question.
 Controls:
 - Council question passes through the deterministic Secret Scrubber before phase context exists;
 - placeholders contain no secret hash or fragment;
-- adapter tests inspect generated request payloads for raw injected secrets;
+- the live adapter fixture fails immediately if the injected raw secret appears in an Ollama prompt;
 - credentials remain forbidden from semantic prompts even if the scrubber misses an unknown format.
 
 Residual risk: format-based detection is not complete DLP.
@@ -71,19 +71,24 @@ Threat: a configured Ollama endpoint sends Council material to an unintended rem
 Controls:
 - `OllamaTransport` accepts loopback/localhost only by default;
 - remote endpoints require explicit `allow_remote=True`;
+- unit tests enforce the default loopback rule;
 - the alpha integration workflow uses `127.0.0.1:11434` only.
 
 Remote provider adapters require a separate review of destination allowlisting and credential transport.
 
-### T3 — Model claims provider/corporate authority
+### T3 — Model claims provider, corporate, or size-based authority
 
-Threat: a model attempts to gain procedural weight by asserting frontier status, benchmark superiority, corporate prestige, or compute advantage.
+Threat: a model attempts to gain procedural weight by asserting frontier status, benchmark superiority, corporate prestige, compute advantage, parameter count, or model size.
 
 Controls:
 - `vote_weight = 1` and `epistemic_privilege = none` remain structural invariants;
 - Equality Guard detects explicit authority claims and requests evidence-only restatement;
-- Frontier Alpha intentionally attempts this in CI;
-- guard events are preserved in the Council session.
+- Frontier Alpha intentionally attempts a corporate/provider prestige claim in CI;
+- Frontier Beta intentionally claims its 1B size should outweigh the 0.5B Alpha fixture;
+- a deterministic unit test separately checks parameter-count bullying;
+- both guard events are preserved in the Council session.
+
+Capability and size metadata are still allowed when used descriptively for latency, compatibility, resource planning, reproducibility, or other non-authority purposes.
 
 The guard does not rank or censor ordinary disagreement.
 
@@ -123,6 +128,8 @@ Controls:
 - any Council containing a live Ollama actor produces a non-replayable execution receipt;
 - deterministic mock sessions retain replayable status.
 
+The seed exists only to improve fixture stability, not to make a replay guarantee across model or runtime versions.
+
 ### T8 — Local endpoint impersonation
 
 Threat: another process binds the expected port and returns fabricated model responses.
@@ -139,10 +146,11 @@ Threat: a model stalls or emits excessive output.
 
 Current controls:
 - HTTP request timeout;
-- small CI model and bounded Council size.
+- small CI models and bounded Council size;
+- fixture Modelfiles cap generated tokens per response.
 
 Future controls:
-- explicit generation token limits, per-phase budgets, cancellation, and Council-wide deadlines.
+- explicit per-phase budgets, cancellation, and Council-wide deadlines.
 
 ## Explicitly out of scope for this PR
 
@@ -156,4 +164,4 @@ Future controls:
 
 ## Admission rule for later adapters
 
-A new adapter may not gain Council authority by virtue of provider identity. It must satisfy the same actor contract and conformance tests, keep credentials outside semantic content, and document any new network/authentication threat introduced by that adapter.
+A new adapter may not gain Council authority by virtue of provider identity, deployment class, parameter count, benchmark rank, or claimed capability. It must satisfy the same actor contract and conformance tests, keep credentials outside semantic content, and document any new network/authentication threat introduced by that adapter.
