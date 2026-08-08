@@ -1,5 +1,16 @@
 # Changelog
 
+
+## 2.0.0-alpha6 — Council information telemetry
+
+- add deterministic ballot Shannon entropy;
+- add per-hat exact-response entropy and lexical Jaccard divergence;
+- persist telemetry in Council session artifacts;
+- add `telemetry.verify` recomputation;
+- render observational telemetry in the Rust IRC-style TUI;
+- explicitly prohibit telemetry from affecting votes, consensus, evidence, or verification;
+- defer semantic entropy and geometry-flavoured labels until they have explicit measurement rules.
+
 All notable changes to QSOL NEXUS are documented here.
 
 ## [2.0.0-alpha5] — IRC-style Rust operator TUI

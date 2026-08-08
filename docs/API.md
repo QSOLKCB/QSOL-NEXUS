@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.4
+nexus/0.5
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha5
+2.0.0-alpha6
 ```
 
 Current posture:
@@ -64,8 +64,8 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.4",
-  "runtime_version": "2.0.0-alpha5",
+  "protocol": "nexus/0.5",
+  "runtime_version": "2.0.0-alpha6",
   "control_transport": "jsonl_stdio",
   "network": "none_unless_explicit_loopback_ollama_actor",
   "adapters": ["mock", "ollama_loopback"],
@@ -375,3 +375,14 @@ Alpha5 does not implement:
 - rate-limit/provider billing semantics.
 
 Those remain later operator/authentication milestones.
+
+
+## `telemetry.verify`
+
+Recompute deterministic Council telemetry from a captured `council_session` object.
+
+```json
+{"request_id":"t1","operation":"telemetry.verify","session_ref":"object:<sha256>"}
+```
+
+A successful verification returns `status: "verified"`, `matches: true`, the telemetry schema version, and the recomputed telemetry block. Telemetry is observational only and cannot alter Council authority or evidence status.

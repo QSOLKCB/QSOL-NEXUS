@@ -668,6 +668,42 @@ impl App {
         self.append(&format!(
             "*** Council: {label} / {disposition} | Evidence: {evidence_state}"
         ));
+        if let Some(telemetry) = payload.get("telemetry").and_then(Value::as_object) {
+            self.append("--- COUNCIL TELEMETRY (OBSERVATIONAL ONLY) ---");
+            if let Some(ballot) = telemetry.get("ballot_metrics").and_then(Value::as_object) {
+                let entropy = ballot
+                    .get("shannon_entropy_bits")
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0);
+                let unique = ballot
+                    .get("unique_choice_count")
+                    .and_then(Value::as_u64)
+                    .unwrap_or(0);
+                self.append(&format!(
+                    "*** BALLOT: H={entropy:.3} bits | unique choices={unique}"
+                ));
+            }
+            if let Some(phases) = telemetry.get("phase_metrics").and_then(Value::as_object) {
+                for phase in ["WHITE", "RED", "BLACK", "YELLOW", "GREEN", "BLUE"] {
+                    if let Some(metric) = phases.get(phase).and_then(Value::as_object) {
+                        let exact = metric
+                            .get("exact_response_entropy_bits")
+                            .and_then(Value::as_f64)
+                            .unwrap_or(0.0);
+                        let lexical = metric
+                            .get("mean_pairwise_lexical_jaccard_distance")
+                            .and_then(Value::as_f64)
+                            .unwrap_or(0.0);
+                        self.append(&format!(
+                            "*** {phase}: H_exact={exact:.3} bits | lexical_div={lexical:.3}"
+                        ));
+                    }
+                }
+            }
+            self.append(
+                "*** Entropy/diversity are not truth, confidence, quality, evidence status, or vote weight."
+            );
+        }
         Ok(())
     }
 
