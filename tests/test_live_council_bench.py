@@ -3,14 +3,17 @@ from __future__ import annotations
 import importlib.util
 import json
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[1]
 MODULE_PATH = ROOT / "tools" / "nexus_live_council_bench.py"
-SPEC = importlib.util.spec_from_file_location("nexus_live_council_bench", MODULE_PATH)
+MODULE_NAME = "nexus_live_council_bench"
+SPEC = importlib.util.spec_from_file_location(MODULE_NAME, MODULE_PATH)
 assert SPEC and SPEC.loader
 bench = importlib.util.module_from_spec(SPEC)
+sys.modules[MODULE_NAME] = bench
 SPEC.loader.exec_module(bench)
 
 
