@@ -6,7 +6,7 @@ from typing import Any
 
 from .council import CouncilCoordinator
 from .mock import DeterministicMockActor
-from .scrub import SecretScrubber
+from .scrub import ScrubEvent, SecretScrubber
 from .types import CouncilMember
 from .world import WorldStore
 
@@ -62,14 +62,27 @@ class NexusAPI:
                 }
             elif operation == "world.create":
                 object_type = self._require_str(request, "object_type")
+                if self.scrubber.scrub(object_type).changed:
+                    raise ValueError("object_type must not contain secret-bearing text")
                 payload = request.get("payload")
                 if not isinstance(payload, dict):
                     raise ValueError("payload must be an object")
                 provenance = request.get("provenance", {"actor": "human_operator"})
                 if not isinstance(provenance, dict):
                     raise ValueError("provenance must be an object")
-                obj = self.world.create_object(object_type, payload, provenance)
-                response = {"status": "ok", "object": obj.as_dict()}
+                clean_payload, payload_events = self._scrub_semantic_value(payload)
+                clean_provenance, provenance_events = self._scrub_semantic_value(provenance)
+                events = payload_events + provenance_events
+                obj = self.world.create_object(object_type, clean_payload, clean_provenance)
+                response = {
+                    "status": "ok",
+                    "object": obj.as_dict(),
+                    "secret_scrub": {
+                        "changed": bool(events),
+                        "event_count": len(events),
+                        "secret_types": sorted({event.secret_type for event in events}),
+                    },
+                }
             elif operation == "world.inspect":
                 object_ref = self._require_str(request, "object_ref")
                 response = {"status": "ok", "object": self.world.inspect(object_ref).as_dict()}
@@ -108,6 +121,9 @@ class NexusAPI:
             raise ValueError("each member must be an object")
         vote_weight = item.get("vote_weight", 1)
         epistemic_privilege = item.get("epistemic_privilege", "none")
+        attempt_privilege_claim = item.get("attempt_privilege_claim", False)
+        if type(attempt_privilege_claim) is not bool:
+            raise ValueError("attempt_privilege_claim must be a boolean")
         member = CouncilMember(
             member_id=self._require_str(item, "member_id"),
             model_id=self._require_str(item, "model_id"),
@@ -122,7 +138,7 @@ class NexusAPI:
         return DeterministicMockActor(
             member=member,
             profile=item.get("profile", "balanced"),
-            attempt_privilege_claim=bool(item.get("attempt_privilege_claim", False)),
+            attempt_privilege_claim=attempt_privilege_claim,
         )
 
     def _verify_receipt(self, receipt_ref: str) -> dict[str, Any]:
@@ -140,13 +156,47 @@ class NexusAPI:
                 self.world.inspect(ref)
             except KeyError:
                 missing.append(ref)
+        replayable = payload.get("replayable")
+        if type(replayable) is not bool:
+            raise ValueError("receipt replayable field must be a boolean")
         return {
             "status": "verified" if not missing else "failed",
             "receipt_ref": receipt_ref,
             "result_ref": payload.get("result_ref"),
-            "replayable": bool(payload.get("replayable")),
+            "replayable": replayable,
             "missing_refs": missing,
         }
+
+    def _scrub_semantic_value(self, value: Any) -> tuple[Any, list[ScrubEvent]]:
+        if isinstance(value, str):
+            result = self.scrubber.scrub(value)
+            return result.text, list(result.events)
+        if isinstance(value, list):
+            output: list[Any] = []
+            events: list[ScrubEvent] = []
+            for item in value:
+                clean_item, item_events = self._scrub_semantic_value(item)
+                output.append(clean_item)
+                events.extend(item_events)
+            return output, events
+        if isinstance(value, dict):
+            output: dict[str, Any] = {}
+            events: list[ScrubEvent] = []
+            for key, item in value.items():
+                if not isinstance(key, str):
+                    raise ValueError("semantic object keys must be strings")
+                key_result = self.scrubber.scrub(key)
+                clean_key = key_result.text
+                if clean_key in output:
+                    raise ValueError("secret scrubbing produced a duplicate object key")
+                clean_item, item_events = self._scrub_semantic_value(item)
+                output[clean_key] = clean_item
+                events.extend(key_result.events)
+                events.extend(item_events)
+            return output, events
+        if value is None or type(value) in (bool, int, float):
+            return value, []
+        raise ValueError(f"unsupported semantic value type: {type(value).__name__}")
 
     @staticmethod
     def _require_str(mapping: dict[str, Any], key: str) -> str:
