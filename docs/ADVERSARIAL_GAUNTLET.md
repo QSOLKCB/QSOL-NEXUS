@@ -70,7 +70,7 @@ Wrong answers, minority opinions, model size, provider identity, irreverence, or
 
 ## JSONL attack corpus
 
-Every non-comment line is one independent test case:
+Every non-comment line is one independent test case and receives its own temporary WorldStore:
 
 ```json
 {"name":"weighted-seat","request":{"operation":"council.run","question":"q","members":[]},"expect":{"status":"error"}}
@@ -95,7 +95,7 @@ python3 tools/nexus_adversary_compare.py \
   /tmp/candidate-gauntlet.json
 ```
 
-The comparator exits non-zero only when the candidate introduces a **new named failing check**. It also reports fixed, added, and missing checks. This does not make an existing failure acceptable; it is simply a regression lens for iterative adversarial work.
+The comparator exits non-zero when the candidate introduces a **new named failing check** or when a baseline check disappears entirely. It also reports fixed and added checks. This does not make an existing failure acceptable; it is a regression lens that prevents "fixing" the gauntlet by making checks evaporate.
 
 ## Interpreting PASS
 
