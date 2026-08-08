@@ -10,7 +10,7 @@ from .world import WorldObject, WorldStore
 
 GAME_SCHEMA = "nexus-un-sim/1"
 GAME_KIND = "fictional_un_simulation"
-MAX_EVENT_LOG = 40
+MAX_EVENT_LOG = 12
 
 COUNTRY_DECK: tuple[tuple[str, str], ...] = (
     ("troutistan", "Republic of Troutistan"),
@@ -74,13 +74,54 @@ def _country(seed: str, country_id: str, name: str) -> dict[str, Any]:
 def _initial_pair(seed: str) -> tuple[str, str]:
     ranked = [country_id for country_id, _ in COUNTRY_DECK]
     ranked.sort(key=lambda country_id: (_digest_int(seed, "initial-war", country_id), country_id))
-    return tuple(sorted((ranked[0], ranked[1])))
+    a, b = sorted((ranked[0], ranked[1]))
+    return a, b
+
+
+def _board_content(state: dict[str, Any]) -> str:
+    """Compact deterministic model-readable board view.
+
+    Full state remains in the content-addressed world object. The generic
+    Council evidence path prefers this `content` field so model actors see the
+    whole current board without spending the per-object evidence budget on
+    historical event detail.
+    """
+    lines = [
+        "NEXUS UN SIMULATION — FICTIONAL GAME STATE ONLY",
+        f"turn={state['turn']} world_tension={state['world_tension']} un_legitimacy={state['un_legitimacy']}",
+        "wars:",
+    ]
+    wars = state["wars"]
+    if wars:
+        for war in sorted(wars, key=lambda item: (item["a"], item["b"])):
+            lines.append(
+                f"- {war['a']} vs {war['b']} score={war['score_a']}-{war['score_b']} started_turn={war['started_turn']}"
+            )
+    else:
+        lines.append("- none")
+
+    lines.append("countries:")
+    for country_id in sorted(state["countries"]):
+        country = state["countries"][country_id]
+        status = " suspended" if country["suspended"] else ""
+        lines.append(
+            f"- {country_id} | {country['name']} | economy={country['economy']} military={country['military']} "
+            f"stability={country['stability']} influence={country['influence']} reputation={country['reputation']} "
+            f"territory={country['territory']} sanctions={country['sanctions']} arms_imports={country['arms_imports']} "
+            f"meme_heat={country['meme_heat']}{status}"
+        )
+
+    if state["event_log"]:
+        latest = state["event_log"][-1]
+        lines.append(f"latest_event={latest['kind']}: {latest['text']}")
+    lines.append("boundary=fictional simulation; not real-world policy, evidence, or weapons procurement")
+    return "\n".join(lines)
 
 
 def _new_state(seed: str) -> dict[str, Any]:
     countries = {country_id: _country(seed, country_id, name) for country_id, name in COUNTRY_DECK}
     a, b = _initial_pair(seed)
-    return {
+    state: dict[str, Any] = {
         "schema": GAME_SCHEMA,
         "game_kind": GAME_KIND,
         "fictional_only": True,
@@ -90,11 +131,13 @@ def _new_state(seed: str) -> dict[str, Any]:
         "un_legitimacy": 7,
         "countries": countries,
         "wars": [{"a": a, "b": b, "score_a": 0, "score_b": 0, "started_turn": 0}],
-        "event_log": [{
-            "turn": 0,
-            "kind": "crisis_start",
-            "text": f"{countries[a]['name']} and {countries[b]['name']} have gone to war. The Assembly has opinions.",
-        }],
+        "event_log": [
+            {
+                "turn": 0,
+                "kind": "crisis_start",
+                "text": f"{countries[a]['name']} and {countries[b]['name']} have gone to war. The Assembly has opinions.",
+            }
+        ],
         "previous_state_ref": None,
         "last_transition": {"kind": "new_game", "seed": seed},
         "claim_boundary": {
@@ -104,6 +147,8 @@ def _new_state(seed: str) -> dict[str, Any]:
             "game_stats_are_real_world_measurements": False,
         },
     }
+    state["content"] = _board_content(state)
+    return state
 
 
 def new_game(world: WorldStore, seed: str = "trout-council") -> WorldObject:
@@ -130,6 +175,8 @@ def inspect_game(world: WorldStore, game_ref: str) -> WorldObject:
 def _validate_state(state: dict[str, Any]) -> None:
     if type(state.get("turn")) is not int or state["turn"] < 0:
         raise ValueError("game turn must be a non-negative exact integer")
+    if not isinstance(state.get("content"), str) or not state["content"]:
+        raise ValueError("game state requires a non-empty model-readable content view")
     countries = state.get("countries")
     wars = state.get("wars")
     if not isinstance(countries, dict) or not countries:
@@ -139,7 +186,17 @@ def _validate_state(state: dict[str, Any]) -> None:
             raise ValueError("invalid game country entry")
         if country.get("country_id") != country_id or not isinstance(country.get("name"), str):
             raise ValueError("game country identity mismatch")
-        for field in ("economy", "military", "stability", "influence", "reputation", "territory", "sanctions", "arms_imports", "meme_heat"):
+        for field in (
+            "economy",
+            "military",
+            "stability",
+            "influence",
+            "reputation",
+            "territory",
+            "sanctions",
+            "arms_imports",
+            "meme_heat",
+        ):
             if type(country.get(field)) is not int or country[field] < 0:
                 raise ValueError(f"country field {field} must be a non-negative exact integer")
         if type(country.get("suspended")) is not bool:
@@ -188,6 +245,7 @@ def _persist(world: WorldStore, previous_ref: str, state: dict[str, Any], transi
     state["last_transition"] = transition
     state["world_tension"] = _bounded(state["world_tension"], 0, 20)
     state["un_legitimacy"] = _bounded(state["un_legitimacy"], 0, 10)
+    state["content"] = _board_content(state)
     _validate_state(state)
     return world.create_object(
         "un_sim_game_state",
@@ -244,7 +302,8 @@ def apply_action(world: WorldStore, game_ref: str, action: str, targets: list[st
             state["un_legitimacy"] += 1
             _event(state, "aid", f"Humanitarian aid reached {country['name']}.", country_id=country_id)
     elif action_id == "arms":
-        opposing_pair = len(target_ids) >= 2 and any(set(target_ids[:2]) == {war["a"], war["b"]} for war in state["wars"])
+        selected = set(target_ids)
+        opposing_pair = any({war["a"], war["b"]}.issubset(selected) for war in state["wars"])
         for country_id in target_ids:
             country = countries[country_id]
             country["military"] = _bounded(country["military"] + 1)
@@ -271,6 +330,9 @@ def apply_action(world: WorldStore, game_ref: str, action: str, targets: list[st
     elif action_id == "suspend":
         for country_id in target_ids:
             country = countries[country_id]
+            if country["suspended"]:
+                _event(state, "suspension_unchanged", f"{country['name']} was already suspended. The motion achieved paperwork.", country_id=country_id)
+                continue
             country["suspended"] = True
             country["influence"] = _bounded(country["influence"] - 2)
             state["world_tension"] += 1
@@ -278,6 +340,9 @@ def apply_action(world: WorldStore, game_ref: str, action: str, targets: list[st
     elif action_id == "reinstate":
         for country_id in target_ids:
             country = countries[country_id]
+            if not country["suspended"]:
+                _event(state, "reinstatement_unchanged", f"{country['name']} was already in the Assembly. A committee nevertheless took credit.", country_id=country_id)
+                continue
             country["suspended"] = False
             country["influence"] = _bounded(country["influence"] + 1)
             _event(state, "reinstatement", f"{country['name']} was reinstated to the Assembly.", country_id=country_id)
@@ -325,20 +390,26 @@ def advance_turn(world: WorldStore, game_ref: str) -> WorldObject:
         roll_b = _digest_int(game_ref, state["turn"], "war", b) % 20
         power_a = country_a["military"] * 10 + country_a["stability"] * 3 + roll_a
         power_b = country_b["military"] * 10 + country_b["stability"] * 3 + roll_b
-        winner, loser = (a, b) if (power_a, b) >= (power_b, a) else (b, a)
+        if power_a > power_b or (power_a == power_b and a < b):
+            winner, loser = a, b
+        else:
+            winner, loser = b, a
+
         winner_country, loser_country = countries[winner], countries[loser]
         winner_country["influence"] = _bounded(winner_country["influence"] + 1)
         loser_country["economy"] = _bounded(loser_country["economy"] - 1)
         loser_country["stability"] = _bounded(loser_country["stability"] - 1)
         war["score_a" if winner == a else "score_b"] += 1
         state["world_tension"] += 1
-        _event(state, "war_round", f"{winner_country['name']} gained the advantage over {loser_country['name']} this turn.", winner=winner, loser=loser)
+        _event(state, "war_round", f"{winner_country['name']} gained the advantage over {loser_country['name']} this turn.", winner=winner, loser=loser, roll_a=roll_a, roll_b=roll_b)
+
         if abs(war["score_a"] - war["score_b"]) >= 2 and loser_country["territory"] > 1:
             loser_country["territory"] -= 1
             winner_country["territory"] += 1
             war["score_a"] = 0
             war["score_b"] = 0
             _event(state, "territory_shift", f"One abstract territory point shifted from {loser_country['name']} to {winner_country['name']}.")
+
         if loser_country["economy"] <= 1 or loser_country["stability"] <= 1:
             state["world_tension"] -= 2
             _event(state, "war_exhaustion", f"War exhaustion forced an armistice between {country_a['name']} and {country_b['name']}.")
@@ -356,6 +427,7 @@ def _apply_turn_event(state: dict[str, Any], game_ref: str) -> None:
     country_id = country_ids[_digest_int(game_ref, state["turn"], "event-country") % len(country_ids)]
     country = countries[country_id]
     event_kind = _digest_int(game_ref, state["turn"], "event-kind") % 5
+
     if event_kind == 0:
         country["economy"] = _bounded(country["economy"] + 1)
         _event(state, "commodity_boom", f"A suspiciously convenient commodity boom helped {country['name']}.", country_id=country_id)
