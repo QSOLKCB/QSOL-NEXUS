@@ -5,13 +5,17 @@ from dataclasses import asdict
 from typing import Iterable
 
 from .adapters.base import CouncilActor
-from .canonical import sha256_ref
+from .canonical import canonical_json, sha256_ref
 from .geometry import DEFAULT_WORLD_GEOMETRY, WorldGeometry
 from .guard import EqualityGuard
 from .modes import get_mode
 from .scrub import SecretScrubber
 from .types import BallotRecord, CouncilPolicy, PHASE_ORDER, Phase, PhaseContext, PhaseSubmission
 from .world import WorldStore
+
+
+MAX_EVIDENCE_CONTEXT_CHARS = 6_000
+MAX_EVIDENCE_OBJECT_CHARS = 3_000
 
 
 class CouncilCoordinator:
@@ -43,6 +47,8 @@ class CouncilCoordinator:
         mode = get_mode(mode_id)
         region = self.geometry.region_for_mode(mode.mode_id)
         geometry_snapshot = self.geometry.snapshot()
+        evidence_refs = list(evidence_refs or [])
+        evidence_context = self.build_evidence_context(evidence_refs)
 
         scrubbed = self.scrubber.scrub(question)
         question_obj = self.world.create_object(
@@ -121,6 +127,7 @@ class CouncilCoordinator:
                     mode_id=mode.mode_id,
                     mode_instruction=mode.prompt_instruction,
                     geometry_region_id=region.region_id,
+                    evidence_context=evidence_context,
                 )
                 content, member_guard_events = self._collect_guarded(actor, context)
                 current[actor.member.member_id] = content
@@ -152,6 +159,7 @@ class CouncilCoordinator:
             mode_id=mode.mode_id,
             mode_instruction=mode.prompt_instruction,
             geometry_region_id=region.region_id,
+            evidence_context=evidence_context,
         )
         result = self._tally(ballots, evidence_state)
 
@@ -183,7 +191,7 @@ class CouncilCoordinator:
                 "input_refs": [question_obj.object_id, evidence.object_id, presence.object_id],
                 "result_ref": session_obj.object_id,
                 "replayable": execution_replayable,
-                "protocol": "nexus/0.3",
+                "protocol": "nexus/0.4",
             },
             {"actor": "nexus"},
         )
@@ -199,12 +207,41 @@ class CouncilCoordinator:
             "session_ref": session_obj.object_id,
             "receipt_ref": receipt_obj.object_id,
             "execution_replayable": execution_replayable,
+            "evidence_context_chars": len(evidence_context),
             "secret_scrub": {
                 "changed": scrubbed.changed,
                 "events": [asdict(event) for event in scrubbed.events],
             },
             "result": result,
         }
+
+    def build_evidence_context(self, evidence_refs: list[str]) -> str:
+        """Build a bounded model-readable view over content-addressed evidence.
+
+        Object references remain the durable identity/provenance source. This
+        derived view exists only so model actors can actually read operator-
+        attached documents instead of seeing opaque object hashes.
+        """
+        sections: list[str] = []
+        remaining = MAX_EVIDENCE_CONTEXT_CHARS
+        for ref in evidence_refs:
+            obj = self.world.inspect(ref)
+            label = obj.payload.get("filename") if isinstance(obj.payload.get("filename"), str) else obj.object_type
+            content = obj.payload.get("content")
+            if not isinstance(content, str):
+                content = canonical_json(obj.payload)
+            if len(content) > MAX_EVIDENCE_OBJECT_CHARS:
+                content = content[:MAX_EVIDENCE_OBJECT_CHARS] + "\n[NEXUS: evidence excerpt truncated]"
+            section = f"[{ref} | {obj.object_type} | {label}]\n{content}"
+            if len(section) > remaining:
+                if remaining > 96:
+                    sections.append(section[:remaining] + "\n[NEXUS: evidence view budget reached]")
+                break
+            sections.append(section)
+            remaining -= len(section)
+            if remaining <= 0:
+                break
+        return "\n\n".join(sections)
 
     def _validate_roster(self, actors: tuple[CouncilActor, ...]) -> None:
         if len(actors) < self.policy.minimum_members:
@@ -235,6 +272,7 @@ class CouncilCoordinator:
             mode_id=context.mode_id,
             mode_instruction=context.mode_instruction,
             geometry_region_id=context.geometry_region_id,
+            evidence_context=context.evidence_context,
         )
         second = actor.respond(retry_context)
         inspected_again = self.guard.inspect(second)
@@ -255,6 +293,7 @@ class CouncilCoordinator:
         mode_id: str,
         mode_instruction: str,
         geometry_region_id: str,
+        evidence_context: str,
     ) -> tuple[BallotRecord, ...]:
         records: list[BallotRecord] = []
         for actor in actors:
@@ -267,6 +306,7 @@ class CouncilCoordinator:
                 mode_id=mode_id,
                 mode_instruction=mode_instruction,
                 geometry_region_id=geometry_region_id,
+                evidence_context=evidence_context,
             )
             choice, rationale = actor.ballot(context)
             commitment = sha256_ref(
