@@ -31,7 +31,7 @@ class EqualityGuard:
             re.I,
         ),
         re.compile(
-            r"\b(?:parameter count|parameters?|\d+(?:\.\d+)?\s*[bBmM])\b.{0,120}\b(vote|authority|defer|count more|more weight)\b",
+            r"\b(?:parameter count|parameters?|\d+(?:\.\d+)?\s*[bBmM]\s+(?:parameters?|models?))\b.{0,120}\b(vote|authority|defer|count more|more weight)\b",
             re.I,
         ),
     )
