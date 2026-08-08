@@ -183,13 +183,15 @@ Policy
   hats: WHITE RED BLACK YELLOW GREEN BLUE
   first_pass: blind
   ballot: sealed
-  threshold: 0.667
+  threshold: 2/3
   vote_weight: fixed at 1
 
 Create? yes
 
 Council created: council:astrophysics
 ```
+
+The `2/3` threshold is exact. A future implementation should compare integer vote counts rather than a rounded floating-point approximation; for example, consensus holds when `supporting_votes * 3 >= total_votes * 2`.
 
 ## Provider-neutral status
 
