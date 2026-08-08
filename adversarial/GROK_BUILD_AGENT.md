@@ -82,6 +82,20 @@ python3 tools/nexus_adversary_compare.py /tmp/baseline.json /tmp/candidate.json
 
 The comparator fails if a new named check breaks **or if a baseline check disappears**. Do not obtain a cleaner report by deleting the witness.
 
+## Stage two: live operator hardware
+
+After the static gauntlet is understood, continue with the **Live Hardware Council Bench**:
+
+```text
+adversarial/GROK_LIVE_COUNCIL.md
+docs/LIVE_HARDWARE_BENCH.md
+tools/nexus_live_council_bench.py
+```
+
+Stage two runs the real Council against two local Ollama actors, records NVIDIA/Ollama/runtime diagnostics, persists the resulting world/session/receipt, and can admit a content-hashed Grok-authored seat manifest as one equal Council member.
+
+It deliberately does **not** add an xAI/Grok production adapter or remote-provider trust path.
+
 ## Reporting format
 
 ```text
