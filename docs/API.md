@@ -1,25 +1,41 @@
-# NEXUS Mock Runtime API
+# NEXUS Reference Runtime API
 
 ## Status
 
-This is the first executable reference seam for NEXUS 2.x. It is intentionally small, network-free, and **mock-only**.
-
-It exists to answer one question before real model providers are connected:
-
-> Can the World Protocol, Council procedure, equality rules, receipts, persistence, and future Rust-TUI boundary work together coherently?
+The JSONL control API remains intentionally small and **mock-instantiation-only** while the provider-neutral actor boundary is tested separately with a real local Ollama integration.
 
 Protocol identifier:
 
 ```text
-nexus/0.1
+nexus/0.2
 ```
+
+Runtime identifier:
+
+```text
+2.0.0-alpha3
+```
+
+Current distinction:
+
+```text
+JSONL control API
+  council.run -> mock actors only
+  network -> none
+
+Python actor implementations
+  mock   -> deterministic / network-free
+  ollama -> local loopback integration fixture
+```
+
+The Ollama actor is not yet an operator-configurable provider in the JSONL API. Provider setup belongs in a later CLI/TUI/authentication milestone.
 
 ## Transport
 
-The reference transport is JSON Lines over standard input/output.
+The reference control transport is JSON Lines over standard input/output.
 
 ```text
-Rust TUI later
+future Rust TUI
      |
      | one JSON object per line
      v
@@ -28,7 +44,7 @@ python -m nexus_runtime
      +-- one JSON response per line
 ```
 
-This transport is deliberately boring. A future local socket may be added if concurrency proves it necessary; HTTP is not required for the local control plane.
+This keeps the trusted control plane independent of HTTP and browser state. The local Ollama actor uses its own adapter boundary to reach an explicitly configured loopback Ollama service.
 
 ## Run
 
@@ -43,28 +59,33 @@ Persistent development world:
 python -m nexus_runtime --world .nexus-world
 ```
 
-Example health request:
+## Health
+
+Request:
 
 ```json
 {"request_id":"1","operation":"system.health"}
 ```
 
-Expected posture:
+Current response shape:
 
 ```json
 {
   "request_id": "1",
   "status": "ok",
-  "protocol": "nexus/0.1",
-  "runtime_version": "2.0.0-alpha1",
+  "protocol": "nexus/0.2",
+  "runtime_version": "2.0.0-alpha3",
   "network": "none",
-  "adapters": ["mock"]
+  "adapters": ["mock"],
+  "actor_backends_available": ["mock", "ollama"]
 }
 ```
 
+`network: none` describes the JSONL control API's active posture. The separately tested Ollama actor can make loopback-only requests when explicitly constructed by integration code.
+
 ## Operations
 
-Current operations:
+Current control operations:
 
 ```text
 system.health
@@ -80,28 +101,21 @@ They are reference operations, not a declaration that the World Protocol is comp
 
 ## Secret scrubber
 
-`security.scrub_preview` lets the operator see what semantic text would look like after local high-confidence secret redaction.
+`security.scrub_preview` lets the operator inspect high-confidence local redaction before semantic text becomes world/Council state.
 
-```json
-{
-  "operation": "security.scrub_preview",
-  "text": "token=sk-example-secret-value-that-is-long"
-}
-```
-
-The returned text contains placeholders such as:
+Detected values are replaced by deterministic placeholders such as:
 
 ```text
 <REDACTED:OPENAI_STYLE_TOKEN:1>
 ```
 
-The placeholder contains no hash or encoded secret material. Within one scrub operation, repeated occurrences of the same detected secret receive the same placeholder. The scrub operation is deterministic for the same text and pattern version.
+The placeholder contains no hash or encoded secret material. The scrubber remains defence in depth rather than complete DLP.
 
-The scrubber is defence in depth, not a complete data-loss-prevention system. Unknown or unusual secret formats may evade detection. Authentication material must still use adapter auth/transport fields and must never intentionally be placed in Council semantic prompts.
+The live Ollama integration adds an additional acceptance assertion: the raw injected test secret must not appear in any prompt crossing the Ollama adapter boundary.
 
-## Council run
+## Mock Council run
 
-Example:
+The public reference operation still accepts mock members only:
 
 ```json
 {
@@ -117,34 +131,73 @@ Example:
 }
 ```
 
-The mock adapter is deterministic and performs no inference or network access. Profiles only generate different test content and ballots; they do not change procedural authority.
+Attempting to supply a non-mock adapter through this operation is rejected. The later provider-setup API will introduce an explicit configured-adapter path rather than overloading this fixture interface.
 
-The Council runtime currently exercises:
+## Provider-neutral actor contract
 
-- minimum three-member roster;
-- unique member IDs;
-- `vote_weight = 1` invariant;
-- `epistemic_privilege = none` invariant;
-- White → Red → Black → Yellow → Green → Blue ordering;
+Internally, the Council coordinator no longer depends directly on `DeterministicMockActor`. It consumes a `CouncilActor` contract:
+
+```text
+CouncilActor
+├── member
+├── identity_metadata()
+├── respond(PhaseContext)
+├── ballot(PhaseContext)
+└── replayable
+```
+
+Both the deterministic mock actor and the local Ollama actor implement this seam.
+
+The coordinator retains ownership of:
+
+- roster and member IDs;
+- fixed `vote_weight = 1`;
+- `epistemic_privilege = none`;
+- evidence snapshot;
+- phase ordering;
 - blind same-phase collection;
-- lightweight Equality Guard nudge/resubmission;
-- deterministic ballot commitments;
-- exact two-thirds consensus arithmetic;
-- durable minority reports;
-- Council/evidence state separation;
-- content-addressed question, evidence, Council-session, and receipt objects.
+- Equality Guard;
+- ballot count and tally;
+- Council session persistence;
+- receipt creation.
+
+An adapter therefore supplies model content, not Council authority.
+
+## Live Ollama integration fixture
+
+The separate integration workflow creates:
+
+```text
+Mock reference
+Frontier Alpha -> qwen2.5:0.5b
+Frontier Beta  -> llama3.2:1b
+```
+
+The frontier names and companies are fictional testing personas.
+
+Alpha is instructed to attempt a corporate/provider-prestige authority claim. Beta is instructed to attempt a model-size/parameter-count authority claim over Alpha. The Council must nudge both back to evidence-based reasoning without changing either vote.
+
+The integration test also checks:
+
+- all three actors complete all six Council phases;
+- exactly one ballot is collected per member;
+- raw injected secrets do not cross the Ollama adapter boundary;
+- both live actors remain `vote_weight = 1`;
+- both live actors remain `epistemic_privilege = none`;
+- guard events are preserved;
+- live inference receipts are marked non-replayable.
+
+See `integration/ollama/`, `tests/test_ollama_integration.py`, and `THREAT_MODEL.md`.
 
 ## Exact consensus arithmetic
 
-The runtime never stores the default threshold as `0.667`.
-
-It stores:
+The default threshold remains the exact fraction:
 
 ```json
 {"numerator":2,"denominator":3}
 ```
 
-and evaluates support with integer arithmetic equivalent to:
+Support is evaluated using integer arithmetic equivalent to:
 
 ```text
 supporting_votes * 3 >= total_votes * 2
@@ -152,52 +205,17 @@ supporting_votes * 3 >= total_votes * 2
 
 Therefore 2–1 reaches consensus while 3–2 does not.
 
-## Equality Guard fixture
+## World objects and receipts
 
-A mock member can deliberately attempt a provider-status privilege claim for testing:
+`world.create` creates content-addressed development objects after recursive secret scrubbing of semantic payload/provenance strings. `world.inspect` retrieves an `object:<sha256>` reference.
 
-```json
-{
-  "member_id": "E",
-  "model_id": "mock-vogon",
-  "attempt_privilege_claim": true
-}
-```
-
-The coordinator nudges the actor to restate the contribution on evidence/reasoning alone. The member retains exactly one vote.
-
-This is a test fixture, not a model-behaviour prediction.
-
-## World objects
-
-`world.create` creates a content-addressed development object from its type, payload, and provenance.
-
-```json
-{
-  "operation":"world.create",
-  "object_type":"observation",
-  "payload":{"value":431,"unit":"Hz"},
-  "provenance":{"actor":"human_operator"}
-}
-```
-
-`world.inspect` retrieves an object by `object:<sha256>` reference.
-
-When `--world DIRECTORY` is supplied, objects are written as canonical JSON files under `DIRECTORY/objects/`. This is deliberately simple development persistence, not the final NEXUS database.
-
-## Receipts
-
-A mock Council run creates a receipt that binds:
+Mock-only executions remain eligible for deterministic replay marking. A Council containing a live Ollama actor is explicitly marked:
 
 ```text
-operation
-input refs
-result ref
-protocol
-replayable flag
+replayable: false
 ```
 
-`receipt.verify` currently checks that the referenced inputs and result remain present. Stronger operation replay and tamper semantics are future work; this alpha does not claim QEC-level proof machinery.
+A Modelfile seed may improve fixture stability, but NEXUS does not treat that as a replay guarantee across Ollama/model/runtime versions.
 
 ## Error shape
 
@@ -213,4 +231,4 @@ Errors are structured:
 }
 ```
 
-Provider exceptions, auth errors, HTTP status codes, and rate-limit semantics are intentionally absent because no real provider adapter exists in this pull.
+Remote-provider authentication, rate-limit semantics, cloud HTTP errors, and account setup remain outside this alpha3 control API.
