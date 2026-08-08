@@ -12,6 +12,7 @@ on:
       - 'src/nexus_runtime/types.py'
       - 'tests/test_adapters.py'
       - 'tests/test_ollama_integration.py'
+      - 'tests/test_parallel_council.py'
 
 permissions:
   contents: read
@@ -27,6 +28,11 @@ jobs:
     env:
       PYTHONPATH: src
       OLLAMA_VERSION: 0.32.5
+      # The acceptance Council uses two distinct tiny models. Keep both resident
+      # while allowing one request per model so Council-level concurrency does not
+      # silently turn into a server-side FIFO queue or multiply context memory.
+      OLLAMA_MAX_LOADED_MODELS: '2'
+      OLLAMA_NUM_PARALLEL: '1'
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -48,15 +54,24 @@ jobs:
           OLLAMA_VERSION="$OLLAMA_VERSION" sh /tmp/ollama-install.sh
           ollama --version
 
-      - name: Ensure loopback Ollama service
+      - name: Launch controlled loopback Ollama service
         shell: bash
         run: |
           set -euo pipefail
-          if ! curl -fsS http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
-            nohup env OLLAMA_HOST=127.0.0.1:11434 ollama serve >/tmp/ollama.log 2>&1 &
-          fi
+          # The installer starts a systemd service. Stop it so the benchmark is
+          # guaranteed to use the concurrency environment declared by this job.
+          sudo systemctl stop ollama.service || true
+          nohup env \
+            OLLAMA_HOST=127.0.0.1:11434 \
+            OLLAMA_MAX_LOADED_MODELS="$OLLAMA_MAX_LOADED_MODELS" \
+            OLLAMA_NUM_PARALLEL="$OLLAMA_NUM_PARALLEL" \
+            ollama serve >/tmp/ollama.log 2>&1 &
+          echo $! >/tmp/ollama.pid
+
           for attempt in $(seq 1 60); do
             if curl -fsS http://127.0.0.1:11434/api/tags >/dev/null; then
+              echo 'Controlled Ollama environment:'
+              tr '\0' '\n' </proc/"$(cat /tmp/ollama.pid)"/environ | grep '^OLLAMA_' | sort
               exit 0
             fi
             sleep 1
@@ -79,7 +94,9 @@ jobs:
       - name: Run Mock plus two real Ollama Council
         env:
           NEXUS_OLLAMA_INTEGRATION: '1'
-        run: python3 -m unittest discover -s tests -p 'test_ollama_integration.py' -v
+        run: |
+          /usr/bin/time -f 'NEXUS live Council wall: %e s' \
+            python3 -m unittest discover -s tests -p 'test_ollama_integration.py' -v
 
       - name: Ollama diagnostics on failure
         if: failure()
