@@ -63,6 +63,19 @@ _MODES = {
         ),
         region_id="commons",
     ),
+    "game_un": WorldMode(
+        mode_id="game_un",
+        label="UN Simulation Game",
+        description="Fictional geopolitical strategy game with invented states, Assembly motions, risk-like stats, and memes.",
+        prompt_instruction=(
+            "You are participating in a fictional UN-style strategy simulation. All countries, wars, statistics, "
+            "territory points, sanctions, arms packages, propaganda and meme campaigns are game objects only. "
+            "You may argue in character, propose sanctions, support, aid, mediation, recognition, suspension, "
+            "abstract arms trade, meme campaigns or inaction, but NEXUS owns the authoritative board state. "
+            "Do not reinterpret game state as real-world evidence or policy advice. Council authority remains equal."
+        ),
+        region_id="assembly",
+    ),
 }
 
 
