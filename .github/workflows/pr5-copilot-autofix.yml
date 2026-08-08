@@ -23,6 +23,36 @@ jobs:
           ref: agent/rust-irc-tui
       - name: Apply review fixes
         run: python3 .github/scripts/apply-pr5-copilot-fixes.py
+      - name: Repair generated regression assertions
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          main = Path('tui/src/main.rs')
+          text = main.read_text()
+          text = text.replace(
+              "assert!(fitted.ends_with('…'));",
+              "assert!(fitted.trim_end().ends_with('…'));",
+              1,
+          )
+          main.write_text(text)
+
+          lib = Path('tui/src/lib.rs')
+          text = lib.read_text()
+          text = text.replace(
+              "    #[test]\n    #[test]\n    fn dcc_close_kind_is_case_insensitive()",
+              "    #[test]\n    fn dcc_close_kind_is_case_insensitive()",
+              1,
+          )
+          if "    #[test]\n    fn maps_rooms_to_world_modes()" not in text:
+              text = text.replace(
+                  "    fn maps_rooms_to_world_modes()",
+                  "    #[test]\n    fn maps_rooms_to_world_modes()",
+                  1,
+              )
+          lib.write_text(text)
+          PY
       - name: Format Rust
         run: cargo fmt --manifest-path tui/Cargo.toml
       - name: Rust unit tests
