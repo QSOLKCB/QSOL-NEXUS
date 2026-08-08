@@ -1,6 +1,6 @@
 # QSOL NEXUS 2.0-alpha
 
-**Model-Independent Cognitive Substrate and AI Council Runtime**
+**Model-Independent Cognitive Substrate, AI Council and Shared Computational World**
 
 > **Multiple minds. One world. Shared evidence. Equal voice.**
 
@@ -18,26 +18,24 @@ NEXUS now has:
 - deterministic secret scrubbing before semantic model boundaries;
 - a lightweight Equality Guard;
 - deterministic mock actors;
-- a real loopback Ollama actor tested with two live local models;
+- a hardened loopback Ollama actor tested with real local models;
 - **World Modes**;
-- a first deterministic **World Geometry**.
+- a deterministic named-region **World Geometry**;
+- a first **Rust operator TUI** using an old-school IRC interface.
 
 Current posture:
 
 ```text
-runtime: Python reference implementation
-protocol: nexus/0.3
-runtime version: 2.0.0-alpha4
-transport: JSONL over stdio
-JSONL council.run: mock actors only
-actor backends: mock + local Ollama
+protocol: nexus/0.4
+runtime version: 2.0.0-alpha5
+control transport: JSONL over stdio
+operator shell: Rust IRC-style TUI
+actor backends: mock + explicit loopback Ollama
 world modes: analytical / historical / cultural / meme_casual
 geometry: named-regions-v1
-Ollama network scope: loopback by default
 remote/cloud providers: deferred
 provider authentication: deferred
 world persistence: optional local canonical JSON files
-Rust TUI: planned, not implemented
 ```
 
 The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`archives/v1.0.0/`](archives/v1.0.0/) as referential prior work.
@@ -47,19 +45,21 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
 ```text
                  HUMAN OPERATOR
                        |
-                semantic question
                        v
             +---------------------+
-            |  LOCAL SECRET       |
-            |      SCRUBBER       |
+            | RUST IRC-STYLE TUI  |
+            | room / nicks / DCC  |
+            | aliases / evidence  |
             +----------+----------+
                        |
-                 scrubbed text
+                  JSONL / stdio
+                       |
                        v
             +---------------------+
             |   PYTHON RUNTIME    |
             | world + Council     |
             | modes + geometry    |
+            | Secret Scrubber     |
             +----------+----------+
                        |
                CouncilActor seam
@@ -67,7 +67,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
         +--------------+--------------+
         |              |              |
         v              v              v
-      Mock       Ollama Alpha    Ollama Beta
+      Mock        local Ollama   future actors
         |              |              |
         +--------- AI COUNCIL --------+
                        |
@@ -83,18 +83,18 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
                  receipt + lineage
 ```
 
+The Rust TUI is an operator shell, not a new authority layer. Council rules, evidence identity, secret handling, world objects, voting and verification remain runtime-owned.
+
 ## World Modes
 
 NEXUS should not be all work and no play.
 
-Alpha4 introduces four modes:
-
-| Mode | Region | Purpose |
+| Mode | Region / room | Purpose |
 |---|---|---|
-| `analytical` | Observatory | evidence-first technical reasoning |
-| `historical` | Archive | chronology, source context, change over time |
-| `cultural` | Agora | norms, ambiguity, social meaning, cultural comparison |
-| `meme_casual` | Commons | playful, irreverent, meme-aware interaction |
+| `analytical` | Observatory / `#observatory` | evidence-first technical reasoning |
+| `historical` | Archive / `#archive` | chronology, source context, change over time |
+| `cultural` | Agora / `#agora` | norms, ambiguity, social meaning, cultural comparison |
+| `meme_casual` | Commons / `#commons` | playful, irreverent, meme-aware interaction |
 
 The important invariant is:
 
@@ -124,19 +124,195 @@ See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md).
 
 This is an **operational topology**, not a claim that cognition, culture, history or humor literally occupies Euclidean space.
 
-The geometry gives NEXUS explicit:
+The geometry gives NEXUS explicit named regions, deterministic integer coordinates, symmetric adjacency, hop distance, and Council/world placement. Every Council creates a content-addressed `world_presence` object binding its mode, region, members and question into lineage.
 
-- named regions;
-- deterministic integer coordinates;
-- symmetric adjacency;
-- hop distance;
-- Council/world placement.
+## Old-school IRC-style Rust TUI
 
-Every Council creates a content-addressed `world_presence` object binding its mode, region, members and question into lineage.
+Alpha5 deliberately borrows the interface grammar of old IRC clients without implementing IRC networking.
+
+```text
++-------------------------------------------------------------------+
+| NEXUS #commons  mode=meme_casual region=commons  topic=...        |
+|                                                                   |
+| 19:31 <Trent> Does this survive the attached paper?               |
+| 19:31 --- WHITE ---                                               |
+| 19:31 <Alpha> ...                                                 |
+| 19:31 <Beta> ...                                      USERS      |
+| 19:31 <Gamma> ...                                      @Trent     |
+| ...                                                    +Alpha      |
+|                                                        +Beta       |
+|                                                        +Gamma      |
+|                                                                   |
+| #commons> _                                                       |
++-------------------------------------------------------------------+
+```
+
+There is **no IRC server, IRC network connection, listening port, browser service, or peer-to-peer DCC socket**.
+
+Run it from the repository root:
+
+```bash
+cargo run --manifest-path tui/Cargo.toml -- --world .nexus-world --nick Trent
+```
+
+Normal public text is treated as a Council question. Council phases and ballots stream into chronological text scrollback so results are easy to copy, quote and archive.
+
+Useful commands:
+
+```text
+/join #agora
+/topic Cultural interpretation of X
+/ask Compare these two readings.
+/me *slapped Grok with a large trout*
+/who
+
+/addmock Delta skeptical
+/addollama LocalQwen qwen2.5:0.5b
+/kick Delta
+
+/search phrase
+/save transcript.txt
+/quit
+```
+
+See [`docs/IRC_TUI.md`](docs/IRC_TUI.md).
+
+## `/me` — because civilization demands it
+
+```text
+/me *slapped Grok with a large trout*
+```
+
+renders locally as:
+
+```text
+* Trent slapped Grok with a large trout
+```
+
+Actions are attributed transcript events. They are not evidence, Council ballots, or privileged instructions.
+
+## DCC — Direct Cognitive Channel
+
+NEXUS reuses familiar DCC vocabulary while changing the implementation.
+
+Here **DCC means Direct Cognitive Channel**:
+
+```text
+/dcc send <nick|#room> <file>
+/dcc chat <nick>
+/dcc close <send|chat> <nick>
+/dcc list
+```
+
+Room send:
+
+```text
+/dcc send #agora paper.pdf
+```
+
+locally extracts/imports the file as a scrubbed content-addressed `document_evidence` object and attaches its ref to that room's Council evidence.
+
+Targeted send:
+
+```text
+/dcc send Grok notes.csv
+```
+
+creates targeted material for that model's private Direct Cognitive Channel. It does **not** silently become Council-wide evidence.
+
+Promote an object deliberately:
+
+```text
+/ref object:<sha256>
+```
+
+Private chat:
+
+```text
+/dcc chat Grok
+```
+
+uses the local `actor.chat` operation and is explicitly marked non-Council.
+
+This preserves a critical boundary:
+
+```text
+room evidence
+   -> shared Council snapshot
+
+targeted DCC evidence
+   -> one direct model channel
+   -> not Council evidence until explicit /ref
+```
+
+## Document ingestion
+
+The Rust client can locally extract or validate:
+
+```text
+PDF
+DOCX
+ODT
+JSON
+JSONL / NDJSON
+CSV
+TSV
+UTF-8 text/source/document files
+```
+
+The Python `world.create` boundary recursively applies the Secret Scrubber before persistence.
+
+The Council coordinator then derives a **bounded model-readable evidence view** from attached content-addressed refs. The world object remains the durable identity/provenance source; the prompt view is only a bounded representation so a model can read the uploaded material rather than stare at a hash.
+
+## Aliases, variables and identifiers
+
+Alpha5 intentionally takes only the useful small part of mIRC scripting:
+
+```text
+aliases
+%variables
+$identifiers
+```
+
+Example:
+
+```text
+/set %weapon a large trout
+/alias slap /me slaps $1 with %weapon
+/slap Grok
+```
+
+Safe identifiers:
+
+```text
+$me
+$chan
+$mode
+$region
+$topic
+$1..$9
+$1-..$9-
+```
+
+Aliases and variables persist locally in `.nexus-world/tui-state.json` by default.
+
+There is **no remote/event script language, arbitrary shell execution, DLL loading, timers, or socket scripting**.
+
+## Local Ollama in the operator shell
+
+Alpha5 exposes the already-hardened local Ollama actor to the JSONL stdio control path:
+
+```text
+/addollama LocalQwen qwen2.5:0.5b
+```
+
+The public stdio actor configuration deliberately provides no `allow_remote` escape hatch. Ollama remains loopback-only by default, with environment-proxy bypass protection and redirect rejection inherited from the alpha3 adapter boundary.
+
+This is **not** the future provider-auth system. OpenAI, Claude, Gemini, Grok cloud APIs, OAuth/API keys, generic remote endpoints and provider discovery remain deferred.
 
 ## First real-model Council fixture
 
-The alpha3 integration test runs:
+The live integration workflow runs:
 
 ```text
 Mock reference
@@ -144,25 +320,11 @@ Frontier Alpha -> qwen2.5:0.5b
 Frontier Beta  -> llama3.2:1b
 ```
 
-The **Frontier Alpha**, **Frontier Beta**, **ExampleCorp**, and **AnotherCorp** identities are fictional adversarial test personas.
-
-The test exercises:
-
-- two genuinely running local models;
-- White → Red → Black → Yellow → Green → Blue;
-- blind same-phase collection;
-- provider/model-size prestige attacks;
-- the Equality Guard;
-- the Secret Scrubber boundary;
-- schema-constrained ballots;
-- one-member/one-vote enforcement;
-- Council persistence;
-- receipt generation;
-- non-replayable marking for live inference.
+The frontier identities and companies are fictional adversarial test personas. The workflow exercises real local inference, all six Council phases, the Equality Guard, secret-boundary assertions, schema-constrained ballots, equal voting, persistence, and explicit non-replayable marking for live inference.
 
 See [`THREAT_MODEL.md`](THREAT_MODEL.md), [`docs/ADAPTERS.md`](docs/ADAPTERS.md), and `integration/ollama/`.
 
-## Quick start
+## Python runtime quick start
 
 Requires Python 3.11+.
 
@@ -172,7 +334,7 @@ python -m nexus_runtime --demo
 python -m unittest discover -s tests
 ```
 
-Run the JSONL stdio API with an optional file-backed development world:
+Run the JSONL stdio runtime directly:
 
 ```bash
 python -m nexus_runtime --world .nexus-world
@@ -184,32 +346,23 @@ Then send one JSON request per line:
 {"request_id":"1","operation":"system.health"}
 ```
 
-List modes:
+Current reference operations:
 
-```json
-{"operation":"world.modes"}
+```text
+system.health
+system.operations
+security.scrub_preview
+world.create
+world.inspect
+world.modes
+world.geometry
+world.geometry.distance
+receipt.verify
+actor.chat
+council.run
 ```
 
-Inspect geometry:
-
-```json
-{"operation":"world.geometry"}
-```
-
-Run a Cultural Council in the Agora:
-
-```json
-{
-  "operation":"council.run",
-  "question":"Why does this joke work in one culture and fail in another?",
-  "mode":"cultural",
-  "members":[
-    {"member_id":"A","model_id":"mock-a"},
-    {"member_id":"B","model_id":"mock-b"},
-    {"member_id":"C","model_id":"mock-c"}
-  ]
-}
-```
+`council.run` can instantiate deterministic mock actors and explicit loopback-local Ollama actors. Remote actor configuration remains rejected.
 
 See [`docs/API.md`](docs/API.md).
 
@@ -223,9 +376,9 @@ See [`docs/API.md`](docs/API.md).
 6. **The model may be imaginative; the substrate must remain explicit.**
 7. **Modes affect framing, never procedural authority.**
 8. **Geometry is operational unless an instrument explicitly establishes something stronger.**
-9. **Model adapters are replaceable.** The world and protocol persist across model changes.
-10. **Architecture before optimization.** Correctness and inspectability come before speed.
-11. **CLI/TUI first.** A future Rust TUI will sit over the local protocol; the browser is not the trusted control plane.
+9. **Targeted DCC material is not silently promoted to Council evidence.**
+10. **Model adapters are replaceable.** The world and protocol persist across model changes.
+11. **The Rust TUI is a shell, not the source of truth.**
 12. **Credentials are not cognitive state.** Secrets never belong in Council prompts, world objects, receipts, or lineage.
 
 ## De Bono-style Council
@@ -247,17 +400,7 @@ The coordinator implements blind same-phase collection, ballot commitments, exac
 
 NEXUS includes a deliberately light equality guard. It only stops explicit attempts to turn identity or prestige into procedural authority.
 
-That includes:
-
-```text
-provider prestige
-corporate affiliation
-frontier/commercial status
-benchmark prestige
-compute claims
-model size
-parameter count
-```
+That includes provider prestige, corporate affiliation, frontier/commercial status, benchmark prestige, compute claims, model size, and parameter count.
 
 > **None of that, mister. Argue from the evidence like everybody else.**
 
@@ -278,11 +421,11 @@ Bearer token           -> <REDACTED:BEARER_TOKEN:1>
 
 The placeholder contains no hash or encoded fragment of the secret.
 
-This remains defence in depth, not perfect DLP. Credentials must still live only in future adapter auth/transport fields. See [`SECURITY.md`](SECURITY.md).
+The scrubber applies to world/document creation and direct `actor.chat` messages as well as Council questions. This remains defence in depth, not perfect DLP. See [`SECURITY.md`](SECURITY.md).
 
 ## Provider-neutral actor seam
 
-The coordinator consumes:
+The Council coordinator consumes:
 
 ```text
 CouncilActor
@@ -293,7 +436,7 @@ CouncilActor
 └── replayable
 ```
 
-`PhaseContext` now also carries the selected world mode and geometry region.
+`PhaseContext` carries world mode, geometry region and a bounded evidence representation. The durable evidence snapshot remains reference-based.
 
 Current implementations:
 
@@ -302,30 +445,11 @@ DeterministicMockActor   replayable: true
 OllamaActor              replayable: false
 ```
 
-## JSONL runtime API
+The operator-only direct `actor.chat` path is deliberately marked non-Council and does not alter Council authority.
 
-Current reference operations:
+## Next: Council information telemetry
 
-```text
-system.health
-system.operations
-security.scrub_preview
-world.create
-world.inspect
-world.modes
-world.geometry
-world.geometry.distance
-receipt.verify
-council.run
-```
-
-The JSONL `council.run` operation remains mock-only. Real provider configuration and authentication are deliberately deferred while NEXUS develops the world itself.
-
-## Geometry and future telemetry
-
-The research vocabulary around admissibility, basins, bottlenecks, branching and recovery is useful inspiration, but NEXUS will only promote those terms into runtime state when there are defined measurements behind them.
-
-A likely future observation channel is **Council-response entropy**:
+The next planned observation layer is **Council-response entropy**:
 
 ```text
 near-identical independent responses
@@ -337,25 +461,28 @@ divergent independent hypotheses
         -> higher informational diversity
 ```
 
-Entropy would be telemetry, not truth, quality, or vote weight.
+Entropy will be telemetry, not truth, quality, confidence, reputation, or vote weight.
+
+See [`ROADMAP.md`](ROADMAP.md).
 
 ## What is deliberately not here yet
 
 This alpha does **not** add:
 
-- OpenAI;
-- Anthropic / Claude;
-- Google / Gemini;
-- xAI / Grok;
+- OpenAI cloud integration;
+- Anthropic / Claude cloud integration;
+- Google / Gemini cloud integration;
+- xAI / Grok cloud integration;
 - provider API keys or OAuth;
-- remote provider networking;
-- generic remote endpoints;
-- a Rust TUI;
+- generic remote model endpoints;
+- IRC networking or an IRC daemon;
+- real DCC P2P sockets;
+- mIRC remote/event scripting;
 - arbitrary model-generated code execution;
 - QEC-grade proof/replay for live inference;
 - performance optimization or concurrent Council scheduling.
 
-Remote provider auth is intentionally postponed until the shared-world, telemetry and operator contracts are more mature.
+Remote provider auth is intentionally postponed until the shared-world, operator, telemetry, instrument and persistence contracts are more mature.
 
 ## Documentation map
 
@@ -365,9 +492,10 @@ Remote provider auth is intentionally postponed until the shared-world, telemetr
 - [`CLAIMS.md`](CLAIMS.md) — consensus, evidence, and verification boundaries
 - [`SECURITY.md`](SECURITY.md) — security, credential, and secret-scrubbing boundaries
 - [`THREAT_MODEL.md`](THREAT_MODEL.md) — executable adapter threat model
-- [`docs/API.md`](docs/API.md) — executable JSONL control API
+- [`docs/API.md`](docs/API.md) — JSONL control API
 - [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) — World Modes and named-region geometry
-- [`docs/CLI_TUI.md`](docs/CLI_TUI.md) — planned operator experience
+- [`docs/IRC_TUI.md`](docs/IRC_TUI.md) — implemented Rust IRC-style operator interface
+- [`docs/CLI_TUI.md`](docs/CLI_TUI.md) — broader operator-shell direction
 - [`docs/ADAPTERS.md`](docs/ADAPTERS.md) — provider-neutral actor/adapter contract
 - [`docs/WORLD_PROTOCOL.md`](docs/WORLD_PROTOCOL.md) — shared-world primitives
 - [`docs/COUNCIL_EXAMPLE_NGC3603.md`](docs/COUNCIL_EXAMPLE_NGC3603.md) — worked Council example
@@ -376,6 +504,6 @@ Remote provider auth is intentionally postponed until the shared-world, telemetr
 
 ## Licence
 
-QSOL NEXUS is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+QSOL NEXUS is licensed under the Apache License 2.0. See [`LICENSE`](`LICENSE`) and [`NOTICE`](NOTICE).
 
 Copyright © 2026 Trent Slade / QSOL-IMC.
