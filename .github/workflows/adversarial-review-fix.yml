@@ -1,0 +1,48 @@
+name: One-shot adversarial review fix
+
+on:
+  pull_request:
+    types: [synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/adversarial-gauntlet-runner' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+
+      - name: Apply review hardening
+        run: python3 .github/scripts/fix_adversarial_review.py
+
+      - name: Run adversarial tool regressions
+        env:
+          PYTHONPATH: src
+        run: python3 -m unittest tests/test_adversarial_tools.py -v
+
+      - name: Run full gauntlet
+        run: |
+          python3 tools/nexus_adversary.py \
+            --profile full \
+            --seed 0x4E45585553 \
+            --iterations 512 \
+            --json-out /tmp/nexus-adversarial-gauntlet.json
+
+      - name: Commit reviewed fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add tools/nexus_adversary.py tools/nexus_adversary_compare.py tests/test_adversarial_tools.py docs/ADVERSARIAL_GAUNTLET.md
+          if git diff --cached --quiet; then
+            echo 'No review changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Harden adversarial gauntlet review paths'
+          git push origin HEAD:${{ github.head_ref }}
