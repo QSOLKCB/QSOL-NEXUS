@@ -4,7 +4,7 @@ NEXUS 2.x is deliberately architecture-first. The project should earn complexity
 
 ## 2.0-alpha0 — Architecture constitution
 
-Documentation-only milestone.
+Documentation-only milestone completed in PR #1.
 
 - [x] redefine NEXUS as a model-independent persistent cognitive substrate;
 - [x] define CLI/TUI-first direction;
@@ -20,56 +20,65 @@ Documentation-only milestone.
 - [x] document provider-authentication UX without implementing provider flows;
 - [x] archive NEXUS 1.0 as referential prior work.
 
-No executable NEXUS 2.x behavior is claimed at this stage.
-
 ## 2.0-alpha1 — Python reference protocol
 
-Build the smallest inspectable implementation of:
+The mock-runtime pull implements the first small executable path:
 
 ```text
-object
+operator text
+  -> deterministic secret scrub
+  -> canonical question object
   -> operation
-  -> result
-  -> observation
+  -> Council result
+  -> Council session object
   -> receipt
-  -> replay
+  -> receipt verification
 ```
 
-Targets:
+Implemented in this stage:
 
-- canonical world-object envelope;
-- operation/observation/receipt schemas;
-- local file-backed development world;
-- deterministic reference operations;
-- replay fixtures;
-- tests before provider integration.
+- [x] canonical JSON and content-addressed object references;
+- [x] local in-memory world;
+- [x] optional file-backed development world;
+- [x] deterministic reference operations;
+- [x] JSONL-over-stdio API seam for the future Rust TUI;
+- [x] simple receipt object and reference verification;
+- [x] deterministic pre-model Secret Scrubber;
+- [x] standard-library Python test suite;
+- [ ] generalized operation replay beyond deterministic re-execution fixtures;
+- [ ] final schema/version migration policy.
+
+The development file store and receipt verifier are intentionally modest. They do not claim the final NEXUS persistence or QEC-level replay semantics.
 
 ## 2.0-alpha2 — Council coordinator
 
-Implement Council mechanics using mock/deterministic model actors first.
+The mock-runtime pull wires the Council mechanics with deterministic fake actors before any real model provider is connected.
 
-- roster freeze;
-- same-input phase dispatch;
-- White/Red/Black/Yellow/Green/Blue ordering;
-- blind first pass;
-- sealed ballot commitment/reveal;
-- one member, one vote;
-- two-thirds default consensus threshold;
-- minority reports;
-- Council/evidence status separation;
-- lightweight Equality Guard.
+- [x] minimum roster and unique member enforcement;
+- [x] frozen equal roster metadata;
+- [x] White/Red/Black/Yellow/Green/Blue ordering;
+- [x] blind same-phase collection;
+- [x] deterministic ballot commitment/reveal records;
+- [x] one member, one vote mechanically enforced;
+- [x] exact two-thirds default consensus threshold using integer arithmetic;
+- [x] minority reports;
+- [x] Council/evidence status separation;
+- [x] lightweight Equality Guard nudge/resubmission path;
+- [x] deterministic mock adapter/actors;
+- [x] network posture explicitly reports `none`;
+- [x] user semantic text scrubbed before model-facing Council context.
 
-Do not introduce commercial provider SDKs until these rules pass tests.
+No commercial or remote provider SDK belongs in alpha2.
 
 ## 2.0-alpha3 — Adapter protocol
 
-Before any executable adapter ships, create the dedicated adapter threat model required by `SECURITY.md`. The threat model must cover the adapter boundary sufficiently to review credential handling, provider transport, imported/model-generated content, tool-call requests, local endpoint impersonation, and failure behavior before executable provider code is admitted.
+Before any executable provider adapter ships, create the dedicated adapter threat model required by `SECURITY.md`. The threat model must cover the adapter boundary sufficiently to review credential handling, provider transport, scrubber bypass, imported/model-generated content, tool-call requests, local endpoint impersonation, and failure behavior before executable provider code is admitted.
 
 Then implement the provider-neutral adapter contract.
 
 Start with:
 
-- mock adapter;
+- mock adapter conformance extraction from alpha2;
 - local subprocess adapter;
 - Ollama/local-model adapter;
 - generic endpoint adapter.
@@ -81,7 +90,7 @@ Then add remote providers independently, potentially including:
 - Google / Gemini;
 - xAI / Grok.
 
-Provider integrations must remain replaceable and must not leak provider-specific semantics into Council voting or world identity.
+Provider integrations must remain replaceable and must not leak provider-specific semantics into Council voting or world identity. Tests must prove raw injected credentials cannot reach provider request bodies.
 
 ## 2.0-alpha4 — Authentication and provider setup
 
@@ -101,11 +110,12 @@ Requirements:
 - OS secret/keyring integration where practical;
 - explicit headless/external-secret path;
 - visible connection test;
-- no assumption that all providers authenticate the same way.
+- no assumption that all providers authenticate the same way;
+- authentication material never enters semantic prompts.
 
 ## 2.0-alpha5 — Rust CLI/TUI
 
-Build the Rust operator shell over the stable Python/tool protocol.
+Build the Rust operator shell over the stable JSONL/local protocol.
 
 Goals:
 
@@ -115,6 +125,7 @@ Goals:
 - phase and ballot views;
 - world-object browsing;
 - evidence and minority reports;
+- secret-scrub event visibility without secret disclosure;
 - instrument and receipt inspection;
 - useful non-interactive subcommands for automation/SSH.
 
@@ -175,8 +186,9 @@ A Council version should demonstrate heterogeneous providers and at least one lo
 
 ## 2.0-beta — Hardening
 
-- threat model implemented and tested;
+- adapter threat model implemented and tested;
 - credential handling audited;
+- Secret Scrubber bypass fixtures;
 - provider failure/quorum behavior tested;
 - replay/tamper fixtures;
 - bounded Council loops;
@@ -192,7 +204,7 @@ NEXUS 2.0 should not be called stable until:
 1. multiple unrelated model adapters can inhabit the same persistent world;
 2. Council equality is mechanically enforced;
 3. Council sessions are replayable at the protocol/evidence level;
-4. credentials are outside durable cognitive state;
+4. credentials are outside durable cognitive state and semantic prompts;
 5. at least one local and one remote model can participate as peers;
 6. an evidence-producing instrument can be called through the world protocol;
 7. minority reports and failed hypotheses survive in lineage;
