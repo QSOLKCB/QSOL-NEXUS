@@ -455,23 +455,31 @@ OllamaActor              replayable: false
 
 The operator-only direct `actor.chat` path is deliberately marked non-Council and does not alter Council authority.
 
-## Next: Council information telemetry
+## Council information telemetry
 
-The next planned observation layer is **Council-response entropy**:
+Alpha6 adds deterministic, replay-friendly observation of Council convergence and divergence.
 
 ```text
-near-identical independent responses
-        -> lower response entropy
-        -> lower informational diversity
-
-divergent independent hypotheses
-        -> higher response entropy
-        -> higher informational diversity
+WHITE   H_exact + lexical divergence
+RED     H_exact + lexical divergence
+BLACK   H_exact + lexical divergence
+YELLOW  H_exact + lexical divergence
+GREEN   H_exact + lexical divergence
+BLUE    H_exact + lexical divergence
+BALLOT  Shannon entropy over sealed choices
 ```
 
-Entropy will be telemetry, not truth, quality, confidence, reputation, or vote weight.
+The hard boundary is:
 
-See [`ROADMAP.md`](ROADMAP.md).
+> **Information diversity is telemetry, not truth.**
+
+`ballot_metrics.shannon_entropy_bits` is genuine Shannon entropy over an explicit categorical distribution. Per-hat `exact_response_entropy_bits` is Shannon entropy over exact normalized response categories and is explicitly **not semantic entropy**. Near-similarity is reported separately as mean pairwise lexical Jaccard distance.
+
+Every captured Council session stores its telemetry, and `telemetry.verify` can recompute it from the session artifact.
+
+No telemetry value changes vote weight, consensus thresholds, evidence status, verification, or the Equality Guard.
+
+See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
 ## What is deliberately not here yet
 

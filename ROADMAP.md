@@ -193,37 +193,34 @@ The Rust layer remains a replaceable operator shell. World, Council, evidence, s
 
 ## 2.0-alpha6 — Council information telemetry
 
-Add observation channels for *how* a Council converges or diverges without turning telemetry into authority.
+Implemented / targeted in PR #6.
 
-Primary candidate: Council-response entropy.
+- [x] deterministic telemetry module with no external runtime dependency;
+- [x] ballot Shannon entropy over explicit sealed ballot categories;
+- [x] per-hat exact-response category entropy;
+- [x] per-hat lexical Jaccard divergence for near-overlap observation;
+- [x] current minority-report count/fraction snapshot;
+- [x] telemetry stored inside the content-addressed Council session artifact;
+- [x] `telemetry.verify` recomputation path;
+- [x] copy-friendly Rust TUI telemetry summary;
+- [x] explicit machine-readable authority/claim boundaries;
+- [x] reproducibility tests.
 
-```text
-near-identical independent responses
-        -> low response entropy
-        -> low informational diversity
+Deferred until explicit operational rules exist:
 
-divergent independent hypotheses
-        -> high response entropy
-        -> high informational diversity
-```
+- [ ] semantic response entropy;
+- [ ] hypothesis branching multiplicity;
+- [ ] controlled-perturbation recovery;
+- [ ] loop / repeated-motif indicators;
+- [ ] mode-transition cost;
+- [ ] minority-branch persistence across sessions;
+- [ ] geometric labels such as `bottlenecked` or `shattered`.
 
-Potential metrics:
+Core invariant:
 
-- per-hat response diversity;
-- ballot entropy;
-- hypothesis branching multiplicity;
-- recovery after controlled perturbation;
-- loop / repeated-motif indicators;
-- simple mode-transition cost;
-- minority-branch persistence.
+> **Telemetry observes the Council. It does not govern the Council.**
 
-Requirements:
-
-- telemetry is observational, not a vote weight;
-- high entropy is not automatically good;
-- low entropy is not automatically truth;
-- metrics must be reproducible from captured Council artifacts where practical;
-- geometric labels such as `bottlenecked` or `shattered` require explicit measurement rules rather than analogy alone.
+High entropy is not automatically good. Low entropy is not automatically truth.
 
 ## 2.0-alpha7 — Instruments
 

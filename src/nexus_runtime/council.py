@@ -10,6 +10,7 @@ from .geometry import DEFAULT_WORLD_GEOMETRY, WorldGeometry
 from .guard import EqualityGuard
 from .modes import get_mode
 from .scrub import SecretScrubber
+from .telemetry import build_council_telemetry
 from .types import BallotRecord, CouncilPolicy, PHASE_ORDER, Phase, PhaseContext, PhaseSubmission
 from .world import WorldStore
 
@@ -162,6 +163,16 @@ class CouncilCoordinator:
             evidence_context=evidence_context,
         )
         result = self._tally(ballots, evidence_state)
+        revealed_ballots = [
+            {
+                "member_id": ballot.member_id,
+                "choice": ballot.choice.value,
+                "rationale": ballot.rationale,
+                "commitment": ballot.commitment,
+            }
+            for ballot in ballots
+        ]
+        telemetry = build_council_telemetry(phase_records, revealed_ballots, result)
 
         session_payload = {
             **frozen_inputs,
@@ -172,16 +183,9 @@ class CouncilCoordinator:
             "ballot_commitments": [
                 {"member_id": ballot.member_id, "commitment": ballot.commitment} for ballot in ballots
             ],
-            "revealed_ballots": [
-                {
-                    "member_id": ballot.member_id,
-                    "choice": ballot.choice.value,
-                    "rationale": ballot.rationale,
-                    "commitment": ballot.commitment,
-                }
-                for ballot in ballots
-            ],
+            "revealed_ballots": revealed_ballots,
             "result": result,
+            "telemetry": telemetry,
         }
         session_obj = self.world.create_object("council_session", session_payload, {"actor": "nexus"})
         receipt_obj = self.world.create_object(
@@ -191,7 +195,7 @@ class CouncilCoordinator:
                 "input_refs": [question_obj.object_id, evidence.object_id, presence.object_id],
                 "result_ref": session_obj.object_id,
                 "replayable": execution_replayable,
-                "protocol": "nexus/0.4",
+                "protocol": "nexus/0.5",
             },
             {"actor": "nexus"},
         )
@@ -213,6 +217,7 @@ class CouncilCoordinator:
                 "events": [asdict(event) for event in scrubbed.events],
             },
             "result": result,
+            "telemetry": telemetry,
         }
 
     def build_evidence_context(self, evidence_refs: list[str]) -> str:

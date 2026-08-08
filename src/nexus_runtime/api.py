@@ -10,12 +10,13 @@ from .geometry import DEFAULT_WORLD_GEOMETRY
 from .mock import DeterministicMockActor
 from .modes import get_mode, list_modes
 from .scrub import ScrubEvent, SecretScrubber
+from .telemetry import TELEMETRY_SCHEMA_VERSION, verify_session_telemetry
 from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.4"
-RUNTIME_VERSION = "2.0.0-alpha5"
+PROTOCOL_VERSION = "nexus/0.5"
+RUNTIME_VERSION = "2.0.0-alpha6"
 
 
 class NexusAPI:
@@ -51,6 +52,7 @@ class NexusAPI:
                     "actor_backends_available": ["mock", "ollama"],
                     "world_modes": [mode.mode_id for mode in list_modes()],
                     "geometry": self.geometry.snapshot()["geometry_id"],
+                    "telemetry": {"schema_version": TELEMETRY_SCHEMA_VERSION, "role": "observational_only"},
                 }
             elif operation == "system.operations":
                 response = {
@@ -65,6 +67,7 @@ class NexusAPI:
                         "world.geometry",
                         "world.geometry.distance",
                         "receipt.verify",
+                        "telemetry.verify",
                         "actor.chat",
                         "council.run",
                     ],
@@ -124,6 +127,19 @@ class NexusAPI:
             elif operation == "receipt.verify":
                 receipt_ref = self._require_str(request, "receipt_ref")
                 response = self._verify_receipt(receipt_ref)
+            elif operation == "telemetry.verify":
+                session_ref = self._require_str(request, "session_ref")
+                session = self.world.inspect(session_ref)
+                if session.object_type != "council_session":
+                    raise ValueError("object is not a council_session")
+                matches, recomputed = verify_session_telemetry(session.payload)
+                response = {
+                    "status": "verified" if matches else "failed",
+                    "session_ref": session_ref,
+                    "matches": matches,
+                    "schema_version": TELEMETRY_SCHEMA_VERSION,
+                    "recomputed": recomputed,
+                }
             elif operation == "actor.chat":
                 member_item = request.get("member")
                 actor = self._actor(member_item)
