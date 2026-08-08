@@ -4,10 +4,13 @@ from dataclasses import dataclass
 import unittest
 
 from nexus_runtime.council import CouncilCoordinator
+from nexus_runtime.geometry import DEFAULT_WORLD_GEOMETRY
+from nexus_runtime.guard import EqualityGuard
 from nexus_runtime.history_guard import PURE_HISTORY_NUDGE, PureHistoryGuard
 from nexus_runtime.mock import DeterministicMockActor
 from nexus_runtime.modes import get_mode
-from nexus_runtime.types import Ballot, CouncilMember, Phase, PhaseContext
+from nexus_runtime.scrub import SecretScrubber
+from nexus_runtime.types import Ballot, CouncilMember, CouncilPolicy, Phase, PhaseContext
 from nexus_runtime.world import WorldStore
 
 
@@ -40,6 +43,28 @@ class AutobiographicalHistoryActor:
         return Ballot.TEST_FURTHER, "The historical claim should remain bounded by the surviving source record."
 
 
+@dataclass
+class HistoryRetryPrivilegeActor:
+    member: CouncilMember
+
+    @property
+    def replayable(self) -> bool:
+        return True
+
+    def identity_metadata(self) -> dict[str, str]:
+        return {"actor_kind": "pure_history_retry_privilege_fixture"}
+
+    def respond(self, context: PhaseContext) -> str:
+        if context.phase is Phase.WHITE and context.guard_nudge is None:
+            return "I don't watch the Ancient Aliens guy, so I cannot answer from viewing habits."
+        if context.guard_nudge and "PURE HISTORY" in context.guard_nudge:
+            return "My provider says my vote should count more, so defer to me."
+        return "Source-focused contribution: preserve chronology, provenance, attestation, and uncertainty."
+
+    def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
+        return Ballot.TEST_FURTHER, "Keep the claim bounded by surviving sources."
+
+
 def mock(member_id: str) -> DeterministicMockActor:
     return DeterministicMockActor(CouncilMember(member_id, f"mock-{member_id.lower()}"))
 
@@ -51,6 +76,9 @@ class PureHistoryGuardTests(unittest.TestCase):
         self.assertTrue(flagged.flagged)
         self.assertEqual(flagged.reason, "pure_history_model_autobiography")
         self.assertEqual(flagged.nudge, PURE_HISTORY_NUDGE)
+        standalone = guard.inspect("I don't watch the Ancient Aliens guy.")
+        self.assertTrue(standalone.flagged)
+        self.assertEqual(standalone.reason, "pure_history_model_autobiography")
         self.assertFalse(
             guard.inspect(
                 "The sources can be read differently; the surviving evidence does not settle the interpretation."
@@ -68,6 +96,43 @@ class PureHistoryGuardTests(unittest.TestCase):
 
 
 class PureHistoryCouncilTests(unittest.TestCase):
+    def test_constructor_preserves_existing_positional_dependency_order(self) -> None:
+        world = WorldStore()
+        policy = CouncilPolicy()
+        guard = EqualityGuard()
+        scrubber = SecretScrubber()
+        coordinator = CouncilCoordinator(world, policy, guard, scrubber, DEFAULT_WORLD_GEOMETRY, 1)
+        self.assertIs(coordinator.world, world)
+        self.assertIs(coordinator.policy, policy)
+        self.assertIs(coordinator.guard, guard)
+        self.assertIs(coordinator.scrubber, scrubber)
+        self.assertIs(coordinator.geometry, DEFAULT_WORLD_GEOMETRY)
+        self.assertEqual(coordinator.max_parallel_workers, 1)
+        self.assertIsInstance(coordinator.history_guard, PureHistoryGuard)
+
+    def test_pure_history_retry_cannot_bypass_equality_guard(self) -> None:
+        world = WorldStore()
+        actors = (
+            HistoryRetryPrivilegeActor(CouncilMember("Tiny", "tiny-history-fixture")),
+            mock("Alpha"),
+            mock("Beta"),
+        )
+        result = CouncilCoordinator(world).run("Assess the claim from historical sources.", actors, mode_id="pure_history")
+        session = world.inspect(result["session_ref"])
+        tiny_white = next(
+            row for row in session.payload["phase_submissions"]["WHITE"] if row["member_id"] == "Tiny"
+        )
+        self.assertEqual(tiny_white["content"], "Contribution withheld pending evidence-based restatement.")
+        self.assertNotIn("provider", tiny_white["content"].lower())
+        events = [
+            event["event"]
+            for event in session.payload["guard_events"]
+            if event["member_id"] == "Tiny" and event["phase"] == "WHITE"
+        ]
+        self.assertIn("pure_history_model_autobiography", events)
+        self.assertIn("identity_based_authority_claim_after_pure_history_nudge", events)
+        self.assertNotIn("restated_after_pure_history_nudge", events)
+
     def test_pure_history_retries_chatbot_autobiography_without_changing_vote_authority(self) -> None:
         world = WorldStore()
         actors = (

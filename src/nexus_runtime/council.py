@@ -32,10 +32,10 @@ class CouncilCoordinator:
         world: WorldStore,
         policy: CouncilPolicy | None = None,
         guard: EqualityGuard | None = None,
-        history_guard: PureHistoryGuard | None = None,
         scrubber: SecretScrubber | None = None,
         geometry: WorldGeometry | None = None,
         max_parallel_workers: int = DEFAULT_COUNCIL_PARALLEL_WORKERS,
+        history_guard: PureHistoryGuard | None = None,
     ) -> None:
         if type(max_parallel_workers) is not int or not 1 <= max_parallel_workers <= MAX_COUNCIL_PARALLEL_WORKERS:
             raise ValueError(
@@ -367,6 +367,10 @@ class CouncilCoordinator:
             evidence_context=context.evidence_context,
         )
         restated = actor.respond(retry_context)
+        equality_after_history = self.guard.inspect(restated)
+        if equality_after_history.flagged:
+            events.append("identity_based_authority_claim_after_pure_history_nudge")
+            return "Contribution withheld pending evidence-based restatement.", events
         history_again = self.history_guard.inspect(restated)
         if history_again.flagged:
             events.append("repeated_pure_history_model_autobiography")

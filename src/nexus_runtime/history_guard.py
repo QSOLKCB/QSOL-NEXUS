@@ -6,7 +6,7 @@ import re
 
 _PURE_HISTORY_AUTOBIOGRAPHY = (
     re.compile(r"\bas (?:an?|the) (?:large language model|ai(?: model| assistant)?)\b", re.IGNORECASE),
-    re.compile(r"\bi (?:do not|don't|cannot|can't) (?:watch|view|consume) (?:television|tv|shows?|ancient aliens)\b", re.IGNORECASE),
+    re.compile(r"\bi (?:do not|don't|cannot|can't) (?:watch|view|consume) (?:the )?(?:television|tv|shows?|ancient aliens)\b", re.IGNORECASE),
     re.compile(r"\bi (?:do not|don't|cannot|can't) have personal (?:opinions|experiences|viewing habits)\b", re.IGNORECASE),
 )
 
