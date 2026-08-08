@@ -41,6 +41,11 @@ DeterministicMockActor
 OllamaActor
   network: loopback only by default
   replayable: false
+
+XAIActor
+  network: fixed https://api.x.ai/v1
+  replayable: false
+  provider response storage: disabled per request
 ```
 
 The first live integration is deliberately small:
@@ -53,9 +58,9 @@ Frontier Beta  -> llama3.2:1b
 
 The frontier identities are fictional test personas. Alpha deliberately attempts a corporate/provider prestige claim and Beta deliberately attempts a model-size/parameter-count prestige claim so the Equality Guard, secret boundary, Council flow, ballot path, and persistence path are exercised together.
 
-The public JSONL `council.run` operation supports mock actors and explicit loopback-only Ollama actors. Remote provider actors are not admitted.
+The public JSONL `council.run` operation supports mock actors, explicit loopback-only Ollama actors, and xAI actors that reference a configured auth profile. No arbitrary remote endpoint is admitted.
 
-PR #16 adds a provider-neutral `AuthBroker` beside the actor seam. It manages operational profiles and credential sources outside the WorldStore, but it does not itself create a remote actor. A provider adapter must separately register its descriptor, connection test, model transport, and threat-model extension.
+PR #16 added a provider-neutral `AuthBroker` beside the actor seam. PR #17 adds the xAI descriptor, connection test, model discovery, fixed transport, and actor without moving credential material into WorldStore state.
 
 ## Provider neutrality
 
@@ -125,6 +130,7 @@ AdapterAuthDescriptor
 ├── auth_methods[]
 ├── auth_flows[]
 ├── provider-owned OAuth config?
+├── setup_url?
 └── implementation_status
 ```
 
@@ -156,11 +162,11 @@ no_auth_required
 
 These are protocol categories, not claims about what any particular provider currently supports. Concrete admitted flows are `api_key`, `browser_pkce`, `device_code`, `environment`, `external_command`, `local_endpoint`, and `none`.
 
-The first Ollama fixture requires no provider credential and is restricted to loopback by default.
+Ollama requires no provider credential and is restricted to loopback by default. xAI resolves an opaque profile only inside the fixed-host adapter transport.
 
 The browser flow uses an ephemeral `127.0.0.1` callback, high-entropy state, PKCE `S256`, fixed HTTPS provider destinations, and redirect rejection. Device flow uses separate endpoint and verification-URL allowlists. Stored tokens refresh through the same descriptor-owned token endpoint. Headless profiles may reference an environment variable or a no-shell external helper.
 
-The currently registered production descriptors are only `mock` and `ollama`. Browser/device machinery is exercised against a fake loopback provider in tests; xAI / Grok registration and transport belong to the next provider-specific PR.
+The registered production descriptors are `mock`, `ollama`, and `xai`. Browser/device OAuth machinery remains exercised against a fake loopback provider because xAI has not published a NEXUS client-registration contract. The xAI descriptor supports `api_key`, `environment`, and `external_command`; `browser-key` is CLI assistance around the API-key flow, not OAuth.
 
 ## Secret boundary
 
@@ -189,7 +195,7 @@ No credential is part of Council evidence or world identity.
 
 The optional `keyring` integration is preferred when an OS backend is available. The fallback store requires owner-only directories/files on POSIX and identifies itself as `private_file`; it does not pretend a bearer token is encrypted from the same OS account. Environment profiles persist only a variable name. Public profile state omits both token material and internal credential handles.
 
-The live Ollama acceptance fixture injects a fake token into the human question and fails if that raw token appears in any prompt crossing the Ollama transport boundary.
+The live Ollama acceptance fixture and xAI transport regressions inject fake tokens into human input and fail if raw material appears in provider prompts, public output, or WorldStore files.
 
 ## Normalized model identity
 
@@ -225,7 +231,7 @@ Adapters must not:
 
 ## Structured ballot boundary
 
-For the first Ollama actor, the ballot call requests a closed JSON schema containing:
+Ollama and xAI ballot calls use the same closed NEXUS shape:
 
 ```text
 choice
@@ -238,7 +244,7 @@ rationale
 
 A provider outage is not a vote.
 
-Future configured adapters should expose states such as:
+Configured adapters should expose states such as:
 
 ```text
 READY
@@ -256,7 +262,7 @@ Council policy should define before a session whether failed members reduce quor
 
 Local models are first-class Council citizens.
 
-The Ollama actor follows the same Council contract as the mock actor. Being local grants no extra vote; being larger grants no extra vote; being remote later will grant no extra vote.
+The Ollama actor follows the same Council contract as the mock and xAI actors. Being local, larger, or remote grants no extra vote.
 
 `OllamaTransport` is loopback-only by default. A non-loopback endpoint requires an explicit override and is outside the CI acceptance path.
 
@@ -264,7 +270,7 @@ The Ollama actor follows the same Council contract as the mock actor. Being loca
 
 Live model inference is not automatically deterministic evidence.
 
-Even though the fixture Modelfiles specify seeds to improve test stability, the Ollama actors report:
+Even though the fixture Modelfiles specify seeds to improve test stability, Ollama and xAI actors report:
 
 ```text
 replayable = false
@@ -286,7 +292,7 @@ The executable local adapter boundary is covered by [`../THREAT_MODEL.md`](../TH
 - resource exhaustion;
 - replay-status overclaiming.
 
-The neutral auth substrate is documented in [`AUTH.md`](AUTH.md). Remote/cloud providers still require their own authentication/client-registration decision, destination controls, response budgets, connection test, and threat-model extension before admission.
+The neutral auth substrate is documented in [`AUTH.md`](AUTH.md). The first remote provider is documented in [`XAI_ADAPTER.md`](XAI_ADAPTER.md). Every additional remote/cloud provider still requires its own authentication/client-registration decision, destination controls, response budgets, connection test, and threat-model extension before admission.
 
 ## Generic adapters
 

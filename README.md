@@ -20,6 +20,7 @@ NEXUS now has:
 - a lightweight Equality Guard;
 - deterministic mock actors;
 - a hardened loopback Ollama actor tested with real local models;
+- a fixed-destination xAI / Grok remote actor with browser-assisted API-key enrollment, model discovery, and stateless Responses API transport;
 - **World Modes**;
 - a deterministic named-region **World Geometry**;
 - a first **Rust operator TUI** using an old-school IRC interface;
@@ -33,17 +34,17 @@ NEXUS now has:
 Current posture:
 
 ```text
-protocol: nexus/0.9
-runtime version: 2.0.0-alpha6.6
+protocol: nexus/0.10
+runtime version: 2.0.0-alpha9.0
 operator TUI version: 2.0.0-alpha6.6
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
-actor backends: mock + explicit loopback Ollama
+actor backends: mock + explicit loopback Ollama + fixed-HTTPS xAI
 world modes: analytical / historical / pure_history / cultural / meme_casual / game_un / game_mud
 geometry: named-regions-v3
 game rooms: #un-sim / Assembly Hall + #mud / Dungeon
-remote/cloud providers: deferred
-provider authentication: foundation only; no remote adapter admitted
+remote/cloud providers: xAI admitted; OpenAI / Anthropic / Google deferred
+provider authentication: xAI API key, environment, or external helper
 world persistence: optional local canonical JSON files
 ```
 
@@ -81,7 +82,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
         +--------------+--------------+
         |              |              |
         v              v              v
-      Mock        local Ollama   future actors
+      Mock        local Ollama    xAI / future
         |              |              |
         +--------- AI COUNCIL --------+
                        |
@@ -354,10 +355,8 @@ Alpha5 exposes the already-hardened local Ollama actor to the JSONL stdio contro
 
 The public stdio actor configuration deliberately provides no `allow_remote` escape hatch. Ollama remains loopback-only by default, with environment-proxy bypass protection and redirect rejection inherited from the alpha3 adapter boundary.
 
-This is **not** a remote-provider actor. The provider-neutral auth broker now supports
-credential, browser-PKCE, device-code and headless profile flows, but OpenAI, Claude,
-Gemini and Grok transports, provider client registration, generic remote endpoints and
-provider discovery remain deferred.
+Ollama itself remains local-only. The separate xAI adapter is the first admitted remote
+actor and cannot reuse or override the Ollama endpoint path.
 
 ## First real-model Council fixture
 
@@ -388,6 +387,9 @@ Optional OS-keyring support and the non-secret auth descriptor view:
 ```bash
 python -m pip install -e '.[keyring]'
 nexus auth adapters
+nexus auth add xai --profile personal --method browser-key
+nexus auth test xai --profile personal
+nexus models list xai --profile personal
 ```
 
 Run the JSONL stdio runtime directly:
@@ -417,6 +419,7 @@ auth.adapters
 auth.list
 auth.test
 auth.logout
+models.list
 receipt.verify
 telemetry.verify
 game.un.catalog
@@ -428,7 +431,7 @@ actor.chat
 council.run
 ```
 
-`council.run` can instantiate deterministic mock actors and explicit loopback-local Ollama actors. Remote actor configuration remains rejected.
+`council.run` can instantiate deterministic mock actors, explicit loopback-local Ollama actors, and xAI actors that reference a configured auth profile. xAI endpoints and inline credentials remain rejected.
 
 See [`docs/API.md`](docs/API.md).
 
@@ -490,11 +493,11 @@ The placeholder contains no hash or encoded fragment of the secret.
 
 The scrubber applies to world/document creation, game seeds and direct `actor.chat` messages as well as Council questions. This remains defence in depth, not perfect DLP. See [`SECURITY.md`](SECURITY.md).
 
-## Provider authentication foundation
+## Provider authentication and first remote adapter
 
-The `nexus auth` command now provides provider-neutral profile management, browser PKCE and device-code machinery, token refresh, optional OS-keyring storage, an owner-only private-file fallback, hidden API-key input, environment references, and no-shell external credential helpers.
+The `nexus auth` command provides provider-neutral profile management, browser PKCE and device-code machinery, token refresh, optional OS-keyring storage, an owner-only private-file fallback, hidden API-key input, environment references, and no-shell external credential helpers.
 
-No remote provider is admitted yet. NEXUS does not read another CLI's token store or browser session. The first provider adapter must bring an officially supported client/auth path, fixed endpoint allowlists, a bounded connection test, model transport, and its own threat-model extension. See [`docs/AUTH.md`](docs/AUTH.md).
+xAI is the first admitted remote provider. `nexus auth add xai --method browser-key` opens the official xAI key page and then uses a hidden prompt; it is not an OAuth import. NEXUS does not read Grok Build's token store, consumer browser sessions, or another application's OAuth identity. See [`docs/AUTH.md`](docs/AUTH.md) and [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md).
 
 ## Provider-neutral actor seam
 
@@ -516,6 +519,7 @@ Current implementations:
 ```text
 DeterministicMockActor   replayable: true
 OllamaActor              replayable: false
+XAIActor                 replayable: false
 ```
 
 The operator-only direct `actor.chat` path is deliberately marked non-Council and does not alter Council authority.
@@ -609,8 +613,7 @@ This alpha does **not** add:
 - OpenAI cloud integration;
 - Anthropic / Claude cloud integration;
 - Google / Gemini cloud integration;
-- xAI / Grok cloud integration;
-- provider-specific registered OAuth clients or remote inference admission;
+- provider-specific browser OAuth clients, including an unregistered xAI native client;
 - generic remote model endpoints;
 - IRC networking or an IRC daemon;
 - real DCC P2P sockets;
@@ -619,7 +622,7 @@ This alpha does **not** add:
 - QEC-grade proof/replay for live inference;
 - generalized performance optimization beyond the implemented ordered parallel Council scheduler.
 
-The neutral auth substrate is present, but provider admission remains postponed until its provider-specific security and transport contracts—and the prerequisite instrument/persistence work—are ready.
+OpenAI, Anthropic, Google, generic remote endpoints, and additional providers remain deferred. xAI admission does not waive the provider-specific security, transport, equality, and credential-boundary review required for each later adapter.
 
 ## Documentation map
 
@@ -631,6 +634,7 @@ The neutral auth substrate is present, but provider admission remains postponed 
 - [`THREAT_MODEL.md`](THREAT_MODEL.md) — executable adapter threat model
 - [`docs/API.md`](docs/API.md) — JSONL control API
 - [`docs/AUTH.md`](docs/AUTH.md) — provider-neutral auth broker, storage, PKCE/device flows, and admission boundary
+- [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md) — xAI setup, fixed transport, discovery, and Council configuration
 - [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) — World Modes and named-region geometry
 - [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md) — source-forensic `#pure-history` mode and discipline guard
 - [`docs/IRC_TUI.md`](docs/IRC_TUI.md) — implemented Rust IRC-style operator interface

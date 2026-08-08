@@ -2,7 +2,7 @@
 
 ## Status
 
-PR #16 introduces the authentication substrate without admitting a remote model adapter.
+PR #16 introduced the provider-neutral substrate. PR #17 uses it to admit the first fixed-destination remote adapter: xAI / Grok.
 
 Implemented now:
 
@@ -19,16 +19,23 @@ Implemented now:
 - non-secret `auth.adapters`, `auth.list`, `auth.test`, and `auth.logout` JSONL operations;
 - a conventional `nexus auth ...` command surface.
 
-Not implemented in this PR:
+Implemented for xAI in PR #17:
 
-- an xAI / Grok inference adapter;
-- any other remote inference adapter;
-- provider model discovery;
-- a provider-specific OAuth client registration;
+- API-key, environment, and external-helper profiles;
+- a browser-assisted API-key setup page plus hidden terminal input;
+- an authenticated bounded connection test;
+- language-model discovery;
+- fixed-host Responses API inference with `store: false`;
+- direct-message and equal-vote Council actor wiring.
+
+Still not implemented:
+
+- any remote provider other than xAI;
+- a provider-registered NEXUS OAuth client;
 - reuse of another CLI's login session;
 - consumer-browser cookie or session-token scraping.
 
-The next provider PR must supply its own admitted descriptor, registered client details, connection test, transport, and threat-model extension. Until then `system.health` continues to report `remote_provider_auth: false` and `remote_adapters_admitted: false`.
+`system.health` now reports `remote_provider_auth: true` and `remote_adapters_admitted: true` because xAI is admitted.
 
 ## Operator commands
 
@@ -45,7 +52,7 @@ nexus auth adapters
 nexus auth list
 ```
 
-Once a remote adapter registers a supported flow, profiles use the same provider-neutral commands:
+Profiles use the same provider-neutral commands:
 
 ```bash
 nexus auth add <adapter> --profile personal --method browser
@@ -56,6 +63,14 @@ nexus auth add <adapter> --profile corp --method external-command \
 nexus auth test <adapter> --profile personal
 nexus auth logout <adapter> --profile personal
 ```
+
+xAI's supported interactive path is browser-assisted API-key enrollment:
+
+```bash
+nexus auth add xai --profile personal --method browser-key
+```
+
+This opens `https://console.x.ai/team/default/api-keys` and reads the generated key through the same hidden prompt as `--method api-key`. It does not run browser OAuth.
 
 `--method api-key` reads from a hidden terminal prompt. There is deliberately no `--api-key VALUE` argument because command-line arguments are commonly retained in shell history and exposed through process inspection.
 
@@ -170,9 +185,9 @@ Raw tokens must never be placed in helper arguments. Credential-bearing options 
 
 ## Grok Build relationship
 
-The operator experience is intentionally similar to coding CLIs that open a browser, support device login, refresh tokens, and retain a reusable local session. xAI documents those patterns for [Grok Build authentication](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md) and [enterprise deployments](https://docs.x.ai/build/enterprise).
+The operator experience is intentionally similar to coding CLIs that open a browser. xAI documents browser sessions for [Grok Build authentication](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/02-authentication.md), while its [public API quickstart](https://docs.x.ai/developers/quickstart) documents API-key authentication for inference clients.
 
-NEXUS copies the interaction pattern, not Grok Build's credentials. It does not read `~/.grok/auth.json`, copy browser cookies, use another application's OAuth client identity, or send Grok Build bearer material to a NEXUS adapter. A future xAI adapter must use a provider-supported NEXUS client/flow or an explicitly configured enterprise/API-key path.
+NEXUS copies the browser-assisted interaction pattern, not Grok Build's credentials. It does not read `~/.grok/auth.json`, copy browser cookies, use another application's OAuth client identity, or send Grok Build bearer material to the xAI adapter. PR #17 therefore uses the documented API-key path. A future browser-PKCE change still requires a provider-supported NEXUS client-registration path.
 
 ## Public-output boundary
 
@@ -205,7 +220,7 @@ Only adapter transport code may call `AuthBroker.resolve()` and receive `SecretM
 
 ## Provider admission checklist
 
-A remote adapter is still inadmissible until its PR supplies:
+A later remote adapter remains inadmissible until its PR supplies:
 
 - a provider-specific descriptor and fixed destination allowlists;
 - an officially supported auth/client-registration path;
@@ -217,3 +232,5 @@ A remote adapter is still inadmissible until its PR supplies:
 - tests proving credentials do not enter prompts, world objects, receipts, logs, or exceptions;
 - `replayable = false` for live remote inference;
 - the unchanged one-member/one-vote and `epistemic_privilege = none` invariants.
+
+The xAI implementation and its provider-specific checklist are documented in [`XAI_ADAPTER.md`](XAI_ADAPTER.md).

@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.9
+nexus/0.10
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha6.6
+2.0.0-alpha9.0
 ```
 
 Current posture:
@@ -22,11 +22,12 @@ Current posture:
 control transport -> JSON Lines over stdio
 mock actors       -> supported
 Ollama actors     -> supported only through loopback-local configuration
+xAI actors        -> supported through a configured profile and fixed api.x.ai HTTPS transport
 UN simulation     -> supported as a deterministic fictional local game
 HERESY MUD        -> supported as a deterministic fictional multi-avatar local game
 Failsafe          -> bounded repeated-guard containment + deterministic relief actor
-remote providers  -> not implemented
-provider auth     -> neutral broker foundation; no remote adapter admitted
+remote providers  -> xAI admitted; other providers not implemented
+provider auth     -> xAI API key, environment, or external helper
 ```
 
 The public stdio API exposes no `allow_remote` override for Ollama.
@@ -45,7 +46,7 @@ Rust IRC-style TUI / script / SSH operator
 
 The control plane itself is not HTTP-based.
 
-An explicitly configured local Ollama actor may use the separately hardened loopback adapter boundary.
+An explicitly configured local Ollama actor may use the separately hardened loopback adapter boundary. Explicit xAI operations may use the fixed remote HTTPS adapter boundary.
 
 ## Run
 
@@ -69,19 +70,19 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.9",
-  "runtime_version": "2.0.0-alpha6.6",
+  "protocol": "nexus/0.10",
+  "runtime_version": "2.0.0-alpha9.0",
   "control_transport": "jsonl_stdio",
-  "network": "none_unless_explicit_loopback_ollama_or_registered_auth_operation",
-  "adapters": ["mock", "ollama_loopback"],
-  "remote_provider_auth": false,
+  "network": "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https",
+  "adapters": ["mock", "ollama_loopback", "xai_https"],
+  "remote_provider_auth": true,
   "auth_broker": {
     "schema_version": "nexus-auth/1",
     "browser_pkce": true,
     "device_code": true,
-    "remote_adapters_admitted": false
+    "remote_adapters_admitted": true
   },
-  "actor_backends_available": ["mock", "ollama"],
+  "actor_backends_available": ["mock", "ollama", "xai"],
   "failsafe": {
     "schema_version": "nexus-failsafe/1",
     "trigger": "registered_repeated_guard_failure_after_nudge_only"
@@ -112,6 +113,7 @@ auth.adapters
 auth.list
 auth.test
 auth.logout
+models.list
 security.scrub_preview
 world.create
 world.inspect
@@ -175,7 +177,17 @@ Explicitly remove a profile and any broker-stored credential:
 {"operation":"auth.logout","adapter_id":"provider","profile_name":"personal"}
 ```
 
-Enrollment is intentionally absent from JSONL so raw keys cannot be placed into request lines or runtime transcripts. Use the direct `nexus auth add ...` CLI described in [`AUTH.md`](AUTH.md). The current runtime registers only `mock` and loopback `ollama`; the first remote descriptor/transport remains a separate provider-specific change.
+Enrollment is intentionally absent from JSONL so raw keys cannot be placed into request lines or runtime transcripts. Use the direct `nexus auth add ...` CLI described in [`AUTH.md`](AUTH.md). The runtime registers `mock`, loopback `ollama`, and fixed-remote `xai` descriptors.
+
+## Model discovery
+
+List language models available to an xAI profile:
+
+```json
+{"operation":"models.list","adapter_id":"xai","profile_name":"personal","timeout_seconds":60}
+```
+
+The response contains bounded descriptive model metadata and `remote_verified: true`. Raw credentials, provider error bodies, pricing/account rank, and arbitrary endpoint fields are never returned. Unknown request fields fail closed.
 
 ## Failsafe status
 
@@ -430,7 +442,19 @@ Example with an explicit loopback Ollama member:
 
 A non-loopback Ollama endpoint is rejected by this public path.
 
-`council.run` accepts no credential fields and still admits no cloud adapter. Future remote actors will reference an opaque auth profile name; raw material will remain broker-internal.
+An xAI peer references only an opaque profile name:
+
+```json
+{
+  "member_id":"Grok",
+  "model_id":"grok-4.5",
+  "adapter_id":"xai",
+  "auth_profile":"personal",
+  "timeout_seconds":600
+}
+```
+
+`council.run` accepts no credential or remote-endpoint fields. The xAI actor resolves the profile only inside its transport; raw material remains broker-internal.
 
 ## `actor.chat`
 
@@ -485,6 +509,7 @@ Supported public stdio adapter IDs:
 ```text
 mock
 ollama
+xai
 ```
 
 ### Mock
@@ -512,6 +537,20 @@ ollama
 ```
 
 `endpoint` must satisfy the existing loopback-only transport policy. The stdio API does not expose remote override state.
+
+### xAI
+
+```json
+{
+  "member_id":"Grok",
+  "model_id":"grok-4.5",
+  "adapter_id":"xai",
+  "auth_profile":"personal",
+  "timeout_seconds":600
+}
+```
+
+The xAI member schema is closed. It rejects `endpoint`, `base_url`, inline key/token fields, unknown fields, invalid model IDs, and timeouts above 3600 seconds. Discover the available model IDs first with `models.list`; the example model is not a hard-coded default.
 
 ## Provider-neutral Council contract
 
@@ -578,14 +617,13 @@ The current local runtime does not implement:
 - provider-specific OpenAI cloud auth/transport;
 - provider-specific Anthropic/Claude cloud auth/transport;
 - provider-specific Google/Gemini cloud auth/transport;
-- provider-specific xAI/Grok cloud auth/transport;
 - generic remote endpoints;
-- provider model discovery;
-- provider OAuth client registration and OIDC identity validation;
+- provider model discovery beyond xAI;
+- provider OAuth client registration and OIDC identity validation, including a NEXUS-owned xAI browser client;
 - account discovery;
 - rate-limit/provider billing semantics.
 
-The neutral auth broker, API-key/keyring storage, browser PKCE, device code, and headless credential sources are implemented without implying that any provider is admitted. See [`AUTH.md`](AUTH.md).
+The neutral auth broker, xAI API-key setup, fixed xAI transport, browser PKCE substrate, device code, and headless credential sources are implemented. See [`AUTH.md`](AUTH.md) and [`XAI_ADAPTER.md`](XAI_ADAPTER.md).
 
 ## `telemetry.verify`
 

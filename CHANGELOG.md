@@ -2,7 +2,19 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
-## Unreleased — Provider-neutral authentication foundation
+## 2.0.0-alpha9.0 — First remote provider: xAI / Grok
+
+- admit an `xai` auth descriptor using xAI's documented API-key, environment, and external-helper paths;
+- add `browser-key` enrollment that opens xAI's fixed official key page and reads the result through a hidden prompt without importing Grok Build sessions;
+- add bounded authenticated connection testing through `GET https://api.x.ai/v1/models`;
+- add `nexus models list xai` and JSONL `models.list` through the authenticated `/language-models` endpoint;
+- add a fixed-host, redirect-free, environment-proxy-free Responses API transport with `store: false`, bounded requests/responses, sanitized error bodies, and no automatic inference retry;
+- add `XAIActor` for direct messages and equal-vote Councils using the same prompts, guard/nudge lifecycle, strict ballot parser, and non-replayable receipt status as other live actors;
+- reject xAI endpoint overrides, inline or metadata-smuggled credentials, malformed model identifiers, unknown member fields, oversized responses, and truncated ballots;
+- add `xai-...` key scrubbing plus mixed local/remote equality, secret-boundary, browser-setup, discovery, transport, and adversarial regressions;
+- bump the control API to `nexus/0.10` and Python runtime to `2.0.0-alpha9.0`; the Rust TUI remains `2.0.0-alpha6.6` and does not yet expose xAI roster commands.
+
+## PR #16 — Provider-neutral authentication foundation
 
 - add adapter-owned authentication descriptors with no Council authority fields;
 - add browser authorization-code login with PKCE `S256`, loopback callback state validation, fixed provider destinations, and redirect rejection;
@@ -13,7 +25,7 @@ All notable changes to QSOL NEXUS are documented here.
 - keep auth storage disjoint from WorldStore state and remove all secret material and credential handles from public results;
 - add `nexus auth adapters|add|list|test|logout` and safe JSONL inspection/test/logout operations;
 - add an adversarial local OAuth fixture covering state mismatch, redirects, refresh, device polling, file permissions, public redaction, and world-store isolation;
-- keep remote inference adapters, provider client registration, model discovery, and xAI / Grok transport for a separate provider-specific PR.
+- keep remote inference adapters, provider client registration, model discovery, and xAI / Grok transport for the separate provider-specific PR #17.
 
 ## 2.0.0-alpha6.6 — Actor Failsafe / Upside Down / Shadow Realm
 
