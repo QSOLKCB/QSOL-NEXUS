@@ -63,7 +63,9 @@ Do not introduce commercial provider SDKs until these rules pass tests.
 
 ## 2.0-alpha3 — Adapter protocol
 
-Implement the provider-neutral adapter contract.
+Before any executable adapter ships, create the dedicated adapter threat model required by `SECURITY.md`. The threat model must cover the adapter boundary sufficiently to review credential handling, provider transport, imported/model-generated content, tool-call requests, local endpoint impersonation, and failure behavior before executable provider code is admitted.
+
+Then implement the provider-neutral adapter contract.
 
 Start with:
 
