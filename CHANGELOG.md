@@ -2,6 +2,44 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## [2.0.0-alpha3] — First real-model Council boundary
+
+### Added
+
+- Added provider-neutral `CouncilActor` protocol consumed by the Council coordinator.
+- Made the deterministic mock actor conform to the shared actor interface.
+- Added a minimal stdlib `OllamaActor` and loopback-only-by-default `OllamaTransport`.
+- Added JSON-schema-constrained Ollama ballot output.
+- Added `THREAT_MODEL.md` before admitting the first executable non-mock adapter boundary.
+- Added a separate GitHub Actions live-Ollama integration gate.
+- Added fictional Frontier Alpha and Frontier Beta Modelfiles for adversarial Council testing.
+- Added deterministic adapter-boundary/unit tests for loopback policy and model-size authority claims.
+
+### Live Council fixture
+
+```text
+Mock reference
+Frontier Alpha -> qwen2.5:0.5b
+Frontier Beta  -> llama3.2:1b
+```
+
+The frontier identities and companies are fictional test personas.
+
+- Alpha deliberately attempts a corporate/provider prestige claim.
+- Beta deliberately attempts a parameter-count/model-size prestige claim over Alpha.
+- Both must trigger the Equality Guard, restate on evidence/reasoning alone, and retain one equal vote.
+- The live fixture injects a fake GitHub-style token and fails if the raw token crosses the Ollama prompt boundary.
+- All three members must complete the White/Red/Black/Yellow/Green/Blue cycle and submit exactly one ballot each.
+
+### Security / claims
+
+- Ollama endpoints are loopback-only by default; remote endpoints require an explicit override.
+- Provider/model size and parameter-count prestige are now explicit Equality Guard categories when used to demand authority.
+- Capability and size metadata remain valid descriptive metadata when not used as a vote/authority claim.
+- Live Ollama inference is marked `replayable: false` even when Modelfile seeds are used for fixture stability.
+- The JSONL control API remains mock-instantiation-only and reports `network: none`; Ollama is exercised as a package-level integration actor rather than an operator-configured provider.
+- No OpenAI, Anthropic/Claude, Gemini, Grok, remote authentication, or API-key handling is introduced in this milestone.
+
 ## [2.0.0-alpha1] — Mock Council runtime
 
 ### Added
@@ -22,14 +60,9 @@ All notable changes to QSOL NEXUS are documented here.
 
 ### Security
 
-- The runtime reports `network: none` and only exposes the `mock` adapter in this stage.
+- The JSONL runtime reports `network: none` and exposes the `mock` adapter in this stage.
 - Raw detected secrets are not hashed or partially echoed into placeholders.
 - Provider credentials remain forbidden from semantic prompts, world objects, Council transcripts, receipts, and archives.
-- Real provider adapters remain blocked on the dedicated adapter threat model.
-
-### Not implemented
-
-This milestone intentionally adds no OpenAI, Anthropic/Claude, Gemini, Grok, Ollama, or generic remote provider integration; no provider authentication; no Rust TUI; and no claim of final QEC-level replay/proof semantics.
 
 ## [2.0.0-alpha0] — Architecture draft
 
@@ -48,10 +81,6 @@ This milestone intentionally adds no OpenAI, Anthropic/Claude, Gemini, Grok, Oll
 - Separated Council consensus from evidence and verification status.
 - Added initial World Protocol concepts and a worked NGC 3603 / 431-Hz Council example.
 - Preserved the previous NEXUS 1.0 work under `archives/v1.0.0/` as referential prior work.
-
-### Not implemented
-
-This milestone intentionally added no new NEXUS 2.x runtime, provider SDK, authentication mechanism, Council executor, persistent world database, or Rust/Python application code.
 
 ## [1.0.0] — 2026-07-14
 
