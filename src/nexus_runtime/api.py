@@ -186,6 +186,8 @@ class NexusAPI:
                 return self._error(request_id, "unknown_operation", operation)
         except (KeyError, TypeError, ValueError) as exc:
             return self._error(request_id, "invalid_request", str(exc))
+        except OSError as exc:
+            return self._error(request_id, "adapter_unavailable", str(exc))
 
         if request_id is not None:
             response = {"request_id": request_id, **response}

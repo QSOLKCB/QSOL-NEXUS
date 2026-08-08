@@ -216,14 +216,16 @@ class CouncilCoordinator:
         }
 
     def build_evidence_context(self, evidence_refs: list[str]) -> str:
-        """Build a bounded model-readable view over content-addressed evidence.
+        """Build a strictly bounded model-readable evidence view.
 
         Object references remain the durable identity/provenance source. This
         derived view exists only so model actors can actually read operator-
         attached documents instead of seeing opaque object hashes.
         """
-        sections: list[str] = []
-        remaining = MAX_EVIDENCE_CONTEXT_CHARS
+        output = ""
+        object_marker = "\n[NEXUS: evidence excerpt truncated]"
+        budget_marker = "\n[NEXUS: evidence view budget reached]"
+
         for ref in evidence_refs:
             obj = self.world.inspect(ref)
             label = obj.payload.get("filename") if isinstance(obj.payload.get("filename"), str) else obj.object_type
@@ -231,17 +233,28 @@ class CouncilCoordinator:
             if not isinstance(content, str):
                 content = canonical_json(obj.payload)
             if len(content) > MAX_EVIDENCE_OBJECT_CHARS:
-                content = content[:MAX_EVIDENCE_OBJECT_CHARS] + "\n[NEXUS: evidence excerpt truncated]"
+                keep = max(0, MAX_EVIDENCE_OBJECT_CHARS - len(object_marker))
+                content = content[:keep] + object_marker
+
             section = f"[{ref} | {obj.object_type} | {label}]\n{content}"
-            if len(section) > remaining:
-                if remaining > 96:
-                    sections.append(section[:remaining] + "\n[NEXUS: evidence view budget reached]")
+            separator = "\n\n" if output else ""
+            available = MAX_EVIDENCE_CONTEXT_CHARS - len(output)
+            if available <= len(separator):
                 break
-            sections.append(section)
-            remaining -= len(section)
-            if remaining <= 0:
-                break
-        return "\n\n".join(sections)
+            output += separator
+            available = MAX_EVIDENCE_CONTEXT_CHARS - len(output)
+
+            if len(section) <= available:
+                output += section
+                continue
+
+            if available > len(budget_marker):
+                output += section[: available - len(budget_marker)] + budget_marker
+            else:
+                output += section[:available]
+            break
+
+        return output[:MAX_EVIDENCE_CONTEXT_CHARS]
 
     def _validate_roster(self, actors: tuple[CouncilActor, ...]) -> None:
         if len(actors) < self.policy.minimum_members:

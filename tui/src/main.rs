@@ -9,8 +9,9 @@ use crossterm::terminal::{
 use crossterm::{execute, queue};
 use nexus_irc_tui::scripting::{expand_identifiers, IdentifierContext, VariableBook};
 use nexus_irc_tui::{
-    command_completions, load_document, normalize_action, parse_input, room_from_name, AliasBook,
-    DccCommand, DccKind, DccSession, InputCommand, RoomSpec, ROOMS,
+    command_completions, load_document, normalize_action, parse_input, room_from_name,
+    sanitize_terminal_text, AliasBook, DccCommand, DccKind, DccSession, InputCommand, RoomSpec,
+    ROOMS,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -19,6 +20,7 @@ use std::fs;
 use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
+use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
 #[derive(Debug, Clone)]
 struct MemberConfig {
@@ -171,7 +173,11 @@ impl TerminalGuard {
     fn enter() -> io::Result<Self> {
         enable_raw_mode()?;
         let mut stdout = io::stdout();
-        execute!(stdout, EnterAlternateScreen, Hide)?;
+        if let Err(error) = execute!(stdout, EnterAlternateScreen, Hide) {
+            let _ = disable_raw_mode();
+            let _ = execute!(stdout, Show, LeaveAlternateScreen);
+            return Err(error);
+        }
         Ok(Self)
     }
 }
@@ -247,8 +253,9 @@ impl App {
 
     fn append(&mut self, text: &str) {
         for line in text.lines() {
+            let safe = sanitize_terminal_text(line);
             self.scrollback
-                .push(format!("{} {}", Self::timestamp(), line));
+                .push(format!("{} {}", Self::timestamp(), safe));
         }
         self.scroll_offset = 0;
     }
@@ -274,7 +281,33 @@ impl App {
         }
     }
 
+    fn scrub_text(nexus: &mut NexusProcess, text: &str) -> Result<(String, bool), String> {
+        let response =
+            nexus.request(json!({"operation": "security.scrub_preview", "text": text}))?;
+        let clean = response
+            .get("text")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "scrub preview response missing text".to_string())?;
+        let changed = response
+            .get("changed")
+            .and_then(Value::as_bool)
+            .ok_or_else(|| "scrub preview response missing changed flag".to_string())?;
+        Ok((sanitize_terminal_text(clean), changed))
+    }
+
     fn preprocess(&self, input: &str) -> String {
+        let command = input
+            .trim_start()
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_lowercase();
+        if matches!(
+            command.as_str(),
+            "/alias" | "/aliases" | "/set" | "/unset" | "/vars"
+        ) {
+            return input.to_string();
+        }
         let args_text = command_args(input);
         let aliased = self
             .aliases
@@ -298,11 +331,22 @@ impl App {
     }
 
     fn execute_line(&mut self, nexus: &mut NexusProcess, raw: String) {
-        if !raw.trim().is_empty() {
-            self.history.push(raw.clone());
-        }
         self.history_index = None;
-        let expanded = self.preprocess(&raw);
+        if raw.trim().is_empty() {
+            return;
+        }
+        let (clean, changed) = match Self::scrub_text(nexus, &raw) {
+            Ok(result) => result,
+            Err(error) => {
+                self.append(&format!("*** ERROR: {error}"));
+                return;
+            }
+        };
+        self.history.push(clean.clone());
+        if changed {
+            self.append("*** secret-bearing text redacted before local history/scrollback");
+        }
+        let expanded = self.preprocess(&clean);
         match parse_input(&expanded) {
             Ok(command) => {
                 if let Err(error) = self.execute_command(nexus, command) {
@@ -336,8 +380,12 @@ impl App {
                 }
             }
             InputCommand::Topic(topic) => {
+                let (topic, changed) = Self::scrub_text(nexus, &topic)?;
                 self.topics
                     .insert(self.room.channel.to_string(), topic.clone());
+                if changed {
+                    self.append("*** secret-bearing topic text redacted");
+                }
                 self.append(&format!("*** {} changed the topic to: {topic}", self.nick));
             }
             InputCommand::Ask(question) => {
@@ -363,6 +411,13 @@ impl App {
             }
             InputCommand::Msg { target, text } => self.direct_message(nexus, &target, &text)?,
             InputCommand::Nick(new_nick) => {
+                if self
+                    .members
+                    .iter()
+                    .any(|member| member.nick.eq_ignore_ascii_case(&new_nick))
+                {
+                    return Err(format!("nick already in use: {new_nick}"));
+                }
                 let old = self.nick.clone();
                 self.nick = new_nick;
                 self.append(&format!("*** {old} is now known as {}", self.nick));
@@ -414,23 +469,36 @@ impl App {
                 ));
             }
             InputCommand::Kick(nick) => {
-                let before = self.members.len();
-                self.members.retain(|member| member.nick != nick);
-                if self.members.len() == before {
-                    return Err(format!("no such model member: {nick}"));
-                }
-                self.targeted_evidence.remove(&nick);
-                self.dcc_sessions.retain(|session| session.peer != nick);
-                if self.private_target.as_deref() == Some(&nick) {
+                let canonical = self
+                    .members
+                    .iter()
+                    .find(|member| member.nick.eq_ignore_ascii_case(&nick))
+                    .map(|member| member.nick.clone())
+                    .ok_or_else(|| format!("no such model member: {nick}"))?;
+                self.members
+                    .retain(|member| !member.nick.eq_ignore_ascii_case(&canonical));
+                self.targeted_evidence.remove(&canonical);
+                self.dcc_sessions
+                    .retain(|session| !session.peer.eq_ignore_ascii_case(&canonical));
+                if self
+                    .private_target
+                    .as_deref()
+                    .map(|target| target.eq_ignore_ascii_case(&canonical))
+                    .unwrap_or(false)
+                {
                     self.private_target = None;
                 }
                 self.append(&format!(
-                    "*** {nick} was removed from the local room roster"
+                    "*** {canonical} was removed from the local room roster"
                 ));
             }
             InputCommand::Alias { name, expansion } => {
+                let (expansion, changed) = Self::scrub_text(nexus, &expansion)?;
                 self.aliases.define(&name, &expansion)?;
                 self.save_state()?;
+                if changed {
+                    self.append("*** secret-bearing alias text redacted before persistence");
+                }
                 self.append(&format!("*** alias /{name} = {expansion}"));
             }
             InputCommand::Aliases => {
@@ -444,8 +512,12 @@ impl App {
                 }
             }
             InputCommand::Set { name, value } => {
+                let (value, changed) = Self::scrub_text(nexus, &value)?;
                 self.variables.set(&name, &value)?;
                 self.save_state()?;
+                if changed {
+                    self.append("*** secret-bearing variable value redacted before persistence");
+                }
                 self.append(&format!("*** {name} = {value}"));
             }
             InputCommand::Unset(name) => {
@@ -510,6 +582,10 @@ impl App {
                 "Council requires at least three model members; use /addmock or /addollama"
                     .to_string(),
             );
+        }
+        let (question, changed) = Self::scrub_text(nexus, question)?;
+        if changed {
+            self.append("*** secret-bearing Council question text redacted");
         }
         self.append(&format!("<{}> {}", self.nick, question));
         self.append(&format!(
@@ -614,6 +690,10 @@ impl App {
                     evidence.push(object_ref.clone());
                 }
             }
+        }
+        let (text, changed) = Self::scrub_text(nexus, text)?;
+        if changed {
+            self.append("*** secret-bearing private message text redacted");
         }
         self.append(&format!("-> *{}* <{}> {}", member.nick, self.nick, text));
         let response = nexus.request(json!({
@@ -871,6 +951,42 @@ impl App {
         }
     }
 
+    fn scrub_loaded_script_state(&mut self, nexus: &mut NexusProcess) -> Result<(), String> {
+        let mut clean_aliases = AliasBook::default();
+        let mut clean_variables = VariableBook::default();
+        let mut changed = false;
+
+        for (name, expansion) in self.aliases.list() {
+            let (clean_name, name_changed) = Self::scrub_text(nexus, &name)?;
+            let (clean_expansion, expansion_changed) = Self::scrub_text(nexus, &expansion)?;
+            if name_changed {
+                changed = true;
+                continue;
+            }
+            changed |= expansion_changed || clean_name != name || clean_expansion != expansion;
+            clean_aliases.define(&clean_name, &clean_expansion)?;
+        }
+
+        for (name, value) in self.variables.list() {
+            let (clean_name, name_changed) = Self::scrub_text(nexus, &name)?;
+            let (clean_value, value_changed) = Self::scrub_text(nexus, &value)?;
+            if name_changed {
+                changed = true;
+                continue;
+            }
+            changed |= value_changed || clean_name != name || clean_value != value;
+            clean_variables.set(&clean_name, &clean_value)?;
+        }
+
+        self.aliases = clean_aliases;
+        self.variables = clean_variables;
+        if changed {
+            self.save_state()?;
+            self.append("*** legacy alias/variable state was scrubbed before use");
+        }
+        Ok(())
+    }
+
     fn save_state(&self) -> Result<(), String> {
         if let Some(parent) = self
             .state_path
@@ -1028,7 +1144,7 @@ impl App {
             Some(target) => format!(" DCC:{target}> "),
             None => format!(" {}> ", self.room.channel),
         };
-        let prompt_width = prompt.chars().count();
+        let prompt_width = UnicodeWidthStr::width(prompt.as_str());
         let input_width = width as usize - prompt_width.min(width as usize);
         queue!(
             stdout,
@@ -1037,8 +1153,9 @@ impl App {
             Print(&prompt),
             Print(fit(&self.input, input_width))
         )?;
-        let cursor_x = (prompt_width + self.input.chars().count())
-            .min(width.saturating_sub(1) as usize) as u16;
+        let visible_input_width = UnicodeWidthStr::width(self.input.as_str()).min(input_width);
+        let cursor_x =
+            (prompt_width + visible_input_width).min(width.saturating_sub(1) as usize) as u16;
         queue!(stdout, MoveTo(cursor_x, height.saturating_sub(1)))?;
         stdout.flush()
     }
@@ -1054,18 +1171,31 @@ fn fit(text: &str, width: usize) -> String {
     if width == 0 {
         return String::new();
     }
-    let count = text.chars().count();
-    if count <= width {
+    let display_width = UnicodeWidthStr::width(text);
+    if display_width <= width {
         let mut output = text.to_string();
-        output.extend(std::iter::repeat(' ').take(width - count));
-        output
-    } else if width <= 1 {
-        text.chars().take(width).collect()
-    } else {
-        let mut output: String = text.chars().take(width - 1).collect();
-        output.push('…');
-        output
+        output.extend(std::iter::repeat(' ').take(width - display_width));
+        return output;
     }
+
+    let ellipsis_width = UnicodeWidthChar::width('…').unwrap_or(1).min(width);
+    let target = width.saturating_sub(ellipsis_width);
+    let mut output = String::new();
+    let mut used = 0usize;
+    for ch in text.chars() {
+        let char_width = UnicodeWidthChar::width(ch).unwrap_or(0);
+        if used + char_width > target {
+            break;
+        }
+        output.push(ch);
+        used += char_width;
+    }
+    if ellipsis_width > 0 {
+        output.push('…');
+        used += ellipsis_width;
+    }
+    output.extend(std::iter::repeat(' ').take(width.saturating_sub(used)));
+    output
 }
 
 fn parse_args() -> (PathBuf, PathBuf, String) {
@@ -1100,6 +1230,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut nexus = NexusProcess::spawn(&world).map_err(io::Error::other)?;
     let _guard = TerminalGuard::enter()?;
     let mut app = App::new(nick, state);
+    app.scrub_loaded_script_state(&mut nexus)
+        .map_err(io::Error::other)?;
 
     while app.running {
         app.render()?;
@@ -1137,4 +1269,30 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fit_respects_terminal_display_cells() {
+        let fitted = fit("界x", 2);
+        assert_eq!(UnicodeWidthStr::width(fitted.as_str()), 2);
+        assert!(fitted.trim_end().ends_with('…'));
+    }
+
+    #[test]
+    fn script_management_commands_preserve_placeholders_and_variable_names() {
+        let mut app = App::new(
+            "Trent".to_string(),
+            PathBuf::from("/definitely/not/a/state/file"),
+        );
+        app.variables.set("%weapon", "large trout").unwrap();
+        assert_eq!(
+            app.preprocess("/alias slap /me slaps $1 with $2-"),
+            "/alias slap /me slaps $1 with $2-"
+        );
+        assert_eq!(app.preprocess("/unset %weapon"), "/unset %weapon");
+    }
 }

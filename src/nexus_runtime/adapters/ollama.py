@@ -163,7 +163,8 @@ class OllamaActor:
             f"World mode: {context.mode_id}\n"
             f"Geometry region: {context.geometry_region_id}\n"
             f"Evidence snapshot: {context.evidence_snapshot_ref}\n"
-            f"Question: {context.question}\n"
+            + (f"Attached evidence view:\n{context.evidence_context}\n" if context.evidence_context else "")
+            + f"Question: {context.question}\n"
             "Review the completed phase material below and choose exactly one current disposition.\n"
             f"Allowed choices: {', '.join(_ALLOWED_BALLOTS)}\n"
             f"Completed phases: {json.dumps(context.completed_phases, sort_keys=True)}\n"

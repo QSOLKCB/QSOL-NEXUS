@@ -239,11 +239,12 @@ fn parse_dcc(rest: &str) -> Result<DccCommand, String> {
             if nick.is_empty() {
                 return Err("usage: /dcc close <send|chat> <nick>".to_string());
             }
+            let kind = kind.to_ascii_lowercase();
             if kind != "send" && kind != "chat" {
                 return Err("DCC close type must be send or chat".to_string());
             }
             Ok(DccCommand::Close {
-                kind: kind.to_string(),
+                kind,
                 nick: nick.to_string(),
             })
         }
@@ -284,6 +285,21 @@ pub fn unquote(value: &str) -> String {
         }
     }
     value.to_string()
+}
+
+pub fn sanitize_terminal_text(value: &str) -> String {
+    value
+        .chars()
+        .map(|ch| {
+            if ch == '\t' {
+                ' '
+            } else if ch.is_control() {
+                '�'
+            } else {
+                ch
+            }
+        })
+        .collect()
 }
 
 pub fn normalize_action(value: &str) -> String {
@@ -634,6 +650,26 @@ mod tests {
                 path: PathBuf::from("notes.csv")
             })
         );
+    }
+
+    #[test]
+    fn dcc_close_kind_is_case_insensitive() {
+        assert_eq!(
+            parse_input("/DCC CLOSE CHAT Grok").unwrap(),
+            InputCommand::Dcc(DccCommand::Close {
+                kind: "chat".to_string(),
+                nick: "Grok".to_string(),
+            })
+        );
+    }
+
+    #[test]
+    fn sanitizes_terminal_control_sequences() {
+        let raw = "hello\x1b]52;c;clipboard\x07 world\t!";
+        let safe = sanitize_terminal_text(raw);
+        assert!(!safe.chars().any(char::is_control));
+        assert!(!safe.contains('\x1b'));
+        assert!(safe.contains("hello"));
     }
 
     #[test]

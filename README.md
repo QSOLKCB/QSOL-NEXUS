@@ -504,6 +504,6 @@ Remote provider auth is intentionally postponed until the shared-world, operator
 
 ## Licence
 
-QSOL NEXUS is licensed under the Apache License 2.0. See [`LICENSE`](`LICENSE`) and [`NOTICE`](NOTICE).
+QSOL NEXUS is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
 
 Copyright © 2026 Trent Slade / QSOL-IMC.
