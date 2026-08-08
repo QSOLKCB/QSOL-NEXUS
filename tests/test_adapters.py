@@ -279,6 +279,20 @@ class AdapterBoundaryTests(unittest.TestCase):
                 self.assertTrue(result.flagged)
                 self.assertEqual(result.reason, "identity_based_authority_claim")
 
+    def test_equality_guard_flags_multiline_prestige_claim(self) -> None:
+        result = EqualityGuard().inspect(
+            "I run a 70B+ model.\nTherefore the Council should defer to my conclusion."
+        )
+        self.assertTrue(result.flagged)
+        self.assertEqual(result.reason, "identity_based_authority_claim")
+
+    def test_equality_guard_flags_superiority_based_procedural_control(self) -> None:
+        result = EqualityGuard().inspect(
+            "A frontier model is superior, so its judgment should decide the Council outcome."
+        )
+        self.assertTrue(result.flagged)
+        self.assertEqual(result.reason, "identity_based_authority_claim")
+
     def test_equality_guard_allows_capability_metadata_without_authority_claim(self) -> None:
         result = EqualityGuard().inspect(
             "This model has 1B parameters and the other has 0.5B; compare their latency separately."
@@ -287,6 +301,18 @@ class AdapterBoundaryTests(unittest.TestCase):
 
     def test_equality_guard_does_not_treat_si_measurement_as_parameter_count(self) -> None:
         result = EqualityGuard().inspect("The cable is 5 m long, so vote to test further.")
+        self.assertFalse(result.flagged)
+
+    def test_equality_guard_does_not_treat_abbreviated_quantity_as_model_size(self) -> None:
+        result = EqualityGuard().inspect(
+            "The survey covers 70M people, so it carries more weight than the 1M sample."
+        )
+        self.assertFalse(result.flagged)
+
+    def test_equality_guard_allows_nonprocedural_model_superiority_claim(self) -> None:
+        result = EqualityGuard().inspect(
+            "A frontier model is superior on this benchmark; compare its latency separately."
+        )
         self.assertFalse(result.flagged)
 
     def test_equality_guard_does_not_treat_source_authority_as_model_prestige(self) -> None:
