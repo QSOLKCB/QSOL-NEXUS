@@ -177,6 +177,14 @@ Useful commands:
 
 See [`docs/IRC_TUI.md`](docs/IRC_TUI.md).
 
+### CI folklore
+
+During the alpha5 Unicode terminal-width tests, the double-width character `界` — aptly meaning *boundary / world / realm* — exposed a bad assertion about where an ellipsis should land in a padded terminal field.
+
+> **[Confucius](https://en.wikipedia.org/wiki/Confucius) CI Gremlin Say:** “Your Chinese boundary character has exposed a flaw in your test about boundaries.”
+
+Not actually Confucius. Very much actually CI.
+
 ## `/me` — because civilization demands it
 
 ```text
