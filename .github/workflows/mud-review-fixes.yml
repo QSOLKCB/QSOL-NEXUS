@@ -1,0 +1,42 @@
+name: One-shot MUD review fixes
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  fix:
+    if: github.head_ref == 'agent/cursed-mud-game-room' && github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Apply review fixes
+        run: python3 .github/scripts/fix_mud_review.py
+      - name: Rust format
+        run: cargo fmt --manifest-path tui/Cargo.toml
+      - name: Rust tests
+        run: cargo test --manifest-path tui/Cargo.toml --all-targets
+      - name: Rust compile check
+        run: cargo check --manifest-path tui/Cargo.toml --all-targets
+      - name: Python tests
+        env:
+          PYTHONPATH: src
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+      - name: Commit fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add README.md docs/API.md docs/MODES_GEOMETRY.md docs/MUD.md src/nexus_runtime/game_mud.py tests/test_mud.py tui/src/lib.rs tui/tests/mud.rs
+          if git diff --cached --quiet; then
+            echo 'No review changes to commit.'
+            exit 0
+          fi
+          git commit -m 'Address Copilot MUD review findings'
+          git push origin HEAD:${{ github.head_ref }}
