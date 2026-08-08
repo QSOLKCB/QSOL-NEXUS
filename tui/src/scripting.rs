@@ -31,7 +31,6 @@ impl VariableBook {
 
     pub fn expand(&self, text: &str) -> String {
         let mut out = text.to_string();
-        // Longest variable names first avoids `%foo` partially consuming `%foobar`.
         let mut vars: Vec<_> = self.values.iter().collect();
         vars.sort_by_key(|(name, _)| std::cmp::Reverse(name.len()));
         for (name, value) in vars {
@@ -71,11 +70,17 @@ pub fn expand_identifiers(text: &str, context: IdentifierContext<'_>, args_text:
         .replace("$chan", context.channel)
         .replace("$mode", context.mode)
         .replace("$region", context.region)
-        .replace("$topic", context.topic)
-        .replace("$1-", args_text);
+        .replace("$topic", context.topic);
 
-    // Descending order prevents `$1` from modifying `$10`-style text.
     for index in (1..=9).rev() {
+        let range_token = format!("${index}-");
+        let range_value = if index <= args.len() {
+            args[index - 1..].join(" ")
+        } else {
+            String::new()
+        };
+        out = out.replace(&range_token, &range_value);
+
         let token = format!("${index}");
         let value = args.get(index - 1).copied().unwrap_or("");
         out = out.replace(&token, value);
@@ -129,7 +134,7 @@ mod tests {
         };
         assert_eq!(
             expand_identifiers("/me $me slaps $1 in $chan with $2- [$mode/$region]", context, "Grok a large trout"),
-            "/me Trent slaps Grok in #commons with Grok a large trout [meme_casual/commons]"
+            "/me Trent slaps Grok in #commons with a large trout [meme_casual/commons]"
         );
     }
 }
