@@ -84,6 +84,7 @@ class PhaseContext:
     mode_id: str = "analytical"
     mode_instruction: str = ""
     geometry_region_id: str = "observatory"
+    evidence_context: str = ""
 
 
 @dataclass(frozen=True)
