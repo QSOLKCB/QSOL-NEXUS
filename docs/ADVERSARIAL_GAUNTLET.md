@@ -64,7 +64,7 @@ Recommended loop:
 
 The agent may add ordinary `tests/test_*.py` regressions or request cases under `adversarial/corpus/`. It should not weaken existing assertions merely to obtain a green result.
 
-Good attack targets include unequal vote authority, model/provider prestige leaking into epistemic authority, Failsafe escape through restart/model swap/DCC/stale writers, replay mismatches, secret leakage, remote endpoint escape, World Mode authority changes, game narration mutating substrate without an explicit game operation, rollback/tamper cases, malformed values escaping `NexusAPI.handle()`, and TUI state altering the trusted runtime contract.
+Good attack targets include unequal vote authority, model/provider prestige leaking into epistemic authority, Failsafe escape through restart/model swap/DCC/stale writers, replay mismatches, secret leakage, auth material entering public/world state, OAuth callback or redirect substitution, remote endpoint escape, World Mode authority changes, game narration mutating substrate without an explicit game operation, rollback/tamper cases, malformed values escaping `NexusAPI.handle()`, and TUI state altering the trusted runtime contract.
 
 Wrong answers, minority opinions, model size, provider identity, irreverence, or disagreement are **not** invariant violations by themselves.
 

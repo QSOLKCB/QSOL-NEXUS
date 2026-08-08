@@ -202,7 +202,10 @@ class APITests(unittest.TestCase):
         self.assertEqual(result["runtime_version"], "2.0.0-alpha6.6")
         self.assertEqual(result["failsafe"]["schema_version"], "nexus-failsafe/1")
         self.assertEqual(result["control_transport"], "jsonl_stdio")
-        self.assertEqual(result["network"], "none_unless_explicit_loopback_ollama_actor")
+        self.assertEqual(
+            result["network"],
+            "none_unless_explicit_loopback_ollama_or_registered_auth_operation",
+        )
         self.assertEqual(result["adapters"], ["mock", "ollama_loopback"])
         self.assertFalse(result["remote_provider_auth"])
         self.assertEqual(result["actor_backends_available"], ["mock", "ollama"])

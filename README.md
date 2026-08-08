@@ -16,6 +16,7 @@ NEXUS now has:
 - content-addressed development world objects;
 - a De Bono-style AI Council;
 - deterministic secret scrubbing before semantic model boundaries;
+- a provider-neutral authentication broker with browser PKCE, device-code, keyring/private-file, environment, and external-helper foundations;
 - a lightweight Equality Guard;
 - deterministic mock actors;
 - a hardened loopback Ollama actor tested with real local models;
@@ -42,7 +43,7 @@ world modes: analytical / historical / pure_history / cultural / meme_casual / g
 geometry: named-regions-v3
 game rooms: #un-sim / Assembly Hall + #mud / Dungeon
 remote/cloud providers: deferred
-provider authentication: deferred
+provider authentication: foundation only; no remote adapter admitted
 world persistence: optional local canonical JSON files
 ```
 
@@ -72,6 +73,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
             | telemetry + games   |
             | Failsafe / Shadow   |
             | Secret Scrubber     |
+            | auth broker         |
             +----------+----------+
                        |
                CouncilActor seam
@@ -352,7 +354,10 @@ Alpha5 exposes the already-hardened local Ollama actor to the JSONL stdio contro
 
 The public stdio actor configuration deliberately provides no `allow_remote` escape hatch. Ollama remains loopback-only by default, with environment-proxy bypass protection and redirect rejection inherited from the alpha3 adapter boundary.
 
-This is **not** the future provider-auth system. OpenAI, Claude, Gemini, Grok cloud APIs, OAuth/API keys, generic remote endpoints and provider discovery remain deferred.
+This is **not** a remote-provider actor. The provider-neutral auth broker now supports
+credential, browser-PKCE, device-code and headless profile flows, but OpenAI, Claude,
+Gemini and Grok transports, provider client registration, generic remote endpoints and
+provider discovery remain deferred.
 
 ## First real-model Council fixture
 
@@ -378,6 +383,13 @@ python -m nexus_runtime --demo
 python -m unittest discover -s tests
 ```
 
+Optional OS-keyring support and the non-secret auth descriptor view:
+
+```bash
+python -m pip install -e '.[keyring]'
+nexus auth adapters
+```
+
 Run the JSONL stdio runtime directly:
 
 ```bash
@@ -401,6 +413,10 @@ world.inspect
 world.modes
 world.geometry
 world.geometry.distance
+auth.adapters
+auth.list
+auth.test
+auth.logout
 receipt.verify
 telemetry.verify
 game.un.catalog
@@ -473,6 +489,12 @@ Bearer token           -> <REDACTED:BEARER_TOKEN:1>
 The placeholder contains no hash or encoded fragment of the secret.
 
 The scrubber applies to world/document creation, game seeds and direct `actor.chat` messages as well as Council questions. This remains defence in depth, not perfect DLP. See [`SECURITY.md`](SECURITY.md).
+
+## Provider authentication foundation
+
+The `nexus auth` command now provides provider-neutral profile management, browser PKCE and device-code machinery, token refresh, optional OS-keyring storage, an owner-only private-file fallback, hidden API-key input, environment references, and no-shell external credential helpers.
+
+No remote provider is admitted yet. NEXUS does not read another CLI's token store or browser session. The first provider adapter must bring an officially supported client/auth path, fixed endpoint allowlists, a bounded connection test, model transport, and its own threat-model extension. See [`docs/AUTH.md`](docs/AUTH.md).
 
 ## Provider-neutral actor seam
 
@@ -588,7 +610,7 @@ This alpha does **not** add:
 - Anthropic / Claude cloud integration;
 - Google / Gemini cloud integration;
 - xAI / Grok cloud integration;
-- provider API keys or OAuth;
+- provider-specific registered OAuth clients or remote inference admission;
 - generic remote model endpoints;
 - IRC networking or an IRC daemon;
 - real DCC P2P sockets;
@@ -597,7 +619,7 @@ This alpha does **not** add:
 - QEC-grade proof/replay for live inference;
 - generalized performance optimization beyond the implemented ordered parallel Council scheduler.
 
-Remote provider auth is intentionally postponed until the shared-world, operator, telemetry, instrument and persistence contracts are more mature.
+The neutral auth substrate is present, but provider admission remains postponed until its provider-specific security and transport contracts—and the prerequisite instrument/persistence work—are ready.
 
 ## Documentation map
 
@@ -608,6 +630,7 @@ Remote provider auth is intentionally postponed until the shared-world, operator
 - [`SECURITY.md`](SECURITY.md) — security, credential, and secret-scrubbing boundaries
 - [`THREAT_MODEL.md`](THREAT_MODEL.md) — executable adapter threat model
 - [`docs/API.md`](docs/API.md) — JSONL control API
+- [`docs/AUTH.md`](docs/AUTH.md) — provider-neutral auth broker, storage, PKCE/device flows, and admission boundary
 - [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) — World Modes and named-region geometry
 - [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md) — source-forensic `#pure-history` mode and discipline guard
 - [`docs/IRC_TUI.md`](docs/IRC_TUI.md) — implemented Rust IRC-style operator interface

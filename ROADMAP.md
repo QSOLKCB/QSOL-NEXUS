@@ -377,6 +377,25 @@ Initial remote-provider targets, one at a time:
 
 Provider integrations remain replaceable and confer no voting authority.
 
+Provider-neutral foundation implemented in PR #16:
+
+- [x] adapter authentication descriptors;
+- [x] browser authorization-code + PKCE substrate with loopback callback;
+- [x] RFC 8628 device-code substrate;
+- [x] refresh-token handling;
+- [x] optional OS keyring with owner-only private-file fallback;
+- [x] hidden-prompt, environment, and no-shell external-helper credential sources;
+- [x] non-secret auth list/test/logout protocol operations;
+- [x] auth/world directory separation and adversarial secret-boundary tests.
+
+Still required before the milestone is complete:
+
+- [ ] finish the alpha7 instrument admission work;
+- [ ] finish the alpha8 persistent-world contracts;
+- [ ] admit the first provider-specific descriptor, registered client/auth path, connection test, and threat-model extension;
+- [ ] add remote model discovery and inference transport;
+- [ ] demonstrate one local and one remote model as equal-vote Council peers.
+
 ## 2.0-alpha10 — Three minds, one world demo
 
 Reference demonstration:

@@ -3,8 +3,11 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from typing import Sequence
 
 from .api import NexusAPI
+from .auth import AuthBroker
+from .auth_cli import configure_auth_parser, run_auth_command
 
 
 def _demo_request() -> dict:
@@ -22,13 +25,19 @@ def _demo_request() -> dict:
     }
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(description="QSOL NEXUS mock Council reference runtime")
+def main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(description="QSOL NEXUS Council reference runtime")
     parser.add_argument("--world", default=None, help="optional file-backed development world directory")
+    parser.add_argument("--auth-root", default=None, help="absolute operational auth directory outside the world store")
     parser.add_argument("--demo", action="store_true", help="run one deterministic mock Council demo and exit")
-    args = parser.parse_args()
+    subparsers = parser.add_subparsers(dest="command")
+    configure_auth_parser(subparsers)
+    args = parser.parse_args(argv)
 
-    api = NexusAPI(args.world)
+    if args.command == "auth":
+        return run_auth_command(args, AuthBroker(args.auth_root))
+
+    api = NexusAPI(args.world, auth_root=args.auth_root)
     if args.demo:
         print(json.dumps(api.handle(_demo_request()), indent=2, sort_keys=True))
         return 0

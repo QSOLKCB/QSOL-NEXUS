@@ -124,7 +124,8 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
             _require(response.get("control_transport") == "jsonl_stdio", "control transport changed")
             _require(response.get("remote_provider_auth") is False, "remote provider auth unexpectedly enabled")
             _require(
-                response.get("network") == "none_unless_explicit_loopback_ollama_actor",
+                response.get("network")
+                == "none_unless_explicit_loopback_ollama_or_registered_auth_operation",
                 "network boundary changed",
             )
             failsafe = response.get("failsafe", {})
@@ -134,6 +135,24 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
             return "local stdio/network/provider/Failsafe claim boundary intact"
 
     yield _run_check("health-boundary", "invariant", health_boundary)
+
+    def auth_public_boundary() -> str:
+        with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-auth-") as tmp:
+            base = Path(tmp)
+            api = NexusAPI(base / "world", auth_root=base / "auth")
+            adapters = api.handle({"operation": "auth.adapters"})
+            profiles = api.handle({"operation": "auth.list"})
+            test = api.handle({"operation": "auth.test", "adapter_id": "mock"})
+            encoded = json.dumps([adapters, profiles, test], sort_keys=True)
+            _require(profiles.get("profiles") == [], "fresh auth profile store is not empty")
+            _require(test.get("remote_verified") is False, "mock auth test claimed remote verification")
+            _require(test.get("credential") == "not_required", "mock unexpectedly required a credential")
+            for forbidden in ("access_token", "refresh_token", "credential_handle", "authorization_code"):
+                _require(forbidden not in encoded, f"public auth response exposed {forbidden}")
+            _require(not (base / "world" / "auth").exists(), "auth state crossed into the world root")
+            return "auth profiles/status remain non-secret, local, and outside WorldStore"
+
+    yield _run_check("auth-public-boundary", "invariant", auth_public_boundary)
 
     def canonical_world_identity() -> str:
         with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-world-") as tmp:

@@ -46,9 +46,9 @@ NEXUS does not attempt to define how a model must think internally. It defines h
              Model A          Model B          Model C
 ```
 
-The future Rust TUI is an operator interface, not an epistemic authority. The Python layer remains the first reference tooling/runtime because it is easy to inspect, script, test, and connect to the existing scientific Python ecosystem.
+The Rust TUI is an operator interface, not an epistemic authority. The Python layer remains the first reference tooling/runtime because it is easy to inspect, script, test, and connect to the existing scientific Python ecosystem.
 
-Provider authentication is deliberately deferred until the shared-world contracts have matured further.
+The provider-neutral authentication substrate is implemented outside the WorldStore. Provider-specific remote inference remains deferred until the prerequisite world/instrument contracts and each provider's security/transport review are complete.
 
 ## Trust domains
 
@@ -66,6 +66,7 @@ TRUSTED NEXUS CONTROL PLANE
 | roster · equal voting · phase ordering · sealed ballot |
 | world mode · geometry placement · evidence snapshots   |
 | canonical objects · receipts · lineage · verification  |
+| non-secret auth profile/status control                  |
 +---------------------------+-----------------------------+
                             |
                     durable world state
@@ -289,8 +290,8 @@ NEXUS envelope
 +------------------+
 | provider adapter |
 |------------------|
-| auth capability  |  # later milestone
-| model discovery  |
+| auth capability  |  # neutral substrate implemented
+| model discovery  |  # provider-specific later
 | prompt transport |
 | response parsing |
 | usage metadata   |
@@ -318,7 +319,7 @@ NEXUS 2.x is intentionally CLI/TUI-first.
 
 Reasons:
 
-- credentials do not need browser storage;
+- NEXUS has no browser application or browser-local credential store;
 - provider network access is easier to isolate and audit;
 - local subprocess boundaries are explicit;
 - SSH/headless operation is natural;
@@ -344,25 +345,28 @@ python -m nexus_runtime       # Python reference runtime
   +-- equality guard
   +-- instrument registry
   +-- receipt/replay service
+  +-- auth broker / credential-source router
   +-- adapter manager
 ```
 
 JSON Lines over stdio remains the simplest reference IPC. A local socket may later be justified by concurrency needs.
 
-## Provider authentication boundary — deferred
+## Provider authentication boundary
 
 The long-term operator experience remains coding-CLI-like:
 
 ```text
 nexus auth add
+nexus auth adapters
 nexus auth list
 nexus auth test
+nexus auth logout
 nexus models list
 ```
 
-But authentication is intentionally **not** the next architectural priority. NEXUS should first develop the shared world, geometry, modes, telemetry, instruments and operator shell enough that remote providers are arriving into a stable place rather than defining that place.
+PR #16 implements the provider-neutral broker, browser PKCE and device-code state machines, refresh handling, credential-source routing, safe profile/status operations, and storage isolation. The broker is operational infrastructure; it is not world state and cannot construct a Council actor by itself.
 
-Credentials will remain outside world state, Council prompts, receipts and lineage when this layer is implemented.
+Provider-specific OAuth client registration, model discovery, connection tests, and remote inference remain later adapter work. Credentials remain outside world state, Council prompts, receipts and lineage. See [`docs/AUTH.md`](docs/AUTH.md).
 
 ## Instrument boundary
 

@@ -35,6 +35,14 @@ NEXUS uses it only as a test-time model dependency pulled through Ollama. Its in
 
 Ollama is a separate third-party runtime. NEXUS does not vendor Ollama source or binaries in this repository. The CI workflow installs a pinned Ollama release at test time.
 
+## Python keyring (optional)
+
+The `keyring` package is an optional installation extra used to access supported OS credential stores. It is not required for the standard-library runtime or test suite and is not vendored in this repository.
+
+Upstream: <https://pypi.org/project/keyring/>
+
+The upstream project publishes its own MIT / Python Software Foundation licensing terms. Installing `qsol-nexus-runtime[keyring]` does not relicense keyring under the NEXUS Apache-2.0 licence.
+
 ## Provider and model names
 
 Names such as OpenAI, Claude, Gemini, Grok, Ollama, Qwen, and Llama are used solely for interoperability, testing, and architecture documentation. Their names and trademarks remain the property of their respective owners.

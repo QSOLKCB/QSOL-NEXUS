@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from .adapters import OllamaActor, OllamaTransport
+from .auth import AuthBroker
 from .council import CouncilCoordinator
 from .failsafe import FAILSAFE_SCHEMA_VERSION
 from .game_un import GAME_SCHEMA, action_catalog, advance_turn, apply_action, inspect_game, new_game
@@ -32,12 +33,24 @@ RUNTIME_VERSION = "2.0.0-alpha6.6"
 class NexusAPI:
     """Small transport-neutral API surface used by JSONL/stdio.
 
-    The control transport remains local stdio. Explicit loopback Ollama actors
-    and deterministic fictional game state are available without adding remote
-    provider authentication or a network server.
+    The control transport remains local stdio. Auth profile inspection and
+    connection tests are operational state outside the WorldStore. No remote
+    provider actor is admitted by this foundation.
     """
 
-    def __init__(self, world_root: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        world_root: str | Path | None = None,
+        *,
+        auth_root: str | Path | None = None,
+        auth_broker: AuthBroker | None = None,
+    ) -> None:
+        self.auth = auth_broker or AuthBroker(auth_root)
+        if world_root is not None:
+            world_path = Path(world_root).expanduser().resolve()
+            auth_path = self.auth.root.expanduser().resolve()
+            if world_path == auth_path or world_path.is_relative_to(auth_path) or auth_path.is_relative_to(world_path):
+                raise ValueError("auth storage and world storage must be disjoint directories")
         self.world = WorldStore(world_root)
         self.scrubber = SecretScrubber()
         self.geometry = DEFAULT_WORLD_GEOMETRY
@@ -56,9 +69,10 @@ class NexusAPI:
                     "protocol": PROTOCOL_VERSION,
                     "runtime_version": RUNTIME_VERSION,
                     "control_transport": "jsonl_stdio",
-                    "network": "none_unless_explicit_loopback_ollama_actor",
+                    "network": "none_unless_explicit_loopback_ollama_or_registered_auth_operation",
                     "adapters": ["mock", "ollama_loopback"],
                     "remote_provider_auth": False,
+                    "auth_broker": self.auth.status(),
                     "actor_backends_available": ["mock", "ollama"],
                     "world_modes": [mode.mode_id for mode in list_modes()],
                     "geometry": self.geometry.snapshot()["geometry_id"],
@@ -75,6 +89,10 @@ class NexusAPI:
                     "operations": [
                         "system.health",
                         "system.operations",
+                        "auth.adapters",
+                        "auth.list",
+                        "auth.test",
+                        "auth.logout",
                         "security.scrub_preview",
                         "world.create",
                         "world.inspect",
@@ -97,6 +115,22 @@ class NexusAPI:
                         "council.run",
                     ],
                 }
+            elif operation == "auth.adapters":
+                response = self.auth.adapters()
+            elif operation == "auth.list":
+                response = self.auth.list_profiles()
+            elif operation == "auth.test":
+                adapter_id = self._require_str(request, "adapter_id")
+                profile_name = request.get("profile_name", "default")
+                if not isinstance(profile_name, str):
+                    raise ValueError("profile_name must be a string")
+                response = self.auth.test_profile(adapter_id, profile_name)
+            elif operation == "auth.logout":
+                adapter_id = self._require_str(request, "adapter_id")
+                profile_name = request.get("profile_name", "default")
+                if not isinstance(profile_name, str):
+                    raise ValueError("profile_name must be a string")
+                response = self.auth.logout(adapter_id, profile_name)
             elif operation == "security.scrub_preview":
                 text = self._require_str(request, "text")
                 result = self.scrubber.scrub(text)

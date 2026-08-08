@@ -467,9 +467,9 @@ The TUI can add a model already available in a local Ollama service:
 
 The public stdio API does **not** expose an `allow_remote` override. The configured Ollama endpoint remains subject to the existing loopback-only transport guard, proxy bypass protection, and redirect rejection.
 
-This is not the future provider-authentication system.
+This is not the provider-authentication system. PR #16 adds a separate conventional `nexus auth` CLI and runtime broker outside TUI roster state.
 
-OpenAI, Claude, Gemini, Grok cloud APIs, credentials, OAuth, generic remote endpoints, and provider discovery remain deferred.
+OpenAI, Claude, Gemini, Grok cloud transports, provider client registration, generic remote endpoints, and provider discovery remain deferred. The neutral browser/device/keyring/headless auth substrate alone does not make a cloud actor available. See [`AUTH.md`](AUTH.md).
 
 ## Evidence visibility boundary
 

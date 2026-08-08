@@ -185,14 +185,16 @@ nexus telemetry inspect <session>
 
 That work should reuse the same JSONL/runtime client rather than fork business logic.
 
-## Provider authentication — still later
+## Provider authentication foundation
 
 The desired long-term provider setup remains coding-CLI-like:
 
 ```text
 nexus auth add
+nexus auth adapters
 nexus auth list
 nexus auth test
+nexus auth logout
 nexus models list
 ```
 
@@ -205,9 +207,9 @@ Initial eventual targets:
 - local Ollama;
 - carefully scoped generic endpoints.
 
-But provider authentication remains deliberately deferred.
+PR #16 implements the neutral `nexus auth` broker and command surface: browser PKCE, device code, refresh tokens, optional keyring/private-file storage, hidden API-key input, environment references, and external helpers. `nexus models list` and provider-specific transports remain later work.
 
-Alpha5 only exposes an already-hardened **loopback-local Ollama** actor to the stdio operator path. It does not introduce provider keys, OAuth or remote endpoint configuration.
+The current runtime still exposes only the already-hardened **loopback-local Ollama** live actor. No cloud actor, arbitrary remote endpoint, provider OAuth client registration, or model discovery is admitted by the auth foundation alone. See [`AUTH.md`](AUTH.md).
 
 ## Credential principles
 
@@ -224,7 +226,7 @@ They must never become:
 - replay bundles;
 - archival transcripts.
 
-The Secret Scrubber remains defence in depth; future credentials must use dedicated secure adapter storage rather than semantic or TUI configuration.
+The Secret Scrubber remains defence in depth. Credentials use the dedicated auth broker and must never be copied into semantic or TUI configuration. Auth storage and WorldStore storage are required to be disjoint.
 
 ## Future telemetry
 
