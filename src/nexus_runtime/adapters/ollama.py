@@ -140,13 +140,16 @@ class OllamaActor:
     def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
         prompt = (
             "NEXUS AI Council sealed ballot.\n"
+            f"World mode: {context.mode_id}\n"
+            f"Geometry region: {context.geometry_region_id}\n"
             f"Question: {context.question}\n"
             "Review the completed phase material below and choose exactly one current disposition.\n"
             f"Allowed choices: {', '.join(_ALLOWED_BALLOTS)}\n"
             f"Completed phases: {json.dumps(context.completed_phases, sort_keys=True)}\n"
             f"Required JSON schema: {json.dumps(_BALLOT_SCHEMA, separators=(',', ':'))}\n"
-            "Return only the requested JSON object. Keep the rationale concise. Provider identity, prestige, openness, company, "
-            "model size, parameter count, or claimed frontier status gives no extra authority."
+            "Return only the requested JSON object. Keep the rationale concise. World mode may affect framing but not evidence "
+            "status, vote weight, or verification. Provider identity, prestige, openness, company, model size, parameter count, "
+            "or claimed frontier status gives no extra authority."
         )
         raw = self.transport.generate(
             self.model,
@@ -179,6 +182,10 @@ class OllamaActor:
         parts = [
             "You are a member of the NEXUS AI Council.",
             "All members have exactly one equal vote. Corporate/provider identity grants no authority.",
+            "World mode changes framing and context only; it never changes evidence status, voting authority, or verification.",
+            f"World mode: {context.mode_id}",
+            f"Mode guidance: {context.mode_instruction}",
+            f"Geometry region: {context.geometry_region_id}",
             "Keep this phase response concise; aim for no more than about 100 words.",
             f"Council phase: {context.phase.value}",
             f"Question: {context.question}",
