@@ -18,9 +18,46 @@ provider API / local runtime
 
 The adapter is a transport and capability boundary. It does not gain authority over Council policy.
 
+## Alpha3 implementation status
+
+The coordinator now consumes a provider-neutral Python `CouncilActor` protocol rather than a concrete mock type:
+
+```text
+CouncilActor
+├── member
+├── identity_metadata()
+├── respond(PhaseContext)
+├── ballot(PhaseContext)
+└── replayable
+```
+
+Current implementations:
+
+```text
+DeterministicMockActor
+  network: none
+  replayable: true
+
+OllamaActor
+  network: loopback only by default
+  replayable: false
+```
+
+The first live integration is deliberately small:
+
+```text
+Mock reference
+Frontier Alpha -> qwen2.5:0.5b
+Frontier Beta  -> llama3.2:1b
+```
+
+The frontier identities are fictional test personas. Alpha deliberately attempts a corporate/provider prestige claim and Beta deliberately attempts a model-size/parameter-count prestige claim so the Equality Guard, secret boundary, Council flow, ballot path, and persistence path are exercised together.
+
+The public JSONL `council.run` operation still creates mock actors only. Ollama is currently an integration/runtime actor seam, not yet an operator-configured provider. Provider setup belongs in the later CLI/TUI/authentication work.
+
 ## Provider neutrality
 
-Initial adapter targets may include:
+Planned adapter families include:
 
 ```text
 OpenAI
@@ -28,15 +65,34 @@ Anthropic / Claude
 Google / Gemini
 xAI / Grok
 Ollama / local models
-generic OpenAI-compatible endpoints
+generic compatible endpoints
 future providers
 ```
 
-Provider names are examples of adapter families, not Council ranks.
+Provider names are adapter families, not Council ranks.
 
-## Planned adapter capabilities
+## Council ownership
 
-Each adapter should eventually declare a capability descriptor similar to:
+Adapters do not own Council procedure.
+
+The coordinator owns:
+
+- roster;
+- exact one-member/one-vote rule;
+- consensus threshold;
+- evidence snapshot;
+- phase ordering;
+- blind same-phase boundary;
+- Equality Guard;
+- ballot collection/tally;
+- durable Council session;
+- receipt creation.
+
+The adapter supplies model content through the normalized actor contract.
+
+## Planned capability descriptors
+
+A later operator-configurable adapter should declare a descriptor similar to:
 
 ```text
 AdapterDescriptor
@@ -59,13 +115,13 @@ The descriptor reports what an adapter can do. It must not contain a vote multip
 
 ## Authentication abstraction
 
-NEXUS should support a simple operator command such as:
+NEXUS should later support an operator command such as:
 
 ```text
 nexus auth add <adapter>
 ```
 
-The adapter then reports the authentication methods it actually supports.
+The adapter reports the authentication methods it actually supports.
 
 Possible categories include:
 
@@ -77,11 +133,13 @@ local_endpoint
 no_auth_required
 ```
 
-These are protocol categories, not claims about what any specific provider currently supports.
+These are protocol categories, not claims about what any particular provider currently supports.
+
+The first Ollama fixture requires no provider credential and is restricted to loopback by default.
 
 ## Secret boundary
 
-Adapters may read credentials from an approved secret source. They must expose only a non-secret connection state to NEXUS.
+Adapters may eventually read credentials from an approved secret source. They must expose only non-secret connection state to NEXUS.
 
 ```text
 secret store
@@ -104,9 +162,11 @@ NEXUS does NOT see:
 
 No credential is part of Council evidence or world identity.
 
+The live Ollama acceptance fixture injects a fake token into the human question and fails if that raw token appears in any prompt crossing the Ollama transport boundary.
+
 ## Normalized model identity
 
-A Council member should have a reproducible identity envelope without pretending provider identifiers are universal:
+A Council member has reproducibility metadata without pretending provider identifiers are universal:
 
 ```text
 ModelIdentity
@@ -120,45 +180,7 @@ ModelIdentity
 └── capability_snapshot
 ```
 
-`openness_metadata` is never used to compute authority.
-
-## Canonical Council request
-
-Conceptual shape:
-
-```json
-{
-  "session": "council:184",
-  "member": "member:03",
-  "phase": "black",
-  "question_ref": "object:question",
-  "evidence_snapshot_ref": "snapshot:abc",
-  "peer_material_refs": [],
-  "instructions_ref": "policy:debono-v1",
-  "available_instruments": ["world.inspect", "world.test"]
-}
-```
-
-The adapter converts this into the provider-specific request format.
-
-## Normalized response
-
-Conceptual shape:
-
-```json
-{
-  "member": "member:03",
-  "phase": "black",
-  "content": "...",
-  "evidence_refs": ["object:x"],
-  "proposed_tests": ["experiment:y"],
-  "adapter_metadata": {
-    "status": "ok"
-  }
-}
-```
-
-Provider-specific usage metadata may be attached outside the semantic content where useful.
+Provider, openness, model size, parameter count, and capability metadata are descriptive only. They never compute vote authority.
 
 ## Fairness requirements
 
@@ -171,14 +193,27 @@ Adapters must not:
 - edit the canonical question;
 - silently omit evidence because it conflicts with the provider's position;
 - expose credentials to other members;
-- write to world state except through allowed NEXUS operations.
+- write directly to world state outside allowed NEXUS operations;
+- convert model size, parameter count, benchmark score, or provider status into procedural authority.
+
+## Structured ballot boundary
+
+For the first Ollama actor, the ballot call requests a closed JSON schema containing:
+
+```text
+choice
+rationale
+```
+
+`choice` must be one of the NEXUS ballot enum values. Malformed output fails; NEXUS does not invent a ballot on the model's behalf.
 
 ## Failure handling
 
 A provider outage is not a vote.
 
+Future configured adapters should expose states such as:
+
 ```text
-member state:
 READY
 RUNNING
 COMMITTED
@@ -188,18 +223,48 @@ TIMED_OUT
 WITHDRAWN
 ```
 
-The Council policy should define before a session whether failed members reduce quorum, trigger retry, or cause the round to pause. The coordinator records the event rather than inventing a ballot on the member's behalf.
+Council policy should define before a session whether failed members reduce quorum, trigger retry, or pause the round. The coordinator records failure rather than fabricating a vote.
 
 ## Local models
 
 Local models are first-class Council citizens.
 
-An Ollama/local adapter should follow the same normalized contract as a remote provider adapter. Being local grants no extra vote; being remote grants no extra vote.
+The Ollama actor follows the same Council contract as the mock actor. Being local grants no extra vote; being larger grants no extra vote; being remote later will grant no extra vote.
+
+`OllamaTransport` is loopback-only by default. A non-loopback endpoint requires an explicit override and is outside the CI acceptance path.
+
+## Replay status
+
+Live model inference is not automatically deterministic evidence.
+
+Even though the fixture Modelfiles specify seeds to improve test stability, the Ollama actors report:
+
+```text
+replayable = false
+```
+
+Any Council containing one of those live actors therefore produces a non-replayable execution receipt. This avoids conflating stable-ish generation settings with QEC-style replay guarantees.
+
+## Threat model
+
+The executable local adapter boundary is covered by [`../THREAT_MODEL.md`](../THREAT_MODEL.md), including:
+
+- secret crossing the model boundary;
+- loopback/network escape;
+- provider/corporate authority claims;
+- parameter-count/model-size authority claims;
+- blind-round leakage;
+- malformed ballots;
+- endpoint impersonation;
+- resource exhaustion;
+- replay-status overclaiming.
+
+Remote/cloud providers will require their own additional authentication and destination controls before admission.
 
 ## Generic adapters
 
-A generic adapter path should make it possible to add future models without rewriting the Council.
+A future generic adapter path should make it possible to add new models without rewriting the Council.
 
-The invariant is:
+The invariant remains:
 
 > **Provider-specific outside; NEXUS protocol inside.**
