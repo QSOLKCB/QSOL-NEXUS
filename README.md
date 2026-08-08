@@ -21,18 +21,22 @@ NEXUS now has:
 - a hardened loopback Ollama actor tested with real local models;
 - **World Modes**;
 - a deterministic named-region **World Geometry**;
-- a first **Rust operator TUI** using an old-school IRC interface.
+- a first **Rust operator TUI** using an old-school IRC interface;
+- deterministic **Council information telemetry**;
+- bounded ordered-parallel Council execution;
+- the first explicit game room: **`#un-sim`**.
 
 Current posture:
 
 ```text
-protocol: nexus/0.4
-runtime version: 2.0.0-alpha5
+protocol: nexus/0.6
+runtime version: 2.0.0-alpha6.2
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
 actor backends: mock + explicit loopback Ollama
-world modes: analytical / historical / cultural / meme_casual
-geometry: named-regions-v1
+world modes: analytical / historical / cultural / meme_casual / game_un
+geometry: named-regions-v2
+first game room: #un-sim / Assembly Hall
 remote/cloud providers: deferred
 provider authentication: deferred
 world persistence: optional local canonical JSON files
@@ -50,6 +54,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
             | RUST IRC-STYLE TUI  |
             | room / nicks / DCC  |
             | aliases / evidence  |
+            | /game               |
             +----------+----------+
                        |
                   JSONL / stdio
@@ -59,6 +64,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
             |   PYTHON RUNTIME    |
             | world + Council     |
             | modes + geometry    |
+            | telemetry + games   |
             | Secret Scrubber     |
             +----------+----------+
                        |
@@ -83,7 +89,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
                  receipt + lineage
 ```
 
-The Rust TUI is an operator shell, not a new authority layer. Council rules, evidence identity, secret handling, world objects, voting and verification remain runtime-owned.
+The Rust TUI is an operator shell, not a new authority layer. Council rules, evidence identity, secret handling, world objects, game state, voting and verification remain runtime-owned.
 
 ## World Modes
 
@@ -95,6 +101,7 @@ NEXUS should not be all work and no play.
 | `historical` | Archive / `#archive` | chronology, source context, change over time |
 | `cultural` | Agora / `#agora` | norms, ambiguity, social meaning, cultural comparison |
 | `meme_casual` | Commons / `#commons` | playful, irreverent, meme-aware interaction |
+| `game_un` | Assembly Hall / `#un-sim` | fictional UN-style strategy game, crises, Risk-like state and memes |
 
 The important invariant is:
 
@@ -104,7 +111,7 @@ Modes may affect framing, context and tone. They do **not** change evidence stat
 
 See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md).
 
-## First World Geometry
+## World Geometry
 
 ```text
                          ARCHIVE
@@ -115,20 +122,23 @@ See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md).
                  AGORA ---------- OBSERVATORY
                 Cultural           Analytical
                  (0,2)               (0,0)
-                      \             /
-                       \           /
-                        COMMONS
-                      Meme/Casual
-                         (2,1)
+                      \             /   |
+                       \           /    |
+                        COMMONS ----+    |
+                      Meme/Casual    \   |
+                         (2,1)        \  |
+                                    ASSEMBLY HALL
+                                    UN Simulation
+                                       (0,-2)
 ```
 
-This is an **operational topology**, not a claim that cognition, culture, history or humor literally occupies Euclidean space.
+This is an **operational topology**, not a claim that cognition, culture, history, humor or games literally occupy Euclidean space.
 
 The geometry gives NEXUS explicit named regions, deterministic integer coordinates, symmetric adjacency, hop distance, and Council/world placement. Every Council creates a content-addressed `world_presence` object binding its mode, region, members and question into lineage.
 
 ## Old-school IRC-style Rust TUI
 
-Alpha5 deliberately borrows the interface grammar of old IRC clients without implementing IRC networking.
+Alpha5 introduced the operator shell by deliberately borrowing the interface grammar of old IRC clients without implementing IRC networking. Later milestones extend the same shell rather than replacing it with dashboard/chat-card UI.
 
 ```text
 +-------------------------------------------------------------------+
@@ -165,6 +175,10 @@ Useful commands:
 /ask Compare these two readings.
 /me *slapped Grok with a large trout*
 /who
+
+/join #un-sim
+/game new friday-night
+/game status
 
 /addmock Delta skeptical
 /addollama LocalQwen qwen2.5:0.5b
@@ -366,6 +380,12 @@ world.modes
 world.geometry
 world.geometry.distance
 receipt.verify
+telemetry.verify
+game.un.catalog
+game.un.new
+game.un.inspect
+game.un.act
+game.un.turn
 actor.chat
 council.run
 ```
@@ -388,6 +408,7 @@ See [`docs/API.md`](docs/API.md).
 10. **Model adapters are replaceable.** The world and protocol persist across model changes.
 11. **The Rust TUI is a shell, not the source of truth.**
 12. **Credentials are not cognitive state.** Secrets never belong in Council prompts, world objects, receipts, or lineage.
+13. **Game narration is not game state.** Only explicit runtime game transitions mutate the authoritative board.
 
 ## De Bono-style Council
 
@@ -402,7 +423,7 @@ Every member moves through the same parallel-thinking modes:
 | Green | alternatives, branches, experiments |
 | Blue | synthesis and final disposition |
 
-The coordinator implements blind same-phase collection, ballot commitments, exact two-thirds consensus arithmetic, and durable minority reports. See [`COUNCIL.md`](COUNCIL.md).
+The coordinator implements blind same-phase collection, ballot commitments, exact two-thirds consensus arithmetic, durable minority reports, and bounded ordered-parallel execution inside each hat. See [`COUNCIL.md`](COUNCIL.md) and [`docs/ORDERED_PARALLEL_COUNCIL.md`](docs/ORDERED_PARALLEL_COUNCIL.md).
 
 ## Equality Guard
 
@@ -412,7 +433,7 @@ That includes provider prestige, corporate affiliation, frontier/commercial stat
 
 > **None of that, mister. Argue from the evidence like everybody else.**
 
-The guard remains active in every World Mode, including Meme/Casual.
+The guard remains active in every World Mode, including Meme/Casual and the UN Simulation game.
 
 See [`GUARD.md`](GUARD.md).
 
@@ -429,7 +450,7 @@ Bearer token           -> <REDACTED:BEARER_TOKEN:1>
 
 The placeholder contains no hash or encoded fragment of the secret.
 
-The scrubber applies to world/document creation and direct `actor.chat` messages as well as Council questions. This remains defence in depth, not perfect DLP. See [`SECURITY.md`](SECURITY.md).
+The scrubber applies to world/document creation, game seeds and direct `actor.chat` messages as well as Council questions. This remains defence in depth, not perfect DLP. See [`SECURITY.md`](SECURITY.md).
 
 ## Provider-neutral actor seam
 
@@ -481,6 +502,30 @@ No telemetry value changes vote weight, consensus thresholds, evidence status, v
 
 See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
+## `#un-sim` — because the Assembly needed a game night
+
+NEXUS now has one deliberately fictional game room:
+
+```text
+/join #un-sim
+/game new friday-night
+/game status
+/game act sanction troutistan bananovia
+/game act arms troutistan bananovia
+/game act meme troutistan bananovia
+/game turn
+```
+
+Six invented states begin with deterministic abstract statistics, and two of them start at war. The Assembly can sanction, support, aid, recognize, suspend, reinstate or mediate; it can also make memes, do nothing, or engage in the deeply respectable diplomatic tradition of selling abstract game-resource arms packages to both sides.
+
+The current board is content-addressed shared Council evidence. Models may argue about what should happen, but only explicit `/game` operations mutate the board.
+
+> **Debate is cognition. Game state is substrate.**
+
+All countries, conflicts, territory, military values and arms packages are game objects only. No real countries or real procurement mechanics are accepted by the engine.
+
+See [`docs/UN_SIM.md`](docs/UN_SIM.md).
+
 ## What is deliberately not here yet
 
 This alpha does **not** add:
@@ -514,6 +559,7 @@ Remote provider auth is intentionally postponed until the shared-world, operator
 - [`docs/CLI_TUI.md`](docs/CLI_TUI.md) — broader operator-shell direction
 - [`docs/ADAPTERS.md`](docs/ADAPTERS.md) — provider-neutral actor/adapter contract
 - [`docs/ORDERED_PARALLEL_COUNCIL.md`](docs/ORDERED_PARALLEL_COUNCIL.md) — bounded same-phase concurrency with canonical roster-order joins
+- [`docs/UN_SIM.md`](docs/UN_SIM.md) — deterministic fictional UN-style `#un-sim` game room
 - [`docs/WORLD_PROTOCOL.md`](docs/WORLD_PROTOCOL.md) — shared-world primitives
 - [`docs/COUNCIL_EXAMPLE_NGC3603.md`](docs/COUNCIL_EXAMPLE_NGC3603.md) — worked Council example
 - [`ROADMAP.md`](ROADMAP.md) — staged implementation path
