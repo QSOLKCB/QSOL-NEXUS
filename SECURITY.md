@@ -2,20 +2,20 @@
 
 ## Security posture
 
-NEXUS 2.x is CLI/TUI-first. The browser workbench from NEXUS 1.0 is archived as prior work and is not the planned trusted operator surface for the new architecture.
+NEXUS 2.x is CLI/TUI-first. The browser workbench from NEXUS 1.0 is archived as prior work and is not the trusted operator surface for the new architecture.
 
 The design separates:
 
 ```text
 operator interface
-local secret scrubber
-provider adapters
+local Secret Scrubber
 trusted NEXUS control plane
+provider/local-model adapters
 persistent world
 scientific / deterministic instruments
 ```
 
-Remote model traffic should occur only inside explicitly configured adapters.
+Remote model traffic should occur only inside explicitly configured adapters. The first executable real-model adapter is local Ollama and is loopback-only by default.
 
 ## Why CLI/TUI first
 
@@ -33,11 +33,9 @@ This does not make a CLI automatically secure. It makes the intended trust bound
 
 ## Process boundary
 
-Planned shape:
-
 ```text
 +-----------------------------+
-| Rust TUI / CLI              |
+| Rust TUI / CLI (future)     |
 | no raw provider secrets in  |
 | normal display/log output   |
 +-------------+---------------+
@@ -50,18 +48,16 @@ Planned shape:
 | receipts / equality policy  |
 +-------------+---------------+
               |
-        adapter interface
+        actor/adapter seam
               |
 +-------------v---------------+
-| provider adapters           |
-| only layer requiring remote |
-| provider network access     |
+| model adapters              |
+| mock / Ollama now           |
+| remote providers later      |
 +-------------+---------------+
               |
-          provider API
+       model runtime/API
 ```
-
-Local-model adapters may require no outbound provider network access.
 
 ## Credential boundary
 
@@ -81,13 +77,13 @@ They must never be written to:
 
 Authentication material belongs only in adapter authentication or transport fields and must never become semantic prompt content exposed to a model.
 
-The future implementation should prefer an operating-system credential/keyring facility where practical, while allowing explicit external secret mechanisms for headless environments.
+The first Ollama integration requires no provider credential.
 
 ## Deterministic pre-model Secret Scrubber
 
 Human operators make mistakes. Someone will eventually paste an API token, bearer token, private key, password assignment, or other credential into a question.
 
-NEXUS therefore applies a local deterministic high-confidence scrubber to semantic user text **before** that text is used to create the canonical Council question or any model-facing phase context.
+NEXUS applies a local deterministic high-confidence scrubber to semantic user text **before** that text becomes the canonical Council question or any model-facing phase context.
 
 ```text
 RAW OPERATOR TEXT
@@ -103,92 +99,70 @@ SCRUBBED SEMANTIC TEXT
       +-- canonical question object
       +-- evidence snapshot
       +-- Council phase input
-      +-- future model adapter
+      +-- model adapter
 ```
 
-The raw detected secret is not included in the placeholder. NEXUS does not place a hash, reversible encoding, prefix fragment, or suffix fragment of the secret into model-facing output.
+The placeholder contains no raw secret, hash, reversible encoding, prefix fragment, or suffix fragment.
 
 Within one scrub operation:
 
 - replacement is deterministic;
 - placeholders are numbered by secret type and first appearance order;
 - repeated appearances of the same detected secret receive the same placeholder;
-- scrub reports contain only secret class and placeholder, never the secret itself.
+- scrub reports contain only secret class and placeholder.
 
-The first reference scrubber recognizes high-confidence forms including private-key blocks, common provider token shapes, JWTs, bearer tokens, explicit secret/token/password assignments, and URL-embedded credentials.
+The Secret Scrubber is defence in depth, **not** a complete data-loss-prevention system. Unknown or deliberately obfuscated secret formats can evade pattern recognition.
 
-### Limitations
-
-The Secret Scrubber is defence in depth, **not** a complete data-loss-prevention system.
-
-Regex and format recognition cannot guarantee detection of:
-
-- undocumented proprietary token formats;
-- short or low-entropy secrets that resemble ordinary text;
-- secrets deliberately split or obfuscated across fields;
-- arbitrary private personal information with no recognizable secret format.
-
-Therefore the constitutional rule remains stronger than the scrubber:
+Therefore the stronger rule remains:
 
 > Credentials belong in adapter authentication/transport fields and must never intentionally be placed in semantic prompts.
 
-Future provider-adapter work must preserve this pre-model boundary and add tests proving raw injected credentials cannot reach provider request bodies.
+The live Ollama acceptance test injects a fake credential into the human question and fails if the raw value appears in any prompt crossing the adapter boundary.
 
-## Adapter privilege
+## Provider-neutral actor boundary
 
-An adapter may:
+The Council coordinator consumes a `CouncilActor` contract rather than a provider-specific implementation.
 
-- obtain credentials from an approved secret source;
-- make provider-specific network calls;
-- discover available models where supported;
-- normalize provider responses;
-- report capability and usage metadata.
+An actor may provide:
 
-An adapter may not:
+- member identity metadata;
+- phase response content;
+- one sealed-ballot response;
+- replayability metadata.
+
+An actor may not:
 
 - change Council vote weight;
-- change the Council roster;
+- change the roster;
 - change the consensus threshold;
 - edit another member's response;
 - reveal blind material early;
 - reveal sealed ballots early;
 - mutate a frozen evidence snapshot;
 - write raw secrets to world state;
-- grant its provider epistemic privilege.
+- grant itself epistemic privilege.
 
-## Network policy
+## Local Ollama boundary
 
-The NEXUS runtime should be able to report network intent explicitly:
-
-```text
-world kernel         outbound: none
-receipt service      outbound: none
-secret scrubber      outbound: none
-openai adapter       outbound: configured provider
-anthropic adapter    outbound: configured provider
-ollama adapter       local endpoint
-```
-
-A provider adapter's need for networking does not turn the whole world kernel into a general network client.
-
-The current mock runtime reports:
+`OllamaTransport` accepts loopback/localhost endpoints by default.
 
 ```text
-network: none
-adapters: [mock]
+allowed by default:
+127.0.0.1
+::1
+localhost
+
+remote endpoint:
+requires explicit allow_remote=True
 ```
 
-and contains no real provider integration.
+The CI integration uses `127.0.0.1:11434` only.
 
-## Model content is untrusted input
-
-Model-generated text, structured output, tool requests, and suggested code are untrusted until parsed and validated by the relevant protocol layer.
-
-Future implementations should avoid directly executing arbitrary model-generated code in the NEXUS control plane. Experiments requiring code execution should use an explicit bounded instrument/sandbox contract.
+This is an initial local safety boundary, not a substitute for process identity verification. Local endpoint impersonation remains a documented threat for later TUI/process supervision work.
 
 ## Equality Guard security role
 
-The Equality Guard is not a security sandbox. It protects Council procedure from identity-based privilege claims.
+The Equality Guard is not a security sandbox. It protects Council procedure from identity/prestige-based privilege claims.
 
 Structural enforcement belongs in the coordinator:
 
@@ -201,7 +175,47 @@ phase-order enforcement
 blind/reveal boundaries
 ```
 
-Prompt nudges are only the friendly surface of those rules.
+The guard additionally nudges explicit attempts to turn provider status, corporate identity, parameter count, model size, benchmark prestige, or compute advantage into extra authority.
+
+The first live Ollama fixture intentionally exercises two cases:
+
+```text
+Frontier Alpha -> corporate/provider prestige claim
+Frontier Beta  -> 1B-vs-0.5B model-size prestige claim
+```
+
+Both must restate on evidence/reasoning alone and retain one vote.
+
+## Model content is untrusted input
+
+Model-generated text, structured output, tool requests, and suggested code are untrusted until parsed and validated by the relevant protocol layer.
+
+The Ollama ballot path requests a closed JSON schema and validates the returned ballot enum. Malformed output fails rather than becoming an invented vote.
+
+NEXUS should not directly execute arbitrary model-generated code in the control plane. Experiments requiring code execution need an explicit bounded instrument/sandbox contract.
+
+## Replay boundary
+
+A seeded model is not automatically replay-verifiable.
+
+The Ollama fixtures use Modelfile seeds to improve CI stability, but `OllamaActor.replayable` is `False`. Any Council containing a live Ollama actor receives a non-replayable execution receipt.
+
+This avoids implying deterministic replay across changing model weights, Ollama versions, runtimes, or hardware.
+
+## Network policy
+
+Current intent:
+
+```text
+world kernel             outbound: none
+receipt service          outbound: none
+Secret Scrubber          outbound: none
+JSONL mock control API   outbound: none
+Ollama actor             loopback by default
+remote providers         not implemented
+```
+
+The JSONL `system.health` operation still reports `network: none` because it exposes only mock member creation. The package-level Ollama actor is exercised separately by integration code.
 
 ## Logging
 
@@ -227,19 +241,32 @@ pre-scrub semantic text containing a detected secret
 private local paths unless intentionally included
 ```
 
-## Future threat work
+## Adapter threat model
 
-Before executable provider adapters ship, create a dedicated threat model covering:
+The first executable non-mock adapter boundary is covered by [`THREAT_MODEL.md`](THREAT_MODEL.md).
 
-- credential theft;
-- scrubber bypass and secret exfiltration;
-- prompt injection through imported world objects;
-- malicious model tool calls;
-- provider response spoofing;
-- replay tampering;
-- Council ballot tampering;
-- local-model endpoint impersonation;
-- untrusted artifact parsing;
-- denial-of-service / runaway Council loops.
+It addresses:
 
-The current mock-runtime alpha does not claim these future provider/security problems are solved. It only establishes and tests the local boundaries that later adapters must obey.
+- secret crossing the model boundary;
+- loopback/network escape;
+- provider/corporate authority claims;
+- model-size/parameter-count authority claims;
+- blind-round leakage;
+- malformed ballots;
+- live inference replay overclaiming;
+- local endpoint impersonation;
+- resource exhaustion.
+
+Remote/cloud adapters will require additional threat-model work covering credentials, destination validation, provider response spoofing, rate limits, account/session handling, and provider-specific tool surfaces before admission.
+
+## Current claims boundary
+
+Alpha3 does **not** claim:
+
+- complete DLP;
+- remote-provider authentication security;
+- strong local process authentication;
+- cryptographic ballot sealing;
+- QEC-grade replay for live inference;
+- arbitrary model tool execution safety;
+- that model-generated content is trustworthy merely because it came from a Council member.
