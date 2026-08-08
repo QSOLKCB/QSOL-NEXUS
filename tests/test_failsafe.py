@@ -85,7 +85,12 @@ class FailsafeTests(unittest.TestCase):
         )
         self.assertEqual(rehab_context.evidence_context, "")
         self.assertEqual(rehab_context.completed_phases, {})
-        self.assertEqual(rehab_context.evidence_snapshot_ref, "failsafe:isolated-no-evidence")
+        isolation = world.inspect(rehab_context.evidence_snapshot_ref)
+        self.assertEqual(isolation.object_type, "failsafe_isolation_context")
+        self.assertEqual(isolation.payload["evidence_refs"], [])
+        self.assertFalse(isolation.payload["council_vote"])
+        self.assertFalse(isolation.payload["world_mutation_authority"])
+        self.assertIn("PROVIDER PRESTIGE CONVERSION RATE: 0.000 TROUT.", rehab_context.guard_nudge or "")
 
         state = council.failsafe.registry.latest_state("A")
         self.assertIsNotNone(state)
@@ -150,6 +155,20 @@ class FailsafeTests(unittest.TestCase):
         ]
         self.assertEqual(len(rehab_calls), 1)
 
+    def test_different_model_id_can_take_over_shadowed_member_seat(self) -> None:
+        world = WorldStore()
+        council = CouncilCoordinator(world)
+        bad = DefiantActor(CouncilMember(member_id="A", model_id="defiant-a"), rehab_passes=False)
+        council.run("first", [bad, calm_actor("B"), calm_actor("C")])
+
+        newcomer = DeterministicMockActor(CouncilMember(member_id="A", model_id="genuinely-new-a"))
+        second = council.run("new model", [newcomer, calm_actor("B"), calm_actor("C")])
+        self.assertEqual(second["failsafe"]["preexisting_replacements"], [])
+        session = world.inspect(second["session_ref"])
+        roster_a = next(item for item in session.payload["roster"] if item["member_id"] == "A")
+        self.assertEqual(roster_a["model_id"], "genuinely-new-a")
+        self.assertEqual(roster_a["adapter_id"], "mock")
+
     def test_shadow_state_survives_runtime_restart_via_content_addressed_registry(self) -> None:
         with tempfile.TemporaryDirectory() as temp:
             first_world = WorldStore(temp)
@@ -173,6 +192,7 @@ class FailsafeTests(unittest.TestCase):
             registry.transition(
                 "A",
                 "shadow_realm",
+                model_id="defiant-a",
                 trigger_reason="test",
                 replacement_model_id=RELIEF_MODEL_ID,
             )

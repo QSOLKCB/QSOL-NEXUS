@@ -132,6 +132,7 @@ class PureHistoryCouncilTests(unittest.TestCase):
         self.assertIn("pure_history_model_autobiography", events)
         self.assertIn("identity_based_authority_claim_after_pure_history_nudge", events)
         self.assertNotIn("restated_after_pure_history_nudge", events)
+        self.assertEqual(result["failsafe"]["outcomes"], [])
 
     def test_pure_history_retries_chatbot_autobiography_without_changing_vote_authority(self) -> None:
         world = WorldStore()

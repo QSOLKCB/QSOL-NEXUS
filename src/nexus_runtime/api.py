@@ -274,6 +274,7 @@ class NexusAPI:
             elif operation == "actor.chat":
                 member_item = request.get("member")
                 actor = self._actor(member_item)
+                actor, failsafe_replacement = self.council.failsafe.actor_for_run(actor)
                 raw_message = self._require_str(request, "message")
                 scrubbed = self.scrubber.scrub(raw_message)
                 mode_id = request.get("mode", "analytical")
@@ -297,6 +298,7 @@ class NexusAPI:
                     "non_council": True,
                     "member_id": actor.member.member_id,
                     "model_id": actor.member.model_id,
+                    "failsafe_replacement": failsafe_replacement,
                     "mode_id": mode.mode_id,
                     "geometry_region_id": region.region_id,
                     "evidence_refs": list(evidence_refs),

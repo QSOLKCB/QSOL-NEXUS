@@ -207,6 +207,41 @@ class APITests(unittest.TestCase):
         self.assertFalse(result["remote_provider_auth"])
         self.assertEqual(result["actor_backends_available"], ["mock", "ollama"])
 
+    def test_actor_chat_uses_relief_actor_for_shadowed_model_identity(self) -> None:
+        api = NexusAPI()
+        api.council.failsafe.registry.transition(
+            "A",
+            "shadow_realm",
+            model_id="mock-a",
+            trigger_reason="test_fixture",
+            replacement_model_id="nexus-failsafe-relief-v1",
+        )
+        result = api.handle(
+            {
+                "operation": "actor.chat",
+                "member": {"member_id": "A", "model_id": "mock-a", "adapter_id": "mock"},
+                "message": "hello",
+            }
+        )
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["model_id"], "nexus-failsafe-relief-v1")
+        self.assertEqual(result["failsafe_replacement"]["member_id"], "A")
+        self.assertIn("original actor for this seat is in the Shadow Realm", result["response"])
+
+    def test_failsafe_status_operation_reports_durable_state(self) -> None:
+        api = NexusAPI()
+        api.council.failsafe.registry.transition(
+            "A",
+            "shadow_realm",
+            model_id="mock-a",
+            trigger_reason="test_fixture",
+            replacement_model_id="nexus-failsafe-relief-v1",
+        )
+        result = api.handle({"operation": "failsafe.status", "member_id": "A"})
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual(result["members"]["A"]["status"], "shadow_realm")
+        self.assertEqual(result["members"]["A"]["model_id"], "mock-a")
+
     def test_api_rejects_weighted_member(self) -> None:
         api = NexusAPI()
         result = api.handle(

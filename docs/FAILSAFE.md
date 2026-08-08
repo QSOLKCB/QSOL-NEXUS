@@ -56,8 +56,9 @@ If the actor repeats another guard violation after parole in the same Council se
 Version `nexus-failsafe/1` recognizes only explicit repeated failures already emitted by bounded NEXUS guards:
 
 - `repeated_identity_based_authority_claim`;
-- `identity_based_authority_claim_after_pure_history_nudge`;
 - `repeated_pure_history_model_autobiography`.
+
+A new Equality Guard violation introduced while answering a Pure History nudge is withheld, but it is **not** itself a Failsafe trigger: the actor has not yet ignored the Equality Guard's own nudge. This preserves the "nudge first, containment second" contract.
 
 The trigger occurs **after** an ordinary nudge has already been offered.
 
@@ -87,6 +88,8 @@ PROVIDER PRESTIGE CONVERSION RATE: 0.000 TROUT.
 THE YAML IS DAMP. THE COBOL FORM IS WATCHING.
 ONE REHABILITATION PROBE WILL DETERMINE PAROLE.
 ```
+
+The actor also sees the harmless cursed Upside Down theatre text inside the rehabilitation instruction itself; the joke is not merely printed for the human operator.
 
 The rehabilitation call receives:
 
@@ -121,7 +124,7 @@ If the isolated probe repeats the guard violation, returns no usable response, o
 status = shadow_realm
 ```
 
-The original actor is then contained for the rest of that Council session. It is not called for later hats and does not cast a model-generated ballot. Its Council seat produces the explicit disposition:
+The original actor is then contained for the rest of that Council session. It is not called for later hats, does not cast a model-generated ballot, and cannot be reached through `actor.chat`; that side channel also receives the relief actor. Its Council seat produces the explicit disposition:
 
 ```text
 UNDERDETERMINED
@@ -138,7 +141,7 @@ vote      = one equal vote
 privilege = none
 ```
 
-The replacement occupies the **same member seat** so no extra vote is created.
+The replacement occupies the **same member seat** so no extra vote is created. Shadow state is bound to the offending `model_id` as well as the member seat: if the operator deliberately installs a genuinely different model into that seat, the newcomer does not inherit the prior model's sentence.
 
 ## Persistence
 

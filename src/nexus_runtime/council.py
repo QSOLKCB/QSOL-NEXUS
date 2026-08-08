@@ -68,7 +68,7 @@ class CouncilCoordinator:
         requested_actors = tuple(actors)
         self._validate_roster(requested_actors)
         failsafe_state_by_member = {
-            actor.member.member_id: self.failsafe.state_ref(actor.member.member_id)
+            actor.member.member_id: self.failsafe.state_ref(actor.member.member_id, actor.member.model_id)
             for actor in requested_actors
         }
         effective_actors: list[CouncilActor] = []

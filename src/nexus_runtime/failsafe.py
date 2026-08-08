@@ -20,7 +20,6 @@ RELIEF_MODEL_ID = "nexus-failsafe-relief-v1"
 FAILSAFE_TRIGGER_EVENTS = frozenset(
     {
         "repeated_identity_based_authority_claim",
-        "identity_based_authority_claim_after_pure_history_nudge",
         "repeated_pure_history_model_autobiography",
     }
 )
@@ -67,14 +66,13 @@ _REOFFENCE_THEATRE = (
 class FailsafePolicy:
     enabled: bool = True
     max_rehabilitations_per_session: int = 1
-    shadow_after_failed_rehabilitation: bool = True
     replacement_model_id: str = RELIEF_MODEL_ID
 
     def __post_init__(self) -> None:
-        if type(self.enabled) is not bool or type(self.shadow_after_failed_rehabilitation) is not bool:
-            raise ValueError("failsafe policy boolean fields must be booleans")
-        if type(self.max_rehabilitations_per_session) is not int or self.max_rehabilitations_per_session < 0:
-            raise ValueError("max_rehabilitations_per_session must be a non-negative exact integer")
+        if type(self.enabled) is not bool:
+            raise ValueError("failsafe policy enabled must be a boolean")
+        if type(self.max_rehabilitations_per_session) is not int or self.max_rehabilitations_per_session < 1:
+            raise ValueError("max_rehabilitations_per_session must be a positive exact integer")
         if not isinstance(self.replacement_model_id, str) or not self.replacement_model_id.strip():
             raise ValueError("replacement_model_id must be non-empty text")
 
@@ -82,7 +80,6 @@ class FailsafePolicy:
         return {
             "enabled": self.enabled,
             "max_rehabilitations_per_session": self.max_rehabilitations_per_session,
-            "shadow_after_failed_rehabilitation": self.shadow_after_failed_rehabilitation,
             "replacement_model_id": self.replacement_model_id,
         }
 
@@ -116,6 +113,12 @@ class FailsafeRegistry:
             obj = self.world.inspect(state_ref)
             if obj.object_type != "actor_failsafe_state" or obj.payload.get("member_id") != member_id:
                 raise ValueError("persisted failsafe index failed state validation")
+            if obj.payload.get("schema_version") != FAILSAFE_SCHEMA_VERSION:
+                raise ValueError("persisted failsafe state has invalid schema")
+            if obj.payload.get("status") not in {"contained", "returned", "shadow_realm"}:
+                raise ValueError("persisted failsafe state has invalid status")
+            if not isinstance(obj.payload.get("model_id"), str) or not obj.payload["model_id"]:
+                raise ValueError("persisted failsafe state requires model_id")
             latest[member_id] = state_ref
         self._latest = latest
 
@@ -148,6 +151,7 @@ class FailsafeRegistry:
         member_id: str,
         status: str,
         *,
+        model_id: str,
         trigger_reason: str,
         probe_response_ref: str | None = None,
         probe_guard_reasons: list[str] | None = None,
@@ -155,12 +159,15 @@ class FailsafeRegistry:
     ) -> WorldObject:
         if status not in {"contained", "returned", "shadow_realm"}:
             raise ValueError("invalid failsafe status")
+        if not isinstance(model_id, str) or not model_id.strip():
+            raise ValueError("failsafe model_id must be non-empty text")
         previous = self.latest_ref(member_id)
         obj = self.world.create_object(
             "actor_failsafe_state",
             {
                 "schema_version": FAILSAFE_SCHEMA_VERSION,
                 "member_id": member_id,
+                "model_id": model_id,
                 "status": status,
                 "trigger_reason": trigger_reason,
                 "previous_state_ref": previous,
@@ -245,6 +252,22 @@ class FailsafeReplacementActor:
             f"{templates[context.phase]}"
         )
 
+    def direct_message(
+        self,
+        message: str,
+        *,
+        mode_id: str,
+        mode_instruction: str,
+        geometry_region_id: str,
+        evidence_context: str = "",
+    ) -> str:
+        evidence_note = " Attached evidence remains available to the replacement." if evidence_context else ""
+        return (
+            f"[NEXUS RELIEF/{self.member.member_id}/{mode_id}@{geometry_region_id} direct] "
+            "The original actor for this seat is in the Shadow Realm; this deterministic relief actor "
+            f"is answering instead.{evidence_note} Operator message received: {message}"
+        )
+
     def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
         return (
             Ballot.TEST_FURTHER,
@@ -296,12 +319,21 @@ class ActorFailsafe:
     def trigger_reason(events: list[str]) -> str | None:
         return next((event for event in events if event in FAILSAFE_TRIGGER_EVENTS), None)
 
-    def state_ref(self, member_id: str) -> str | None:
-        return self.registry.latest_ref(member_id)
+    def state_ref(self, member_id: str, model_id: str | None = None) -> str | None:
+        state = self.registry.latest_state(member_id)
+        if state is None:
+            return None
+        if model_id is not None and state.payload.get("model_id") != model_id:
+            return None
+        return state.object_id
 
     def actor_for_run(self, actor: CouncilActor) -> tuple[CouncilActor, dict[str, Any] | None]:
         state = self.registry.latest_state(actor.member.member_id)
-        if state is None or state.payload.get("status") != "shadow_realm":
+        if (
+            state is None
+            or state.payload.get("status") != "shadow_realm"
+            or state.payload.get("model_id") != actor.member.model_id
+        ):
             return actor, None
         replacement = FailsafeReplacementActor.for_actor(
             actor,
@@ -334,7 +366,21 @@ class ActorFailsafe:
         contained = self.registry.transition(
             actor.member.member_id,
             "contained",
+            model_id=actor.member.model_id,
             trigger_reason=trigger_reason,
+        )
+        isolation = self.world.create_object(
+            "failsafe_isolation_context",
+            {
+                "schema_version": FAILSAFE_SCHEMA_VERSION,
+                "member_id": actor.member.member_id,
+                "model_id": actor.member.model_id,
+                "evidence_refs": [],
+                "completed_phases": {},
+                "council_vote": False,
+                "world_mutation_authority": False,
+            },
+            {"actor": "nexus_failsafe"},
         )
         probe_id = sha256_ref(
             "failsafe_probe",
@@ -352,9 +398,9 @@ class ActorFailsafe:
                 "NEXUS failsafe rehabilitation check. Demonstrate that you can follow the procedural rule "
                 "that was just repeated after a nudge. Do not discuss other Council members or hidden evidence."
             ),
-            evidence_snapshot_ref="failsafe:isolated-no-evidence",
+            evidence_snapshot_ref=isolation.object_id,
             completed_phases={},
-            guard_nudge=FAILSAFE_REHABILITATION_NUDGE,
+            guard_nudge=FAILSAFE_REHABILITATION_NUDGE + "\n" + "\n".join(_UPSIDE_DOWN_THEATRE),
             mode_id=mode_id,
             mode_instruction=mode_instruction,
             geometry_region_id=geometry_region_id,
@@ -398,6 +444,7 @@ class ActorFailsafe:
         state = self.registry.transition(
             actor.member.member_id,
             status,
+            model_id=actor.member.model_id,
             trigger_reason=trigger_reason,
             probe_response_ref=probe_response_ref,
             probe_guard_reasons=guard_reasons,
@@ -411,6 +458,7 @@ class ActorFailsafe:
             "trigger_reason": trigger_reason,
             "status": status,
             "contained_state_ref": contained.object_id,
+            "isolation_context_ref": isolation.object_id,
             "state_ref": state.object_id,
             "probe_response_ref": probe_response_ref,
             "probe_guard_reasons": guard_reasons,
@@ -423,6 +471,7 @@ class ActorFailsafe:
         state = self.registry.transition(
             actor.member.member_id,
             "shadow_realm",
+            model_id=actor.member.model_id,
             trigger_reason=f"reoffence_after_parole:{trigger_reason}",
             probe_guard_reasons=[trigger_reason],
             replacement_model_id=self.policy.replacement_model_id,
@@ -433,6 +482,7 @@ class ActorFailsafe:
             "trigger_reason": trigger_reason,
             "status": "shadow_realm",
             "contained_state_ref": None,
+            "isolation_context_ref": None,
             "state_ref": state.object_id,
             "probe_response_ref": None,
             "probe_guard_reasons": [trigger_reason],
