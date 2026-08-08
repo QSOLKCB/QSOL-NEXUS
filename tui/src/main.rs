@@ -202,6 +202,7 @@ struct App {
     mud_refs: BTreeMap<String, String>,
     go64_confirmation_pending: bool,
     go64: Option<Go64Session>,
+    go64_view_start: Option<usize>,
     targeted_evidence: BTreeMap<String, Vec<String>>,
     dcc_sessions: Vec<DccSession>,
     private_target: Option<String>,
@@ -232,6 +233,7 @@ impl App {
             mud_refs: BTreeMap::new(),
             go64_confirmation_pending: false,
             go64: None,
+            go64_view_start: None,
             targeted_evidence: BTreeMap::new(),
             dcc_sessions: Vec::new(),
             private_target: None,
@@ -373,9 +375,18 @@ impl App {
     fn handle_go64_line(&mut self, line: &str) -> bool {
         let trimmed = line.trim();
 
+        if self.go64_confirmation_pending
+            && (trimmed.eq_ignore_ascii_case("/quit") || trimmed.eq_ignore_ascii_case("/exit"))
+        {
+            self.go64_confirmation_pending = false;
+            self.running = false;
+            return true;
+        }
+
         if self.go64_confirmation_pending {
             if trimmed.eq_ignore_ascii_case("yes") || trimmed.eq_ignore_ascii_case("y") {
                 self.go64_confirmation_pending = false;
+                self.go64_view_start = Some(self.scrollback.len());
                 self.go64 = Some(Go64Session::new());
                 for line in Go64Session::boot_lines(&self.nick) {
                     self.append(&line);
@@ -414,12 +425,18 @@ impl App {
     }
 
     fn apply_go64_action(&mut self, action: Go64Action) {
+        if action.clear_view {
+            self.go64_view_start = Some(self.scrollback.len());
+            self.scroll_offset = 0;
+        }
         for line in action.lines {
             self.append(&line);
         }
         if action.exit_alias {
             self.go64 = None;
             self.go64_confirmation_pending = false;
+            self.go64_view_start = None;
+            self.scroll_offset = 0;
             self.append(&format!(
                 "*** GO64 EXITED. STILL IN {} mode={} region={}",
                 self.room.channel, self.room.mode_id, self.room.region_id
@@ -442,6 +459,16 @@ impl App {
 
     fn go64_active(&self) -> bool {
         self.go64.is_some()
+    }
+
+    fn visible_scrollback_start(&self) -> usize {
+        if self.go64.is_some() {
+            self.go64_view_start
+                .unwrap_or(self.scrollback.len())
+                .min(self.scrollback.len())
+        } else {
+            0
+        }
     }
 
     fn execute_command(
@@ -1679,11 +1706,13 @@ impl App {
         queue!(stdout, MoveTo(0, 0), Print(fit(&status, width as usize)))?;
 
         let body_height = height.saturating_sub(3) as usize;
+        let visible_floor = self.visible_scrollback_start();
+        let visible_len = self.scrollback.len().saturating_sub(visible_floor);
         let end = self
             .scrollback
             .len()
-            .saturating_sub(self.scroll_offset.min(self.scrollback.len()));
-        let start = end.saturating_sub(body_height);
+            .saturating_sub(self.scroll_offset.min(visible_len));
+        let start = end.saturating_sub(body_height).max(visible_floor);
         for (row, line) in self.scrollback[start..end].iter().enumerate() {
             queue!(
                 stdout,
@@ -1894,6 +1923,48 @@ mod tests {
             "/alias slap /me slaps $1 with $2-"
         );
         assert_eq!(app.preprocess("/unset %weapon"), "/unset %weapon");
+    }
+
+    #[test]
+    fn go64_confirmation_keeps_quit_as_process_exit() {
+        let mut app = App::new(
+            "Trent".to_string(),
+            PathBuf::from("/definitely/not/a/state/file"),
+        );
+        app.go64_confirmation_pending = true;
+        assert!(app.handle_go64_line("/quit"));
+        assert!(!app.running);
+        assert!(!app.go64_confirmation_pending);
+    }
+
+    #[test]
+    fn go64_clear_moves_only_the_visible_overlay_boundary() {
+        let mut app = App::new(
+            "Trent".to_string(),
+            PathBuf::from("/definitely/not/a/state/file"),
+        );
+        let host_scrollback = app.scrollback.clone();
+        app.go64_view_start = Some(app.scrollback.len());
+        app.go64 = Some(Go64Session::new());
+        app.append("OLD GO64 OUTPUT");
+        let old_go64_index = app.scrollback.len();
+        app.apply_go64_action(Go64Action {
+            lines: vec!["READY.".to_string()],
+            exit_alias: false,
+            quit_app: false,
+            clear_view: true,
+        });
+
+        assert_eq!(app.go64_view_start, Some(old_go64_index));
+        assert_eq!(
+            &app.scrollback[..host_scrollback.len()],
+            host_scrollback.as_slice()
+        );
+        assert_eq!(app.visible_scrollback_start(), old_go64_index);
+        assert!(app
+            .scrollback
+            .iter()
+            .any(|line| line.contains("OLD GO64 OUTPUT")));
     }
 
     #[test]

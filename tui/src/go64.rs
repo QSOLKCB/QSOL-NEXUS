@@ -51,6 +51,7 @@ pub struct Go64Action {
     pub lines: Vec<String>,
     pub exit_alias: bool,
     pub quit_app: bool,
+    pub clear_view: bool,
 }
 
 impl Go64Action {
@@ -59,6 +60,7 @@ impl Go64Action {
             lines,
             exit_alias: false,
             quit_app: false,
+            clear_view: false,
         }
     }
 }
@@ -169,6 +171,7 @@ impl Go64Session {
                 lines: prefix,
                 exit_alias: false,
                 quit_app: true,
+                clear_view: false,
             };
         }
 
@@ -183,12 +186,15 @@ impl Go64Session {
                     lines: prefix,
                     exit_alias: true,
                     quit_app: false,
+                    clear_view: false,
                 };
             }
             let remaining = GRASS_AFTER.saturating_sub(elapsed);
+            let remaining_secs = remaining.as_secs() + u64::from(remaining.subsec_nanos() > 0);
             prefix.push(format!(
-                "?DEVICE NOT READY  /grass unlocks in {}",
-                format_duration(remaining)
+                "?DEVICE NOT READY  /grass unlocks in {:02}:{:02}",
+                remaining_secs / 60,
+                remaining_secs % 60
             ));
             return Go64Action::output(prefix);
         }
@@ -241,10 +247,17 @@ impl Go64Session {
                     "READY.".to_string(),
                 ]
             }
-            _ if trimmed.eq_ignore_ascii_case("/clear") => vec![
-                "GO64 VIRTUAL SCREEN CLEARED. NEXUS SCROLLBACK PRESERVED.".to_string(),
-                "READY.".to_string(),
-            ],
+            _ if trimmed.eq_ignore_ascii_case("/clear") => {
+                return Go64Action {
+                    lines: vec![
+                        "GO64 VIRTUAL SCREEN CLEARED. NEXUS SCROLLBACK PRESERVED.".to_string(),
+                        "READY.".to_string(),
+                    ],
+                    exit_alias: false,
+                    quit_app: false,
+                    clear_view: true,
+                };
+            }
             _ if trimmed.eq_ignore_ascii_case("/mute") => {
                 vec!["VOICE DEVICE: NONE. TEXT-ONLY MODE WAS ALREADY MUTED IN 1982.".to_string()]
             }
@@ -586,6 +599,29 @@ mod tests {
             Go64Phase::Brainrot
         );
         assert_eq!(phase_for_elapsed(GRASS_AFTER), Go64Phase::GrassReady);
+    }
+
+    #[test]
+    fn grass_countdown_rounds_fractional_second_up() {
+        let mut session = Go64Session::new();
+        let almost = session.handle_at("/grass", "Trent", GRASS_AFTER - Duration::from_millis(1));
+        let text = almost.lines.join(" ");
+        assert!(!almost.exit_alias);
+        assert!(text.contains("00:01"));
+        assert!(!text.contains("unlocks in 00:00"));
+    }
+
+    #[test]
+    fn clear_requests_go64_view_reset_only() {
+        let mut session = Go64Session::new();
+        let clear = session.handle_at("/clear", "Trent", Duration::ZERO);
+        assert!(clear.clear_view);
+        assert!(!clear.exit_alias);
+        assert!(!clear.quit_app);
+        assert!(clear
+            .lines
+            .iter()
+            .any(|line| line.contains("NEXUS SCROLLBACK PRESERVED")));
     }
 
     #[test]
