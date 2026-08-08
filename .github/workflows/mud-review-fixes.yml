@@ -16,7 +16,9 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
       - name: Apply review fixes
-        run: python3 .github/scripts/fix_mud_review.py
+        run: |
+          python3 .github/scripts/fix_mud_review.py
+          python3 .github/scripts/fix_mud_review_assertion.py
       - name: Rust format
         run: cargo fmt --manifest-path tui/Cargo.toml
       - name: Rust tests
