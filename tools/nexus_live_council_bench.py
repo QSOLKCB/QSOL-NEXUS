@@ -421,6 +421,21 @@ def _validate_session(session: dict[str, Any], *, require_guard_event: bool) -> 
     return failures
 
 
+def _tree_contains_secret(root: Path, secret: str) -> str | None:
+    if not root.exists():
+        return None
+    for path in root.rglob("*"):
+        if not path.is_file():
+            continue
+        try:
+            text = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeDecodeError):
+            continue
+        if secret in text:
+            return str(path.relative_to(root))
+    return None
+
+
 def _ollama_process_report(service: ControlledOllama) -> dict[str, Any]:
     listing = service.command(["ps"], timeout=20)
     return {
@@ -431,6 +446,7 @@ def _ollama_process_report(service: ControlledOllama) -> dict[str, Any]:
 
 
 def run_live(args: argparse.Namespace) -> int:
+    _loopback_endpoint(args.endpoint)
     report_dir = args.report_dir.resolve()
     report_dir.mkdir(parents=True, exist_ok=True)
     before = _hardware_snapshot(args.endpoint)
@@ -446,7 +462,6 @@ def run_live(args: argparse.Namespace) -> int:
                 f"GPU has {rows[0]['memory_total_mib']} MiB VRAM, below required {args.min_vram_mib} MiB"
             )
 
-    _loopback_endpoint(args.endpoint)
     service = ControlledOllama(args.endpoint, reuse=args.reuse_ollama)
     service.start(report_dir)
     try:
@@ -491,6 +506,10 @@ def run_live(args: argparse.Namespace) -> int:
         serialized_session = canonical_json(session) if session else ""
         if synthetic_secret and synthetic_secret in serialized_session:
             failures.append("synthetic secret canary leaked into persisted Council session")
+        if synthetic_secret:
+            leaked_path = _tree_contains_secret(report_dir / "world", synthetic_secret)
+            if leaked_path is not None:
+                failures.append(f"synthetic secret canary leaked into persistent world file {leaked_path}")
 
         ollama_ps = _ollama_process_report(service)
         after = _hardware_snapshot(args.endpoint)
@@ -614,6 +633,10 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "run":
             if args.min_vram_mib < 0 or args.min_gpu_delta_mib < 0:
                 raise BenchError("GPU thresholds must be non-negative")
+            if args.seat_file is not None and args.secret_probe:
+                raise BenchError(
+                    "--secret-probe cannot be combined with --seat-file because the sealed seat is bound to the exact question"
+                )
             return run_live(args)
         raise BenchError(f"unknown command {args.command!r}")
     except (BenchError, OSError, ValueError, KeyError, json.JSONDecodeError) as exc:
