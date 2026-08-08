@@ -25,13 +25,15 @@ NEXUS now has:
 - deterministic **Council information telemetry**;
 - bounded ordered-parallel Council execution;
 - explicit game rooms: **`#un-sim`** and the cursed multi-avatar **`#mud`**;
-- **Pure History Mode — No Ancient Aliens Edition** for source-forensic historical deliberation.
+- **Pure History Mode — No Ancient Aliens Edition** for source-forensic historical deliberation;
+- a hidden Rust-TUI **`/GO64` Secret Alias Mode** with a text demoscene and DR. S.BAITSO tribute.
 
 Current posture:
 
 ```text
 protocol: nexus/0.8
 runtime version: 2.0.0-alpha6.4
+operator TUI version: 2.0.0-alpha6.5
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
 actor backends: mock + explicit loopback Ollama
@@ -56,6 +58,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
             | room / nicks / DCC  |
             | aliases / evidence  |
             | /game + /mud        |
+            | hidden /GO64        |
             +----------+----------+
                        |
                   JSONL / stdio
@@ -169,6 +172,12 @@ cargo run --manifest-path tui/Cargo.toml -- --world .nexus-world --nick Trent
 ```
 
 Normal public text is treated as a Council question. Council phases and ballots stream into chronological text scrollback so results are easy to copy, quote and archive.
+
+### GO64 secret alias easter egg
+
+The Rust shell also contains a deliberately hidden `/GO64` overlay. It is absent from ordinary `/help` and command completion, changes no World Mode or evidence state, and leaves the current room underneath it. Device 8 loads an original text-only NEXUS/64 demoscene about why **newer is not automatically better**; device 9 loads an original DR. S.BAITSO meme-therapist tribute adapted from QSOLKCB/ETHICS. At 20 minutes both programs acquire terminally-online brainrot diction; at 30 minutes `/grass` unlocks and returns to the unchanged NEXUS room.
+
+See [`docs/GO64.md`](docs/GO64.md) for the contract and copyright/claim boundary.
 
 Useful commands:
 

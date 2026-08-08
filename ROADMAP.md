@@ -258,6 +258,40 @@ Core invariant:
 
 > **Debate is cognition. Game state is substrate.**
 
+## 2.0-alpha6.3 — HERESY MUD
+
+Completed in PR #9.
+
+- [x] deterministic multi-avatar `#mud`;
+- [x] DORK/HERESY-inspired rooms, items, NPCs, combat and quest lineage;
+- [x] authoritative game mutation separated from model narration;
+- [x] anti-score-farming and defeated-avatar item recovery invariants.
+
+## 2.0-alpha6.4 — Pure History / No Ancient Aliens
+
+Completed in PR #10.
+
+- [x] `pure_history` source-forensic sibling of Historical Mode;
+- [x] shared Archive geometry without a gratuitous topology bump;
+- [x] source/chronology/retelling/speculation separation;
+- [x] bounded chatbot-autobiography retry guard;
+- [x] Equality Guard preserved across history restatements.
+
+## 2.0-alpha6.5 — Secret Alias / GO64 TUI edition
+
+Implemented / targeted in PR #11.
+
+- [x] hidden `/GO64` confirmation gate;
+- [x] original NEXUS/64 text demoscene;
+- [x] original DR. S.BAITSO text tribute adapted from QSOLKCB/ETHICS;
+- [x] 20-minute brainrot register transition;
+- [x] 30-minute `/grass` release gate with process-level emergency exits retained;
+- [x] no World Mode, geometry, evidence, Council or protocol mutation.
+
+Core invariant:
+
+> **The terminal can cosplay as 1982. The substrate cannot.**
+
 ## 2.0-alpha7 — Instruments
 
 Connect selected existing QSOL capabilities as versioned instruments rather than embedding entire repositories.
@@ -407,7 +441,9 @@ UN simulation - Done.
   ↓
 MUD - Done.
   ↓
-PURE HISTORY / epistemic discipline - In Progress.
+PURE HISTORY / epistemic discipline - Done.
+  ↓
+GO64 / SECRET ALIAS RETRO MODE - Done.
   ↓
 ==============================
       HARDEN THE SUBSTRATE

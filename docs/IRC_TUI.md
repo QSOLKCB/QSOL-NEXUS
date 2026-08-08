@@ -178,6 +178,21 @@ The models can recommend, argue, joke, form coalitions or produce spectacularly 
 
 See [`UN_SIM.md`](UN_SIM.md) for the game rules and claim boundary.
 
+## Secret alias: `/GO64`
+
+`/GO64` is a hidden local TUI overlay, intentionally absent from ordinary help/completion. After explicit YES confirmation it presents a Commodore-inspired text shell while preserving the underlying room, mode, evidence, roster and Council state.
+
+```text
+/GO64
+ARE YOU SURE?
+YES
+LOAD "*",8,1
+```
+
+Device 8 is an original text demoscene/retro architecture tutor. Device 9 is an original text-only DR. S.BAITSO meme tribute adapted from QSOLKCB/ETHICS. At 20 minutes both switch to deterministic brainrot diction; at 30 minutes `/grass` becomes the normal exit. `/quit`, Ctrl-C and Ctrl-D still terminate NEXUS itself.
+
+The overlay does not alter protocol `nexus/0.8`, World Modes, geometry, evidence or voting. See [`GO64.md`](GO64.md).
+
 ## `/me`
 
 IRC-style actions are local transcript events.

@@ -1,3 +1,4 @@
+pub mod go64;
 pub mod scripting;
 
 use serde_json::{json, Value};
