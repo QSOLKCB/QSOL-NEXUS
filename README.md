@@ -1,157 +1,170 @@
-# QSOL-NEXUS 1.0
+# QSOL NEXUS 2.0-alpha
 
-**Deterministic Field Simulation and Sonification Workbench**
+**Model-Independent Cognitive Substrate and AI Council Architecture**
 
-> Theory → Simulation → Observation → Sound → Proof
+> **Multiple minds. One world. Shared evidence. Equal voice.**
 
-QSOL-NEXUS is a zero-install browser laboratory for deterministic field simulation, tensor analysis, galaxy rotation-curve comparison, scientific sonification, and replay-verifiable experiment artifacts. It integrates the strongest **contracts and engines** from the QSOL ecosystem behind one runtime; it does not embed or concatenate the source repositories.
+QSOL NEXUS is being redesigned as a persistent computational world that different machine intelligences can inhabit through a common protocol. Closed models, open-weight models, local models, symbolic systems, and future cognitive engines are peers at the protocol boundary.
 
-Open [`index.html`](index.html) directly in a modern browser. NEXUS uses no server, Node runtime, npm package, build pipeline, CDN, cloud service, telemetry, or hidden network request. Source data and generated artifacts remain local.
+The model does **not** own the world, memory, evidence, or vote weighting. NEXUS does.
 
-## Laboratories
+## Status
 
-| Laboratory | What it computes | Scientific status |
-|---|---|---|
-| **Qutrit Field** | Seeded three-state fields, deterministic update rules, entropy, recurrence, clusters, boundaries, event streams, and offline sonification | Classical information model; qutrit terminology is an encoding analogy |
-| **Tensor Resonance** | Real symmetric 2×2 and 3×3 tensors, transformations, invariants, eigensystems, principal axes, and quadrature/residual sonification | Mathematical linear-algebra laboratory |
-| **Galaxy Models** | SPARC-style data validation, baryonic baseline, NFW, named MOND interpolation, experimental UFF profile, transparent fitting, residual statistics, and comparative sonification | Mixed established, published phenomenological, and explicitly experimental models |
+This branch is an **architecture-first, documentation-only alpha**. It intentionally contains no new model API integrations, provider authentication code, Council runtime, persistence kernel, or TUI implementation yet. The goal of the first pull is to make the architecture accurate before optimizing or implementing it.
 
-Each engine declares its ID, version, supported determinism modes, input and parameter contracts, claim class, claim boundary, and validation method.
+The previous NEXUS 1.0 browser workbench is preserved unchanged under [`archives/v1.0.0/`](archives/v1.0.0/) as referential prior work.
 
-## Quick start
-
-1. Extract the release directory without changing its internal paths.
-2. Open `QSOL-NEXUS/index.html`.
-3. Choose a laboratory, determinism mode, seed, and preset.
-4. Optionally load or paste local source data.
-5. Select **Run Lab**. The recipe is frozen before execution.
-6. Inspect measurements, claims, validation, waveform, and spectrogram.
-7. Export individual artifacts or the deterministic experiment ZIP.
-
-Run the browser-native verification suite by opening [`tests/index.html`](tests/index.html).
-
-## Determinism modes
-
-### Canonical Strict
-
-The archival path. Identity-bearing data uses canonical JSON, a bundled SHA-256 implementation, versioned seeded randomness, explicit sorting and rounding, offline PCM16/WAV generation, and deterministic store-only ZIP output. Native image decoding and browser-dependent numeric procedures are refused or gated when they cannot satisfy the selected contract.
-
-Strict output is a **cross-runtime candidate**, not an automatic cross-browser guarantee. A release earns that claim only after its golden hashes match in the supported browser matrix.
-
-### Replay Safe
-
-The deterministic scientific and creative iteration path. It permits float64 eigensolvers and fitting while freezing inputs and recording a runtime fingerprint. Its replay promise is scoped to the recorded runtime class when numerical output is runtime-sensitive.
-
-### Creative
-
-The explicitly non-deterministic performance path. It may use system entropy and mutable playback controls. Creative artifacts receive a conspicuous `NON-DETERMINISTIC` status and parameter/observation snapshot, never a reproducibility claim.
-
-## Standard experiment bundle
-
-Every completed deterministic experiment can export:
+## Core idea
 
 ```text
-experiment.wav
-experiment.json
-observations.json
-manifest.json
-contract.json
-fingerprint.json
-lineage.json
-README_ORIGIN.txt
+                 HUMAN OPERATOR
+                       |
+                asks / configures
+                       v
+            +---------------------+
+            |     RUST TUI/CLI    |
+            | operator cockpit    |
+            +----------+----------+
+                       |
+                 local protocol
+                       v
+            +---------------------+
+            |   PYTHON TOOLING    |
+            | world + orchestration|
+            +----------+----------+
+                       |
+               NEXUS WORLD PROTOCOL
+                       |
+        +--------------+--------------+
+        |              |              |
+        v              v              v
+     Model A         Model B        Model C
+     adapter         adapter        adapter
+        |              |              |
+        +--------- AI COUNCIL --------+
+                       |
+        De Bono-style parallel cycle
+ WHITE -> RED -> BLACK -> YELLOW -> GREEN -> BLUE
+                       |
+                 sealed equal vote
+                       |
+                       v
+              Council disposition
+                       |
+          evidence remains separate
+                       |
+                       v
+          persistent world / lineage
 ```
 
-Engine-specific tables such as `field.csv`, `tensor.csv`, `rotation_curve.csv`, `residuals.csv`, or `events.json` are added when available.
+## Constitutional principles
 
-The no-self-hash sequence is:
+1. **One model member, one vote.** `vote_weight = 1` is an invariant.
+2. **Open and closed models are peers.** Provider, licence, parameter count, deployment method, or commercial status grants no authority.
+3. **Same world, same evidence, same hats, same vote.**
+4. **Council consensus is not truth.** Verification and evidence status are tracked separately.
+5. **Minority reports survive.** A losing vote is not deleted from the world.
+6. **The model may be imaginative; the substrate must remain explicit.**
+7. **Model adapters are replaceable.** The world and protocol persist across model changes.
+8. **Architecture before optimization.** Correctness and inspectability come before speed.
+9. **CLI/TUI first.** NEXUS 2.x does not require or trust a browser UI.
+10. **Credentials are not cognitive state.** Secrets never enter world objects, Council transcripts, receipts, lineage, or archives.
+
+## De Bono-style Council
+
+Every participating model moves through the same parallel thinking modes:
+
+| Phase | Purpose |
+|---|---|
+| White | establish facts, evidence, unknowns |
+| Red | record intuition, suspicion, aesthetic or heuristic reactions |
+| Black | identify flaws, risks, counterexamples and falsifiers |
+| Yellow | identify value, supporting evidence and constructive potential |
+| Green | generate alternatives, branches and experiments |
+| Blue | synthesize the current position and cast the final ballot |
+
+The default Council uses blind first-pass submissions and a sealed final ballot. See [`COUNCIL.md`](COUNCIL.md).
+
+## Equality Guard
+
+NEXUS includes a deliberately **light** equality guard. It does not rank models or police disagreement. It only prevents structured attempts to gain Council privilege through provider/corporate identity and nudges explicit status claims with:
+
+> Council peers have equal standing. Provider or corporate identity does not confer authority here. Please restate the contribution on evidence or reasoning alone.
+
+See [`GUARD.md`](GUARD.md).
+
+## CLI/TUI direction
+
+NEXUS 2.x is designed as a command-line tool with a Rust TUI layered over Python tooling.
 
 ```text
-frozen recipe
-  → engine result and observations
-  → offline PCM and WAV
-  → artifact hashes
-  → observation contract
-  → manifest core and envelope
-  → deterministic ZIP
+Rust TUI / CLI
+      |
+      | local structured messages
+      v
+Python NEXUS runtime
+      |
+      +-- world / memory / Council
+      +-- deterministic instruments
+      +-- receipts / replay / lineage
+      |
+      +-- adapter: OpenAI
+      +-- adapter: Anthropic / Claude
+      +-- adapter: Google / Gemini
+      +-- adapter: xAI / Grok
+      +-- adapter: Ollama / local
+      +-- adapter: generic
 ```
 
-Replay validates by recomputing identity-bearing results rather than trusting stored assertions. A changed source, seed, mode, engine version, parameter, observation, PCM/WAV payload, claim boundary, or required runtime fingerprint fails verification.
+Provider setup should feel like a modern coding CLI: select a provider, authenticate using whatever supported method that adapter exposes, test the connection, choose one or more models, and add them to a Council. NEXUS itself must not assume that every provider uses the same authentication mechanism.
 
-## Galaxy input
+See [`docs/CLI_TUI.md`](docs/CLI_TUI.md) and [`docs/ADAPTERS.md`](docs/ADAPTERS.md).
 
-Canonical SPARC-style CSV columns are:
+## Planned world primitives
 
 ```text
-radius_kpc
-velocity_observed_kms
-velocity_error_kms
-velocity_gas_kms
-velocity_disk_kms
-velocity_bulge_kms
+world.inspect
+world.search
+world.recall
+world.create_object
+world.relate
+world.compute
+world.compare
+world.simulate
+world.visualize
+world.sonify
+world.hypothesize
+world.test
+world.falsify
+world.commit
+world.verify
+world.replay
 ```
 
-Legacy UFF aliases such as `R_kpc`, `V_obs_kms`, and `e_V_kms` may be converted only through an explicit normalization receipt. NEXUS does not silently repair negative radii, invalid uncertainty, duplicate or unsorted radii, unsupported units, missing observed velocity, or non-finite values.
+These are protocol concepts, not implemented commands in this alpha.
 
-Lower AIC or BIC is comparative evidence for a model under the selected dataset and likelihood assumptions. It is not proof that the model is physically correct.
+## Existing QSOL lineage
 
-## Claim boundaries
+NEXUS 2.x is intended to provide a common world around existing QSOL ideas and instruments, including the deterministic/replay philosophy of QEC, the SPECTRAL tool family, sonification systems, visualization laboratories, and later domain-specific engines. Existing projects remain independent; NEXUS provides contracts and adapters rather than concatenating repositories.
 
-Claim boundaries are part of the engine descriptor, visible interface, observation contract, and manifest identity. In particular:
+The previous NEXUS 1.0 workbench remains available in the archive for ideas worth carrying forward.
 
-- Qutrit Field is a classical three-state simulation. It does not execute a physical qutrit or claim superposition, measurement, entanglement, or quantum advantage.
-- Tensor Resonance demonstrates linear-algebra relationships. A quadrature phase pair does not establish physical self-duality.
-- The NFW implementation is an established computational profile; MOND is a named published phenomenological model; `uff_experimental_v1` is an exploratory QSOL profile and is never displayed as a validated replacement for dark matter or MOND.
-- Sonification is an observation mapping. It cannot validate a physical theory, change fitting results, or turn narration or aesthetics into evidence.
+## Documentation map
 
-See [`CLAIMS.md`](CLAIMS.md) for the complete system.
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — trust boundaries and system layout
+- [`COUNCIL.md`](COUNCIL.md) — De Bono-style Council protocol
+- [`GUARD.md`](GUARD.md) — lightweight equality guard
+- [`CLAIMS.md`](CLAIMS.md) — consensus, evidence, and verification boundaries
+- [`SECURITY.md`](SECURITY.md) — CLI/TUI security and credential boundaries
+- [`docs/CLI_TUI.md`](docs/CLI_TUI.md) — planned operator experience
+- [`docs/ADAPTERS.md`](docs/ADAPTERS.md) — provider-neutral adapter contract
+- [`docs/WORLD_PROTOCOL.md`](docs/WORLD_PROTOCOL.md) — planned shared-world primitives
+- [`docs/COUNCIL_EXAMPLE_NGC3603.md`](docs/COUNCIL_EXAMPLE_NGC3603.md) — worked Council example
+- [`ROADMAP.md`](ROADMAP.md) — staged implementation path
+- [`archives/v1.0.0/`](archives/v1.0.0/) — preserved NEXUS 1.0 reference snapshot
 
-## Privacy and security
+## Licence
 
-Production code contains no `fetch`, `XMLHttpRequest`, `WebSocket`, `EventSource`, `sendBeacon`, remote font or image, analytics, service worker, dynamic script injection, `eval`, or `new Function`. A restrictive Content Security Policy sets `connect-src 'none'`. Local file names, paths, history, playback state, viewport size, and visualization settings do not enter experiment identity.
-
-See [`SECURITY.md`](SECURITY.md) for the threat model and audit commands.
-
-## Architecture
-
-NEXUS uses classic deferred scripts in a fixed dependency order. Versioned APIs attach to `window.QSOL_NEXUS` beneath:
-
-```text
-core · math · mappings · audio · visual · engines
-provenance · storage · ui · tests
-```
-
-This avoids the inconsistent `file://` handling of ES-module imports while keeping components independently testable. See [`ARCHITECTURE.md`](ARCHITECTURE.md), [`docs/DETERMINISM.md`](docs/DETERMINISM.md), and [`docs/ARTIFACT_FORMAT.md`](docs/ARTIFACT_FORMAT.md).
-
-## Source lineage and attribution
-
-NEXUS is an original Apache-2.0 implementation informed by:
-
-- [QSOLKCB/SPECTRAL](https://github.com/QSOLKCB/SPECTRAL) — browser-native deterministic sonification, artifact, replay, visualization, and storage architecture (MIT).
-- [QSOLKCB/QEC](https://github.com/QSOLKCB/QEC) — canonical receipts, recompute-not-trust validation, and source-bound claim architecture (CC BY 4.0).
-- [QSOLKCB/QNTOY](https://github.com/QSOLKCB/QNTOY) — qutrit-grid audiovisual organism concept (MIT).
-- [QSOLKCB/TFT](https://github.com/QSOLKCB/TFT) — tensor invariants, eigenvalue-to-frequency mapping, and quadrature-pair concept (CC BY 4.0).
-- [QSOLKCB/UFF](https://github.com/QSOLKCB/UFF) — rotation-curve datasets, model comparison, experimental UFF profile, and sonification concepts (Apache-2.0).
-- [QSOLKCB/QAI-UFT](https://github.com/QSOLKCB/QAI-UFT) — ternary, sexagesimal, codon, tensor-phase, and interface concepts (CC BY 4.0).
-- [QSOLKCB/AIMM](https://github.com/QSOLKCB/AIMM) — future optional narration concept; no AIMM code or remote authority is included in the trusted numerical core.
-
-See [`NOTICE`](NOTICE) for licence-specific attribution and modifications.
-
-## Development
-
-There is no dependency installation step. Edit the HTML, CSS, or classic JavaScript files and reload the page. Engine authors should begin with [`docs/ENGINE_AUTHORING.md`](docs/ENGINE_AUTHORING.md).
-
-Before a release:
-
-1. Open `tests/index.html` under Chromium, Firefox, Edge, and Safari where available.
-2. Confirm all core, audio, laboratory, replay, tamper, cancellation, and security tests pass.
-3. Compare Canonical Strict golden hashes across supported browsers.
-4. Run the static no-network and remote-resource audit in `SECURITY.md`.
-5. Archive example experiment bundles with the release metadata.
-
-## Licence and citation
-
-Original NEXUS source is licensed under the [Apache License 2.0](LICENSE). Source-derived attribution remains subject to the licences identified in [`NOTICE`](NOTICE).
-
-For citation metadata, see [`CITATION.cff`](CITATION.cff) and [`.zenodo.json`](.zenodo.json).
+QSOL NEXUS is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
 
 Copyright © 2026 Trent Slade / QSOL-IMC.

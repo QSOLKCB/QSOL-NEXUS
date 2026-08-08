@@ -1,51 +1,104 @@
-# Contributing to QSOL NEXUS
+# Contributing to QSOL NEXUS 2.x
 
-NEXUS favours small, inspectable, versioned changes. It intentionally has no package manager or build pipeline.
+NEXUS 2.x is currently architecture-first. Prefer small changes that make the protocol clearer, safer, or easier to test later.
 
-## Before changing code
+## Current phase
 
-1. Read `ARCHITECTURE.md`, `CLAIMS.md`, `SECURITY.md`, and `docs/DETERMINISM.md`.
-2. Identify whether the change affects experiment identity, only observation/UI, or neither.
-3. Preserve the fixed script order and single `window.QSOL_NEXUS` namespace.
-4. Check source licences before adapting an algorithm, figure, text, dataset, or test vector.
+The `2.0-alpha0` line is documentation-only. Do not add provider SDKs, production authentication, Council orchestration, a web dashboard, or speculative optimization to an architecture pull unless the scope explicitly changes.
 
-## Engine contributions
+## Read first
 
-Use `docs/ENGINE_AUTHORING.md`. An engine must include:
+1. `README.md`
+2. `ARCHITECTURE.md`
+3. `COUNCIL.md`
+4. `GUARD.md`
+5. `CLAIMS.md`
+6. `SECURITY.md`
+7. `docs/CLI_TUI.md`
+8. `docs/ADAPTERS.md`
+9. `docs/WORLD_PROTOCOL.md`
 
-- stable engine ID and semantic version;
-- normalized parameter schema and explicit unknown-field policy;
-- supported determinism modes;
-- input adapters and output channels;
-- claim class, status, boundary, and `does_not_claim` list;
-- `compile`, `render`, `observe`, and `validate` operations;
-- seeded randomness only in deterministic modes;
-- bounded work and cancellation checks;
-- known-answer fixtures and replay/tamper tests;
-- an observation-to-audio mapping that cannot alter numerical output.
+## Constitutional invariants
 
-## Coding style
+Changes must preserve the default constitutional Council unless an explicitly experimental policy is being proposed:
 
-- Use strict-mode classic scripts and an IIFE.
-- Attach one frozen public API to the appropriate namespace.
-- Avoid mutable global state.
-- Do not read the DOM outside `js/ui/`.
-- Prefer typed arrays for numerical buffers.
-- Reject invalid data; do not silently normalize scientific source input.
-- Keep identity-bearing serialization canonical and domain-separated.
-- Never use WebAudio output as exported PCM.
-- Do not introduce network clients, remote assets, dynamic code execution, workers, or package-manager files.
+```text
+one registered model member = one vote
+vote_weight = 1
+provider privilege = none
+open/closed status = metadata only
+consensus != verification
+minority reports survive
+credentials != world state
+```
 
-## Tests
+## Architecture boundaries
 
-Open `tests/index.html` directly and run the full suite. Add or update tests for every identity-bearing behaviour. A bug fix that changes a golden artifact requires a documented version change and migration note, not an unexplained hash replacement.
+Planned default architecture:
 
-For a publication-grade Canonical Strict claim, compare the same golden corpus in current Chromium, Firefox, Edge, and Safari where available.
+```text
+Rust CLI/TUI
+    -> local structured protocol
+Python NEXUS tooling/runtime
+    -> provider-neutral adapters
+models / local runtimes
+```
 
-## Claims and model status
+Do not put provider-specific authentication logic into the world-object schema or Council-vote schema.
 
-Do not promote an experimental model by changing prose or colour alone. Model status is part of the descriptor and artifact identity. New physical-model code needs a source citation, named assumptions and units, parameter bounds, independent fixtures, and a clear statement of what the implementation does not establish.
+## Documentation changes
+
+For architecture proposals:
+
+- include an ASCII sketch when it makes data/control flow clearer;
+- state trust boundaries;
+- distinguish current behavior from planned behavior;
+- avoid claiming a provider supports a specific auth mechanism unless implemented and verified;
+- preserve open/closed provider neutrality;
+- prefer concrete examples over abstract agent-framework terminology.
+
+## Future Python implementation
+
+When `alpha1` begins:
+
+- prioritize readable reference code;
+- use typed schemas/data classes where useful;
+- make replay fixtures deterministic;
+- reject unknown identity-bearing fields where the contract requires it;
+- keep provider networking outside deterministic instruments;
+- test protocol invariants before optimizing.
+
+## Future Rust implementation
+
+The Rust layer is planned as a thin operator shell/TUI.
+
+It should:
+
+- supervise local processes cleanly;
+- validate operator input;
+- display provider/Council/world state;
+- avoid duplicating Python/world business logic;
+- avoid storing raw provider secrets in project files;
+- preserve a scriptable non-interactive CLI.
+
+## Provider adapters
+
+New adapters must conform to the common adapter contract and receive no special voting authority.
+
+A provider's commercial status, benchmark rank, model size, openness, cost, or market position is not grounds for a vote multiplier.
 
 ## Pull requests
 
-Keep changes focused. Explain the identity impact, test evidence, browser matrix, claim-boundary impact, source attribution, and any expected golden-hash change. Do not include private source data or machine-specific paths.
+Keep PRs focused. State:
+
+- architectural scope;
+- trust-boundary impact;
+- Council-equality impact;
+- evidence/verification impact;
+- credential/network impact;
+- tests or review performed;
+- whether anything is implementation or documentation only.
+
+## Legacy work
+
+NEXUS 1.0 is preserved under `archives/v1.0.0/` for reference. Do not silently revive archived browser assumptions into the 2.x trusted path. Reuse good ideas intentionally and document why they still fit.

@@ -1,115 +1,318 @@
-# QSOL NEXUS Architecture
+# QSOL NEXUS 2.0 Architecture
 
-## Constitutional rules
+## Purpose
 
-QSOL NEXUS is a local-first scientific workbench, not a collection of embedded applications. It integrates versioned contracts and selected algorithms behind a shared runtime. The trusted numerical path has no network dependency, hidden randomness, mutable global engine state, wall-clock identity, or WebAudio export.
+QSOL NEXUS is a model-independent cognitive substrate: a persistent computational world that humans and heterogeneous machine intelligences can inspect, extend, test, and revisit through a common protocol.
 
-The application must continue to open from `index.html` through `file://` without a build step.
+NEXUS does not attempt to define how a model must think internally. It defines how participants interact with shared objects, evidence, experiments, instruments, Council sessions, and durable state.
 
-## Layer model
+## Top-level architecture
 
 ```text
-UI values and local source bytes
-        │
-        ▼
-input adapter + parameter normalization
-        │
-        ▼
-frozen experiment recipe ───────────────┐
-        │                               │ identity boundary
-        ▼                               │
-versioned laboratory engine             │
-        │                               │
-        ├── numerical result            │
-        ├── observations                │
-        └── one-way sonification        │
-                  │                     │
-                  ▼                     │
-          offline PCM16 + WAV           │
-                  │                     │
-                  ▼                     │
- hashes → contract → manifest → ZIP ◄───┘
+                           HUMAN OPERATOR
+                                 |
+                                 v
+                    +-------------------------+
+                    |      RUST TUI / CLI     |
+                    | status · Council · auth |
+                    | world · receipts · logs |
+                    +------------+------------+
+                                 |
+                         local IPC / JSONL
+                                 |
+                                 v
+                    +-------------------------+
+                    |     PYTHON TOOLING      |
+                    |-------------------------|
+                    | Council orchestration   |
+                    | world object service    |
+                    | memory / lineage        |
+                    | instrument dispatch     |
+                    | evidence / receipts     |
+                    | replay / verification   |
+                    +------------+------------+
+                                 |
+                         NEXUS WORLD PROTOCOL
+                                 |
+                +----------------+----------------+
+                |                |                |
+                v                v                v
+          +-----------+    +-----------+    +-----------+
+          | Adapter A |    | Adapter B |    | Adapter C |
+          +-----+-----+    +-----+-----+    +-----+-----+
+                |                |                |
+                v                v                v
+             Model A          Model B          Model C
+             remote           remote/local     local
 ```
 
-Visualization and playback observe completed output. Canvas dimensions, zoom, colour, FFT display settings, audio volume, and transport state are outside numerical identity.
+The Rust TUI is an operator interface, not an epistemic authority. The Python layer is planned as the first reference tooling/runtime because it is easy to inspect, script, test, and connect to the existing scientific Python ecosystem. Rust may later absorb performance-sensitive or security-sensitive components after contracts stabilize.
 
-## Namespace
+## Trust domains
 
-Every classic deferred script extends `window.QSOL_NEXUS`:
-
-| Namespace | Responsibility |
-|---|---|
-| `core` | canonical encoding, hashing, PRNG, decimal rules, scheduling, cancellation, input and schemas |
-| `math` | matrices, eigensystems, statistics, interpolation, optimization, graphs and entropy |
-| `mappings` | ternary, sexagesimal, codon, Fibonacci, phi and musical mappings |
-| `audio` | oscillators, envelopes, spatialization, PCM quantization, WAV, fingerprint and ZIP |
-| `visual` | Canvas, plots, waveform, spectrogram and laboratory views |
-| `engines` | descriptor registry and laboratory engines |
-| `provenance` | recipes, observations, manifests, replay validation, claims, lineage and bundles |
-| `storage` | IndexedDB with explicit session fallback, history and user presets |
-| `ui` | routing, controls, inspector, transport, exports and laboratory presentation |
-| `tests` | browser-native test registration and reporting |
-
-Scripts load in dependency order. A module must not read DOM state unless it is in `ui`, and an engine must not write to the DOM.
-
-## Engine contract
-
-Every descriptor provides:
-
-```javascript
-{
-  id: "qutrit_field",
-  display_name: "Qutrit Field",
-  engine_version: "1.0.0",
-  category: "simulation",
-  supported_modes: ["canonical_strict", "replay_safe", "creative"],
-  parameter_schema: {},
-  input_adapters: [],
-  output_channels: [],
-  claim_class: "classical_information_model",
-  claim_status: "demonstration",
-  claim_boundary: "...",
-  does_not_claim: [],
-  compile(recipe, context) {},
-  render(compiled, context) {},
-  observe(result, context) {},
-  validate(artifact, context) {}
-}
+```text
+UNTRUSTED / EXTERNAL
++---------------------------------------------------------+
+| model providers · remote APIs · model-generated prose  |
+| provider SDKs · network transport · local model servers|
++---------------------------+-----------------------------+
+                            |
+                      adapter boundary
+                            |
+TRUSTED NEXUS CONTROL PLANE
++---------------------------v-----------------------------+
+| roster · equal voting · phase ordering · sealed ballot |
+| canonical objects · evidence refs · receipts · lineage |
+| deterministic instruments · replay · verification      |
++---------------------------+-----------------------------+
+                            |
+                    durable world state
 ```
 
-The UI invokes engines through the registry. Engine-specific code may add a convenience `run` operation, but the lifecycle remains inspectable.
+A model response is a **proposal** until NEXUS records it under the applicable phase and evidence state. Corporate identity, provider branding, or model self-description cannot alter protocol authority.
 
-## Execution transaction
+## Council architecture
 
-1. Read and normalize current UI values.
-2. Validate source and parameters.
-3. Create the runtime fingerprint when required.
-4. Freeze the normalized recipe.
-5. Lock identity-bearing controls.
-6. Compile and render using a cancellation token and bounded yields.
-7. Compute observations from results.
-8. Derive audio from results only; audio never feeds the fit or simulation.
-9. Generate offline PCM16 and WAV bytes.
-10. Hash domain-separated artifacts.
-11. Build contract and manifest without circular self-hashes.
-12. Persist only after the transaction completes.
+```text
+                       CANONICAL QUESTION
+                              |
+                    frozen evidence snapshot
+                              |
+                              v
+            +-----------------------------------+
+            |        COUNCIL COORDINATOR        |
+            | roster · phase · budget · guard   |
+            +----------------+------------------+
+                             |
+             same phase input|for every member
+                             |
+       +---------------------+---------------------+
+       |                     |                     |
+       v                     v                     v
+    MEMBER A              MEMBER B              MEMBER C
+       |                     |                     |
+       +---------- blind phase submissions --------+
+                             |
+       WHITE -> RED -> BLACK -> YELLOW -> GREEN
+                             |
+                   peer material revealed
+                             |
+                            BLUE
+                             |
+                       SEALED BALLOTS
+                             |
+                        reveal + tally
+                             |
+                             v
+                 +-----------------------+
+                 | COUNCIL DISPOSITION   |
+                 | vote + minority report|
+                 +-----------+-----------+
+                             |
+                 separate evidence state
+                             |
+                             v
+                       NEXUS WORLD
+```
 
-Cancellation discards the pending transaction. It may leave a non-identity-bearing preview on screen, but it produces no downloadable bundle or history entry.
+Council equality is structural, not aspirational. Each registered Council member has exactly one ballot and `vote_weight = 1`.
 
-## Determinism boundary
+## Consensus and evidence are orthogonal
 
-Canonical Strict forbids `Math.random`, system entropy, wall-clock identity, unsafe canonical JSON values, runtime-native image decoding, nondeterministic optimization termination, and mutable engine state. Replay Safe uses seeded randomness and records a runtime fingerprint for float64-sensitive work. Creative mode may use entropy, but its exported snapshot cannot receive a deterministic validation status.
+```text
+                 COUNCIL JUDGMENT
+                        |
+        +---------------+---------------+
+        |                               |
+        v                               v
+  STRONG CONSENSUS                NO CONSENSUS
 
-All identity hashes use a domain prefix ending with a NUL byte. The manifest-core hash is computed before the envelope adds that hash; no file claims to contain a valid hash of itself.
+                 EVIDENCE STATUS
+                        |
+  +----------+----------+----------+----------+
+  |          |          |          |          |
+UNTESTED  SUPPORTED  REPLAYED   FALSIFIED  CONTESTED
+```
 
-## Storage boundary
+Examples:
 
-IndexedDB stores completed jobs, presets, and compact history. If unavailable under a browser's local-file origin policy, NEXUS switches visibly to session memory. Storage contents, previous jobs, local filenames, and eviction order never affect deterministic artifacts.
+```text
+Council: 5/5 ACCEPT
+Evidence: UNVERIFIED
+=> unanimous opinion, not established fact
 
-## Security boundary
+Council: 3/5 TEST FURTHER
+Evidence: REPLAY VERIFIED
+=> reproducible observation, unsettled interpretation
 
-The CSP denies all connections. Production scripts contain no network client, dynamic code evaluation, worker registration, or remote asset loader. File and Blob APIs, Canvas, IndexedDB, object URLs, and user-initiated downloads are the intended browser capabilities.
+Council: 5/5 ACCEPT
+Verification: FAILED
+=> Council agreement does not override the failed check
+```
 
-## Extensibility
+## World model
 
-New engines are code-reviewed, versioned modules—not dynamically downloaded plugins. A future AIMM adapter must accept completed, non-secret observations only and remain outside the trusted numerical core. WebGPU, remote collaboration, hardware access, and live capture remain out of scope until separate threat and determinism contracts exist.
+The planned fundamental unit is a content-addressable **World Object**.
+
+```text
+WorldObject
+├── identity
+├── canonical payload
+├── type
+├── representations
+│   ├── symbolic
+│   ├── geometric
+│   ├── spectral
+│   ├── visual
+│   └── sonic
+├── provenance
+├── relations
+├── evidence
+├── hypotheses
+├── experiments
+├── observations
+├── falsifiers
+├── verification state
+└── lineage
+```
+
+No representation is automatically privileged as the ontology of the world. Golay, Leech lattice, E8, ternary systems, embeddings, graphs, spectral representations, and other structures may be useful views or instruments without becoming mandatory metaphysics.
+
+## Model adapter boundary
+
+```text
+NEXUS envelope
+     |
+     v
++------------------+
+| provider adapter |
+|------------------|
+| auth capability  |
+| model discovery  |
+| prompt transport |
+| response parsing |
+| usage metadata   |
++--------+---------+
+         |
+         v
+ provider / local runtime
+```
+
+Adapters translate between provider-specific APIs and one NEXUS contract. They must not:
+
+- alter vote weight;
+- edit another member's submission;
+- change Council thresholds;
+- claim epistemic privilege for their provider;
+- write secrets into world state;
+- silently add evidence unavailable to other Council members;
+- mutate a frozen evidence snapshot.
+
+## CLI/TUI rather than WebUI
+
+NEXUS 2.x is intentionally CLI/TUI-first.
+
+Reasons:
+
+- credentials do not need browser storage;
+- provider network access is easier to isolate and audit;
+- local subprocess boundaries are explicit;
+- SSH/headless operation is natural;
+- local models and coding environments are easy to integrate;
+- the TUI can remain a thin operator shell over stable tooling;
+- the trusted world does not depend on DOM state, browser extensions, CORS, or front-end frameworks.
+
+A future visualization viewer may exist, but it should consume completed world objects and receipts rather than become the trusted orchestration surface.
+
+## Proposed process layout
+
+```text
+nexus                         # Rust CLI/TUI (future)
+  |
+  +-- starts / connects to
+  |
+python -m nexus_runtime       # Python reference tooling (future)
+  |
+  +-- world service
+  +-- Council coordinator
+  +-- equality guard
+  +-- instrument registry
+  +-- receipt/replay service
+  +-- adapter manager
+        |
+        +-- openai adapter
+        +-- anthropic adapter
+        +-- gemini adapter
+        +-- xai adapter
+        +-- ollama adapter
+        +-- generic adapter
+```
+
+The exact IPC mechanism is intentionally undecided in this documentation pull. JSON Lines over stdio is the simplest reference candidate; a local socket may later be justified by concurrency needs.
+
+## Provider authentication boundary
+
+The desired operator experience is similar to modern coding CLIs:
+
+```text
+$ nexus auth add
+
+Choose provider:
+  OpenAI
+  Anthropic / Claude
+  Google / Gemini
+  xAI / Grok
+  Ollama / local
+  Generic OpenAI-compatible endpoint
+
+Adapter reports supported setup methods.
+Operator authenticates.
+NEXUS tests capability.
+Credentials are stored outside world state.
+```
+
+NEXUS must not hard-code an assumption that every provider supports the same login method. An adapter may expose API-key, provider-supported interactive authentication, local endpoint configuration, or another explicit method.
+
+## Instrument boundary
+
+Scientific and creative tools are instruments of the world, not authorities over Council members.
+
+```text
+Council hypothesis
+      |
+      v
+world.test(...)
+      |
+      +-- QEC-style verification / receipts
+      +-- SPECTRAL
+      +-- SONIFICATION
+      +-- visualization
+      +-- numerical / symbolic tools
+      +-- domain engines
+      |
+      v
+observation + artifact + receipt
+```
+
+A model may suggest an experiment. NEXUS executes the instrument under its own contract and returns the observation to the Council.
+
+## Persistence principle
+
+**The world owns memory; models do not.**
+
+A model may leave the Council permanently. Its durable contributions remain as attributed world objects. A new model may enter later and inspect the same evidence and lineage without inheriting the previous model's hidden chain of thought or provider-specific context.
+
+## Architecture rule for the first implementation
+
+Build the smallest correct path first:
+
+```text
+object
+  -> operation
+  -> result
+  -> observation
+  -> receipt
+  -> replay
+```
+
+Then add Council orchestration. Then add provider adapters. Then add the Rust TUI. Performance work comes after the contracts survive real use.

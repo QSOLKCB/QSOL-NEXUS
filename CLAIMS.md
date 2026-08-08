@@ -1,94 +1,136 @@
-# Scientific and Interpretive Claim Boundaries
+# NEXUS Claim and Evidence Boundaries
 
-QSOL NEXUS makes claim status a machine-readable part of every engine and experiment. A label is not cosmetic: changing the claim class, boundary, status, or `does_not_claim` list changes the contract and must fail replay against the earlier artifact.
+## Core rule
 
-## Claim classes
+NEXUS distinguishes **collective judgment** from **verification**.
 
-| Class | UI label | Meaning |
-|---|---|---|
-| `mathematical_transform` | MATHEMATICAL | A mathematical operation or relationship is computed under stated assumptions |
-| `classical_information_model` | CLASSICAL SIMULATION | A classical system uses information-theoretic or quantum-inspired notation |
-| `published_physical_model` | PUBLISHED MODEL | A versioned implementation of a named model from the scientific literature |
-| `experimental_physical_model` | EXPERIMENTAL | An exploratory physical profile without empirical validation through NEXUS |
-| `statistical_observation` | STATISTICAL | A statistic derived from supplied data and stated likelihood assumptions |
-| `creative_symbolic_mapping` | CREATIVE MAPPING | A symbolic or aesthetic mapping without evidentiary force |
-| `audio_visual_observation` | AUDIOVISUAL | A visual or sonic encoding of a completed result |
+A Council may agree strongly and still be wrong. A deterministic instrument may verify an observation without verifying the interpretation placed on that observation.
 
-`REPLAY VERIFIED` describes artifact consistency only. It does not certify truth, empirical validity, authorship, originality, safety, or scientific consensus.
+## Council status
 
-## Qutrit Field
+Council status describes what the participating members currently judge.
 
-**Class:** `classical_information_model`
+Suggested states:
 
-The engine evolves a `Uint8Array` whose cells take values 0, 1, or 2. It computes deterministic classical transition rules and information statistics.
+```text
+UNANIMOUS
+STRONG_CONSENSUS
+CONSENSUS
+MAJORITY_NO_CONSENSUS
+NO_CONSENSUS
+```
 
-It does not claim:
+The ballot disposition is separate:
 
-- physical qutrit preparation or execution;
-- quantum superposition or state amplitudes;
-- physical measurement or wave-function collapse;
-- entanglement, nonlocality, quantum speedup, or quantum advantage;
-- a simulator of a particular quantum processor.
+```text
+ACCEPT
+ACCEPT_WITH_CHANGES
+TEST_FURTHER
+REJECT
+UNDERDETERMINED
+```
 
-Words such as *qutrit*, *state*, and *measurement* refer to an encoding analogy unless a future, separately validated hardware adapter says otherwise.
+## Evidence status
 
-## Tensor Resonance
+Evidence status describes what has happened to a claim or observation outside the vote.
 
-**Class:** `mathematical_transform`
+Provisional vocabulary:
 
-The engine computes real symmetric rank-2 matrices, eigensystems, transformations, invariants, and numerical residuals. Orthogonal similarity is expected to preserve trace, determinant, Frobenius norm, and eigenvalues within the declared numerical contract.
+```text
+OPERATOR_SUPPLIED
+UNTESTED
+SUPPORTED
+REPLAY_VERIFIED
+CONTESTED
+FALSIFIED
+FAILED_VERIFICATION
+NON_REPRODUCIBLE
+```
 
-It does not claim:
+These terms will be tightened when the executable protocol is implemented.
 
-- an arbitrary high-rank symbolic tensor calculus;
-- a physical field equation or conserved quantity beyond the implemented mathematics;
-- that a π/2 audio phase offset establishes self-duality in nature;
-- empirical validation of Tensor Field Theory or a Unified Field Framework.
+## Consensus does not certify truth
 
-The **Quadrature Phase Pair** preset is an audio mapping, not a physical result.
+Examples:
 
-## Galaxy Models
+```text
+Council: UNANIMOUS ACCEPT
+Evidence: UNTESTED
+Meaning: every member agrees, but the claim has not been tested.
+```
 
-The galaxy laboratory deliberately displays model status at the model level.
+```text
+Council: STRONG CONSENSUS TEST_FURTHER
+Evidence: REPLAY_VERIFIED observation
+Meaning: the observation reproduces; its interpretation remains unsettled.
+```
 
-### Baryonic baseline
+```text
+Council: UNANIMOUS ACCEPT
+Evidence: FAILED_VERIFICATION
+Meaning: the Council was collectively wrong under the declared test.
+```
 
-**Status:** established computational combination.
+NEXUS must display both axes rather than collapsing them into a single confidence score.
 
-The engine combines supplied gas, disk, and bulge velocity components in quadrature using explicit mass-to-light scale factors. Its validity is limited by the supplied components, units, distance and inclination assumptions.
+## Observation versus interpretation
 
-### NFW
+This boundary is constitutional.
 
-**Status:** established computational model.
+Example:
 
-The versioned implementation evaluates a Navarro–Frenk–White halo profile with explicit units and bounded parameters. NEXUS does not infer that an NFW fit proves a dark-matter ontology.
+```text
+Observation:
+A frozen sonification recipe produced ~431 Hz from a supplied dataset.
 
-### MOND simple interpolation
+Interpretation:
+432 Hz is a privileged universal physical frequency.
+```
 
-**Status:** published phenomenological model.
+Replay of the first claim does not establish the second.
 
-The model uses a named, versioned interpolation function. A comparative fit is evidence only under the selected dataset, error model, parameter bounds, and likelihood assumptions.
+## Model output boundary
 
-### `uff_experimental_v1`
+A model response is not evidence merely because:
 
-**Status:** experimental QSOL model.
+- the model is large;
+- the model is commercial;
+- the model is open;
+- the provider is famous;
+- several models repeat the same statement;
+- the prose sounds confident;
+- the Council votes for it.
 
-This engine reimplements the exploratory core-plus-power-law profile described by QSOLKCB/UFF. The source repository explicitly describes the current base law as a placeholder that users may replace. NEXUS therefore never presents it as a validated physical law or as a proven replacement for dark matter, MOND, general relativity, or another cosmological model.
+Model outputs may become useful hypotheses, critiques, syntheses, experiment proposals, or interpretations.
 
-### Model comparison
+## Instrument boundary
 
-Weighted residual sums, reduced chi-square, RMSE, MAE, AIC, BIC, maximum residual, and residual autocorrelation are statistical observations. Lower AIC or BIC is comparative evidence under shared assumptions—not proof that a model is physically correct. Parameter recovery from a synthetic fixture validates implementation behaviour against that fixture, not nature.
+A NEXUS instrument verifies only what its contract says it verifies.
+
+A replay receipt may establish that a computation reproduced under its declared inputs and runtime constraints. It does not automatically establish physical truth, causal interpretation, originality, safety, or scientific consensus.
 
 ## Sonification and visualization
 
-Audio and images are one-way observation mappings derived after numerical computation. They can reveal patterns, support accessibility, teach relationships, or create musical material. They cannot:
+Sonification and visualization are representations/observation mappings unless an explicit domain contract establishes something stronger.
 
-- alter fitted parameters or numerical identity;
-- establish causality or scientific validation;
-- make an experimental model established;
-- convert symbolic E8, codon, sexagesimal, Fibonacci, phi, or musical mappings into physical evidence;
-- guarantee external platform acceptance or copyright status.
+They may:
 
-## Future narration
+- expose patterns;
+- support comparison;
+- aid accessibility;
+- suggest hypotheses;
+- produce creative artifacts.
 
-A future AIMM adapter may explain controls, summarize completed observations, narrate comparisons, suggest presets, or add humour. It must not modify a frozen recipe, certify a model, invent missing data, silently change a claim boundary, or convert narration into evidence.
+They do not gain evidentiary force merely by being perceptually compelling.
+
+## Minority reports
+
+A minority objection remains part of the evidence/history graph. It should not be rewritten as an error merely because it lost a vote.
+
+Later experiments may support either the majority or minority branch.
+
+## Equality boundary
+
+Open versus closed status is descriptive metadata only. It cannot be used as a scientific claim, confidence multiplier, or vote weight.
+
+See [`GUARD.md`](GUARD.md).
