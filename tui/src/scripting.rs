@@ -49,7 +49,9 @@ fn normalize_variable(name: &str) -> Result<String, String> {
         .chars()
         .all(|ch| ch.is_ascii_alphanumeric() || ch == '_' || ch == '-')
     {
-        return Err("variable names may contain only ASCII letters, digits, '_' and '-'".to_string());
+        return Err(
+            "variable names may contain only ASCII letters, digits, '_' and '-'".to_string(),
+        );
     }
     Ok(key)
 }
@@ -120,7 +122,10 @@ mod tests {
         let mut vars = VariableBook::default();
         vars.set("%weapon", "a large trout").unwrap();
         vars.set("%weapon2", "a haddock").unwrap();
-        assert_eq!(vars.expand("with %weapon / %weapon2"), "with a large trout / a haddock");
+        assert_eq!(
+            vars.expand("with %weapon / %weapon2"),
+            "with a large trout / a haddock"
+        );
     }
 
     #[test]
@@ -133,7 +138,11 @@ mod tests {
             topic: "Best fish for model discipline?",
         };
         assert_eq!(
-            expand_identifiers("/me $me slaps $1 in $chan with $2- [$mode/$region]", context, "Grok a large trout"),
+            expand_identifiers(
+                "/me $me slaps $1 in $chan with $2- [$mode/$region]",
+                context,
+                "Grok a large trout"
+            ),
             "/me Trent slaps Grok in #commons with a large trout [meme_casual/commons]"
         );
     }

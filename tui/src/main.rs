@@ -3,13 +3,14 @@ use crossterm::cursor::{Hide, MoveTo, Show};
 use crossterm::event::{self, Event, KeyCode, KeyModifiers};
 use crossterm::style::Print;
 use crossterm::terminal::{
-    self, disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen, LeaveAlternateScreen,
+    self, disable_raw_mode, enable_raw_mode, Clear, ClearType, EnterAlternateScreen,
+    LeaveAlternateScreen,
 };
 use crossterm::{execute, queue};
 use nexus_irc_tui::scripting::{expand_identifiers, IdentifierContext, VariableBook};
 use nexus_irc_tui::{
-    command_completions, load_document, normalize_action, parse_input, room_from_name, AliasBook, DccCommand,
-    DccKind, DccSession, InputCommand, RoomSpec, ROOMS,
+    command_completions, load_document, normalize_action, parse_input, room_from_name, AliasBook,
+    DccCommand, DccKind, DccSession, InputCommand, RoomSpec, ROOMS,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -87,8 +88,14 @@ impl NexusProcess {
         let mut child = command
             .spawn()
             .map_err(|e| format!("cannot start NEXUS Python runtime with {python}: {e}"))?;
-        let stdin = child.stdin.take().ok_or_else(|| "NEXUS runtime stdin unavailable".to_string())?;
-        let stdout = child.stdout.take().ok_or_else(|| "NEXUS runtime stdout unavailable".to_string())?;
+        let stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "NEXUS runtime stdin unavailable".to_string())?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| "NEXUS runtime stdout unavailable".to_string())?;
         let mut process = Self {
             child,
             stdin: BufWriter::new(stdin),
@@ -104,9 +111,15 @@ impl NexusProcess {
         let object = request
             .as_object_mut()
             .ok_or_else(|| "internal request must be a JSON object".to_string())?;
-        object.insert("request_id".to_string(), json!(format!("tui-{}", self.request_id)));
-        writeln!(self.stdin, "{request}").map_err(|e| format!("cannot write to NEXUS runtime: {e}"))?;
-        self.stdin.flush().map_err(|e| format!("cannot flush NEXUS runtime request: {e}"))?;
+        object.insert(
+            "request_id".to_string(),
+            json!(format!("tui-{}", self.request_id)),
+        );
+        writeln!(self.stdin, "{request}")
+            .map_err(|e| format!("cannot write to NEXUS runtime: {e}"))?;
+        self.stdin
+            .flush()
+            .map_err(|e| format!("cannot flush NEXUS runtime request: {e}"))?;
 
         let mut line = String::new();
         let bytes = self
@@ -147,7 +160,9 @@ fn discover_pythonpath() -> Option<String> {
             return Some(candidate.to_string_lossy().to_string());
         }
     }
-    env::var("PYTHONPATH").ok().filter(|value| !value.trim().is_empty())
+    env::var("PYTHONPATH")
+        .ok()
+        .filter(|value| !value.trim().is_empty())
 }
 
 struct TerminalGuard;
@@ -216,8 +231,13 @@ impl App {
         };
         app.load_state();
         app.append("*** NEXUS 2.0 alpha5 IRC/TUI — local room, no IRC server");
-        app.append("*** /help for commands. The mode can change the vibe; it cannot change the vote.");
-        app.append(&format!("*** You have joined {} ({})", app.room.channel, app.room.label));
+        app.append(
+            "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
+        );
+        app.append(&format!(
+            "*** You have joined {} ({})",
+            app.room.channel, app.room.label
+        ));
         app
     }
 
@@ -227,7 +247,8 @@ impl App {
 
     fn append(&mut self, text: &str) {
         for line in text.lines() {
-            self.scrollback.push(format!("{} {}", Self::timestamp(), line));
+            self.scrollback
+                .push(format!("{} {}", Self::timestamp(), line));
         }
         self.scroll_offset = 0;
     }
@@ -292,22 +313,31 @@ impl App {
         }
     }
 
-    fn execute_command(&mut self, nexus: &mut NexusProcess, command: InputCommand) -> Result<(), String> {
+    fn execute_command(
+        &mut self,
+        nexus: &mut NexusProcess,
+        command: InputCommand,
+    ) -> Result<(), String> {
         match command {
             InputCommand::Noop => {}
             InputCommand::Help => self.show_help(),
             InputCommand::Join(name) | InputCommand::Mode(name) => {
-                let room = room_from_name(&name).ok_or_else(|| format!("unknown NEXUS room/mode: {name}"))?;
+                let room = room_from_name(&name)
+                    .ok_or_else(|| format!("unknown NEXUS room/mode: {name}"))?;
                 self.room = room;
                 self.private_target = None;
-                self.append(&format!("*** You have joined {} ({})", room.channel, room.label));
+                self.append(&format!(
+                    "*** You have joined {} ({})",
+                    room.channel, room.label
+                ));
                 let topic = self.current_topic().to_string();
                 if !topic.is_empty() {
                     self.append(&format!("*** Topic: {topic}"));
                 }
             }
             InputCommand::Topic(topic) => {
-                self.topics.insert(self.room.channel.to_string(), topic.clone());
+                self.topics
+                    .insert(self.room.channel.to_string(), topic.clone());
                 self.append(&format!("*** {} changed the topic to: {topic}", self.nick));
             }
             InputCommand::Ask(question) => {
@@ -339,10 +369,13 @@ impl App {
             }
             InputCommand::Who => self.show_who(),
             InputCommand::Upload(path) => {
-                let object_ref = self.import_document(nexus, &path, self.room.channel, "room_upload")?;
+                let object_ref =
+                    self.import_document(nexus, &path, self.room.channel, "room_upload")?;
                 let channel = self.room.channel.to_string();
                 self.add_room_evidence(&channel, object_ref.clone());
-                self.append(&format!("*** DCC-style room evidence attached: {object_ref}"));
+                self.append(&format!(
+                    "*** DCC-style room evidence attached: {object_ref}"
+                ));
             }
             InputCommand::Dcc(command) => self.execute_dcc(nexus, command)?,
             InputCommand::Evidence => self.show_evidence(),
@@ -350,23 +383,35 @@ impl App {
                 nexus.request(json!({"operation": "world.inspect", "object_ref": object_ref}))?;
                 let channel = self.room.channel.to_string();
                 self.add_room_evidence(&channel, object_ref.clone());
-                self.append(&format!("*** referenced {object_ref} as {} evidence", self.room.channel));
+                self.append(&format!(
+                    "*** referenced {object_ref} as {} evidence",
+                    self.room.channel
+                ));
             }
             InputCommand::Unref(object_ref) => {
                 if let Some(refs) = self.room_evidence.get_mut(self.room.channel) {
                     refs.retain(|value| value != &object_ref);
                 }
-                self.append(&format!("*** removed {object_ref} from {} evidence", self.room.channel));
+                self.append(&format!(
+                    "*** removed {object_ref} from {} evidence",
+                    self.room.channel
+                ));
             }
             InputCommand::AddMock { nick, profile } => {
                 self.ensure_unique_member(&nick)?;
                 self.members.push(MemberConfig::mock(&nick, &profile));
-                self.append(&format!("*** {nick} joined {} [mock/{profile}]", self.room.channel));
+                self.append(&format!(
+                    "*** {nick} joined {} [mock/{profile}]",
+                    self.room.channel
+                ));
             }
             InputCommand::AddOllama { nick, model } => {
                 self.ensure_unique_member(&nick)?;
                 self.members.push(MemberConfig::ollama(&nick, &model));
-                self.append(&format!("*** {nick} joined {} [ollama/{model}]", self.room.channel));
+                self.append(&format!(
+                    "*** {nick} joined {} [ollama/{model}]",
+                    self.room.channel
+                ));
             }
             InputCommand::Kick(nick) => {
                 let before = self.members.len();
@@ -379,7 +424,9 @@ impl App {
                 if self.private_target.as_deref() == Some(&nick) {
                     self.private_target = None;
                 }
-                self.append(&format!("*** {nick} was removed from the local room roster"));
+                self.append(&format!(
+                    "*** {nick} was removed from the local room roster"
+                ));
             }
             InputCommand::Alias { name, expansion } => {
                 self.aliases.define(&name, &expansion)?;
@@ -404,7 +451,11 @@ impl App {
             InputCommand::Unset(name) => {
                 let removed = self.variables.unset(&name)?;
                 self.save_state()?;
-                self.append(if removed { "*** variable removed" } else { "*** variable was not set" });
+                self.append(if removed {
+                    "*** variable removed"
+                } else {
+                    "*** variable was not set"
+                });
             }
             InputCommand::Vars => {
                 let variables = self.variables.list();
@@ -426,14 +477,19 @@ impl App {
                     .take(12)
                     .cloned()
                     .collect();
-                self.append(&format!("*** search {needle:?}: {} recent match(es)", matches.len()));
+                self.append(&format!(
+                    "*** search {needle:?}: {} recent match(es)",
+                    matches.len()
+                ));
                 for line in matches.into_iter().rev() {
-                    self.scrollback.push(format!("{} > {line}", Self::timestamp()));
+                    self.scrollback
+                        .push(format!("{} > {line}", Self::timestamp()));
                 }
             }
             InputCommand::Save(path) => {
                 if let Some(parent) = path.parent().filter(|p| !p.as_os_str().is_empty()) {
-                    fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+                    fs::create_dir_all(parent)
+                        .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
                 }
                 fs::write(&path, self.scrollback.join("\n") + "\n")
                     .map_err(|e| format!("cannot save {}: {e}", path.display()))?;
@@ -450,11 +506,21 @@ impl App {
 
     fn run_council(&mut self, nexus: &mut NexusProcess, question: &str) -> Result<(), String> {
         if self.members.len() < 3 {
-            return Err("Council requires at least three model members; use /addmock or /addollama".to_string());
+            return Err(
+                "Council requires at least three model members; use /addmock or /addollama"
+                    .to_string(),
+            );
         }
         self.append(&format!("<{}> {}", self.nick, question));
-        self.append(&format!("*** Council running in {} / {} ...", self.room.mode_id, self.room.region_id));
-        let members: Vec<Value> = self.members.iter().map(|member| member.config.clone()).collect();
+        self.append(&format!(
+            "*** Council running in {} / {} ...",
+            self.room.mode_id, self.room.region_id
+        ));
+        let members: Vec<Value> = self
+            .members
+            .iter()
+            .map(|member| member.config.clone())
+            .collect();
         let response = nexus.request(json!({
             "operation": "council.run",
             "question": question,
@@ -467,7 +533,8 @@ impl App {
             .get("session_ref")
             .and_then(Value::as_str)
             .ok_or_else(|| "Council response missing session_ref".to_string())?;
-        let session = nexus.request(json!({"operation": "world.inspect", "object_ref": session_ref}))?;
+        let session =
+            nexus.request(json!({"operation": "world.inspect", "object_ref": session_ref}))?;
         self.render_session_to_scrollback(&session)?;
         Ok(())
     }
@@ -485,7 +552,10 @@ impl App {
             self.append(&format!("--- {phase} ---"));
             if let Some(entries) = phases.get(phase).and_then(Value::as_array) {
                 for entry in entries {
-                    let member = entry.get("member_id").and_then(Value::as_str).unwrap_or("?");
+                    let member = entry
+                        .get("member_id")
+                        .and_then(Value::as_str)
+                        .unwrap_or("?");
                     let content = entry.get("content").and_then(Value::as_str).unwrap_or("");
                     self.append(&format!("<{member}> {content}"));
                 }
@@ -494,9 +564,15 @@ impl App {
         self.append("--- SEALED BALLOTS ---");
         if let Some(ballots) = payload.get("revealed_ballots").and_then(Value::as_array) {
             for ballot in ballots {
-                let member = ballot.get("member_id").and_then(Value::as_str).unwrap_or("?");
+                let member = ballot
+                    .get("member_id")
+                    .and_then(Value::as_str)
+                    .unwrap_or("?");
                 let choice = ballot.get("choice").and_then(Value::as_str).unwrap_or("?");
-                let rationale = ballot.get("rationale").and_then(Value::as_str).unwrap_or("");
+                let rationale = ballot
+                    .get("rationale")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
                 self.append(&format!("<{member}> {choice} — {rationale}"));
             }
         }
@@ -519,7 +595,12 @@ impl App {
         Ok(())
     }
 
-    fn direct_message(&mut self, nexus: &mut NexusProcess, target: &str, text: &str) -> Result<(), String> {
+    fn direct_message(
+        &mut self,
+        nexus: &mut NexusProcess,
+        target: &str,
+        text: &str,
+    ) -> Result<(), String> {
         let member = self
             .members
             .iter()
@@ -542,7 +623,10 @@ impl App {
             "mode": self.room.mode_id,
             "evidence_refs": evidence
         }))?;
-        let reply = response.get("response").and_then(Value::as_str).unwrap_or("");
+        let reply = response
+            .get("response")
+            .and_then(Value::as_str)
+            .unwrap_or("");
         self.append(&format!("*{}* <{}> {}", member.nick, member.nick, reply));
         Ok(())
     }
@@ -554,9 +638,15 @@ impl App {
                     self.append("*** DCC: no active local Direct Cognitive Channels");
                 } else {
                     for session in self.dcc_sessions.clone() {
-                        let kind = match session.kind { DccKind::Send => "SEND", DccKind::Chat => "CHAT" };
+                        let kind = match session.kind {
+                            DccKind::Send => "SEND",
+                            DccKind::Chat => "CHAT",
+                        };
                         let object = session.object_ref.unwrap_or_else(|| "-".to_string());
-                        self.append(&format!("*** DCC {kind} {} {} {}", session.peer, object, session.label));
+                        self.append(&format!(
+                            "*** DCC {kind} {} {} {}",
+                            session.peer, object, session.label
+                        ));
                     }
                 }
             }
@@ -568,7 +658,11 @@ impl App {
                     .map(|member| member.nick.clone())
                     .ok_or_else(|| format!("no such model member: {nick}"))?;
                 self.private_target = Some(canonical.clone());
-                if !self.dcc_sessions.iter().any(|s| s.kind == DccKind::Chat && s.peer == canonical) {
+                if !self
+                    .dcc_sessions
+                    .iter()
+                    .any(|s| s.kind == DccKind::Chat && s.peer == canonical)
+                {
                     self.dcc_sessions.push(DccSession {
                         kind: DccKind::Chat,
                         peer: canonical.clone(),
@@ -576,12 +670,16 @@ impl App {
                         label: "private non-Council channel".to_string(),
                     });
                 }
-                self.append(&format!("*** DCC CHAT with {canonical} opened (non-Council)"));
+                self.append(&format!(
+                    "*** DCC CHAT with {canonical} opened (non-Council)"
+                ));
             }
             DccCommand::Send { target, path } => {
                 if target.starts_with('#') {
-                    let room = room_from_name(&target).ok_or_else(|| format!("unknown room target: {target}"))?;
-                    let object_ref = self.import_document(nexus, &path, room.channel, "dcc_room_send")?;
+                    let room = room_from_name(&target)
+                        .ok_or_else(|| format!("unknown room target: {target}"))?;
+                    let object_ref =
+                        self.import_document(nexus, &path, room.channel, "dcc_room_send")?;
                     self.add_room_evidence(room.channel, object_ref.clone());
                     self.dcc_sessions.push(DccSession {
                         kind: DccKind::Send,
@@ -589,7 +687,11 @@ impl App {
                         object_ref: Some(object_ref.clone()),
                         label: path.display().to_string(),
                     });
-                    self.append(&format!("*** DCC SEND {} -> {} ({object_ref})", path.display(), room.channel));
+                    self.append(&format!(
+                        "*** DCC SEND {} -> {} ({object_ref})",
+                        path.display(),
+                        room.channel
+                    ));
                 } else {
                     let member = self
                         .members
@@ -597,7 +699,8 @@ impl App {
                         .find(|member| member.nick.eq_ignore_ascii_case(&target))
                         .cloned()
                         .ok_or_else(|| format!("no such model member: {target}"))?;
-                    let object_ref = self.import_document(nexus, &path, &member.nick, "dcc_targeted_send")?;
+                    let object_ref =
+                        self.import_document(nexus, &path, &member.nick, "dcc_targeted_send")?;
                     self.targeted_evidence
                         .entry(member.nick.clone())
                         .or_default()
@@ -615,9 +718,21 @@ impl App {
                 }
             }
             DccCommand::Close { kind, nick } => {
-                let wanted = if kind == "send" { DccKind::Send } else { DccKind::Chat };
-                self.dcc_sessions.retain(|session| !(session.kind == wanted && session.peer.eq_ignore_ascii_case(&nick)));
-                if wanted == DccKind::Chat && self.private_target.as_deref().map(|v| v.eq_ignore_ascii_case(&nick)).unwrap_or(false) {
+                let wanted = if kind == "send" {
+                    DccKind::Send
+                } else {
+                    DccKind::Chat
+                };
+                self.dcc_sessions.retain(|session| {
+                    !(session.kind == wanted && session.peer.eq_ignore_ascii_case(&nick))
+                });
+                if wanted == DccKind::Chat
+                    && self
+                        .private_target
+                        .as_deref()
+                        .map(|v| v.eq_ignore_ascii_case(&nick))
+                        .unwrap_or(false)
+                {
                     self.private_target = None;
                 }
                 self.append(&format!("*** DCC {kind} channel with {nick} closed"));
@@ -652,7 +767,9 @@ impl App {
             .and_then(Value::as_str)
             .ok_or_else(|| "world.create did not return object_id".to_string())?
             .to_string();
-        self.append(&format!("*** imported {filename} [{format}] as {object_ref}"));
+        self.append(&format!(
+            "*** imported {filename} [{format}] as {object_ref}"
+        ));
         Ok(object_ref)
     }
 
@@ -660,29 +777,53 @@ impl App {
         if nick.trim().is_empty() {
             return Err("member nick cannot be empty".to_string());
         }
-        if nick.eq_ignore_ascii_case(&self.nick) || self.members.iter().any(|member| member.nick.eq_ignore_ascii_case(nick)) {
+        if nick.eq_ignore_ascii_case(&self.nick)
+            || self
+                .members
+                .iter()
+                .any(|member| member.nick.eq_ignore_ascii_case(nick))
+        {
             return Err(format!("nick already in use: {nick}"));
         }
         Ok(())
     }
 
     fn show_who(&mut self) {
-        self.append(&format!("*** {} users in {}", self.members.len() + 1, self.room.channel));
+        self.append(&format!(
+            "*** {} users in {}",
+            self.members.len() + 1,
+            self.room.channel
+        ));
         self.append(&format!("*** @{} [human operator]", self.nick));
         for member in self.members.clone() {
-            self.append(&format!("*** +{} [{}]", member.nick, member.backend_label()));
+            self.append(&format!(
+                "*** +{} [{}]",
+                member.nick,
+                member.backend_label()
+            ));
         }
     }
 
     fn show_evidence(&mut self) {
         let refs = self.current_evidence();
-        self.append(&format!("*** {} Council evidence ref(s) in {}", refs.len(), self.room.channel));
+        self.append(&format!(
+            "*** {} Council evidence ref(s) in {}",
+            refs.len(),
+            self.room.channel
+        ));
         for object_ref in refs {
             self.append(&format!("*** {object_ref}"));
         }
         if let Some(target) = self.private_target.clone() {
-            let private_refs = self.targeted_evidence.get(&target).cloned().unwrap_or_default();
-            self.append(&format!("*** {} targeted DCC ref(s) for {target}", private_refs.len()));
+            let private_refs = self
+                .targeted_evidence
+                .get(&target)
+                .cloned()
+                .unwrap_or_default();
+            self.append(&format!(
+                "*** {} targeted DCC ref(s) for {target}",
+                private_refs.len()
+            ));
             for object_ref in private_refs {
                 self.append(&format!("*** private: {object_ref}"));
             }
@@ -708,8 +849,12 @@ impl App {
     }
 
     fn load_state(&mut self) {
-        let Ok(text) = fs::read_to_string(&self.state_path) else { return; };
-        let Ok(value) = serde_json::from_str::<Value>(&text) else { return; };
+        let Ok(text) = fs::read_to_string(&self.state_path) else {
+            return;
+        };
+        let Ok(value) = serde_json::from_str::<Value>(&text) else {
+            return;
+        };
         if let Some(aliases) = value.get("aliases").and_then(Value::as_object) {
             for (name, expansion) in aliases {
                 if let Some(expansion) = expansion.as_str() {
@@ -727,8 +872,13 @@ impl App {
     }
 
     fn save_state(&self) -> Result<(), String> {
-        if let Some(parent) = self.state_path.parent().filter(|p| !p.as_os_str().is_empty()) {
-            fs::create_dir_all(parent).map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
+        if let Some(parent) = self
+            .state_path
+            .parent()
+            .filter(|p| !p.as_os_str().is_empty())
+        {
+            fs::create_dir_all(parent)
+                .map_err(|e| format!("cannot create {}: {e}", parent.display()))?;
         }
         let aliases: serde_json::Map<String, Value> = self
             .aliases
@@ -740,11 +890,19 @@ impl App {
             .variables
             .list()
             .into_iter()
-            .map(|(name, value)| (name.trim_start_matches('%').to_string(), Value::String(value)))
+            .map(|(name, value)| {
+                (
+                    name.trim_start_matches('%').to_string(),
+                    Value::String(value),
+                )
+            })
             .collect();
         let state = json!({"aliases": aliases, "variables": variables});
-        fs::write(&self.state_path, serde_json::to_string_pretty(&state).unwrap() + "\n")
-            .map_err(|e| format!("cannot save TUI state {}: {e}", self.state_path.display()))
+        fs::write(
+            &self.state_path,
+            serde_json::to_string_pretty(&state).unwrap() + "\n",
+        )
+        .map_err(|e| format!("cannot save TUI state {}: {e}", self.state_path.display()))
     }
 
     fn handle_tab(&mut self) {
@@ -771,14 +929,21 @@ impl App {
     }
 
     fn history_up(&mut self) {
-        if self.history.is_empty() { return; }
-        let index = self.history_index.unwrap_or(self.history.len()).saturating_sub(1);
+        if self.history.is_empty() {
+            return;
+        }
+        let index = self
+            .history_index
+            .unwrap_or(self.history.len())
+            .saturating_sub(1);
         self.history_index = Some(index);
         self.input = self.history[index].clone();
     }
 
     fn history_down(&mut self) {
-        let Some(index) = self.history_index else { return; };
+        let Some(index) = self.history_index else {
+            return;
+        };
         if index + 1 >= self.history.len() {
             self.history_index = None;
             self.input.clear();
@@ -794,7 +959,9 @@ impl App {
         queue!(stdout, MoveTo(0, 0), Clear(ClearType::All))?;
 
         let side_width: u16 = if width >= 90 { 24 } else { 0 };
-        let main_width = width.saturating_sub(side_width + if side_width > 0 { 1 } else { 0 }).max(20);
+        let main_width = width
+            .saturating_sub(side_width + if side_width > 0 { 1 } else { 0 })
+            .max(20);
         let topic = self.current_topic();
         let status = format!(
             " NEXUS {}  mode={} region={}  topic={} ",
@@ -806,10 +973,17 @@ impl App {
         queue!(stdout, MoveTo(0, 0), Print(fit(&status, width as usize)))?;
 
         let body_height = height.saturating_sub(3) as usize;
-        let end = self.scrollback.len().saturating_sub(self.scroll_offset.min(self.scrollback.len()));
+        let end = self
+            .scrollback
+            .len()
+            .saturating_sub(self.scroll_offset.min(self.scrollback.len()));
         let start = end.saturating_sub(body_height);
         for (row, line) in self.scrollback[start..end].iter().enumerate() {
-            queue!(stdout, MoveTo(0, (row + 1) as u16), Print(fit(line, main_width as usize)))?;
+            queue!(
+                stdout,
+                MoveTo(0, (row + 1) as u16),
+                Print(fit(line, main_width as usize))
+            )?;
         }
 
         if side_width > 0 {
@@ -818,14 +992,34 @@ impl App {
                 queue!(stdout, MoveTo(x, y), Print("|"))?;
             }
             let sx = x + 1;
-            queue!(stdout, MoveTo(sx, 1), Print(fit(" USERS", side_width as usize)))?;
-            queue!(stdout, MoveTo(sx, 2), Print(fit(&format!(" @{}", self.nick), side_width as usize)))?;
-            for (index, member) in self.members.iter().take(body_height.saturating_sub(4)).enumerate() {
-                let marker = if self.private_target.as_deref() == Some(member.nick.as_str()) { "*" } else { "+" };
+            queue!(
+                stdout,
+                MoveTo(sx, 1),
+                Print(fit(" USERS", side_width as usize))
+            )?;
+            queue!(
+                stdout,
+                MoveTo(sx, 2),
+                Print(fit(&format!(" @{}", self.nick), side_width as usize))
+            )?;
+            for (index, member) in self
+                .members
+                .iter()
+                .take(body_height.saturating_sub(4))
+                .enumerate()
+            {
+                let marker = if self.private_target.as_deref() == Some(member.nick.as_str()) {
+                    "*"
+                } else {
+                    "+"
+                };
                 queue!(
                     stdout,
                     MoveTo(sx, (index + 3) as u16),
-                    Print(fit(&format!(" {marker}{} [{}]", member.nick, member.backend_label()), side_width as usize))
+                    Print(fit(
+                        &format!(" {marker}{} [{}]", member.nick, member.backend_label()),
+                        side_width as usize
+                    ))
                 )?;
             }
         }
@@ -843,7 +1037,8 @@ impl App {
             Print(&prompt),
             Print(fit(&self.input, input_width))
         )?;
-        let cursor_x = (prompt_width + self.input.chars().count()).min(width.saturating_sub(1) as usize) as u16;
+        let cursor_x = (prompt_width + self.input.chars().count())
+            .min(width.saturating_sub(1) as usize) as u16;
         queue!(stdout, MoveTo(cursor_x, height.saturating_sub(1)))?;
         stdout.flush()
     }
@@ -856,7 +1051,9 @@ fn command_args(input: &str) -> &str {
 }
 
 fn fit(text: &str, width: usize) -> String {
-    if width == 0 { return String::new(); }
+    if width == 0 {
+        return String::new();
+    }
     let count = text.chars().count();
     if count <= width {
         let mut output = text.to_string();
@@ -907,20 +1104,31 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     while app.running {
         app.render()?;
         if let Event::Key(key) = event::read()? {
-            if key.modifiers.contains(KeyModifiers::CONTROL) && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d')) {
+            if key.modifiers.contains(KeyModifiers::CONTROL)
+                && matches!(key.code, KeyCode::Char('c') | KeyCode::Char('d'))
+            {
                 app.running = false;
                 continue;
             }
             match key.code {
-                KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => app.input.push(ch),
-                KeyCode::Backspace => { app.input.pop(); }
+                KeyCode::Char(ch) if !key.modifiers.contains(KeyModifiers::CONTROL) => {
+                    app.input.push(ch)
+                }
+                KeyCode::Backspace => {
+                    app.input.pop();
+                }
                 KeyCode::Enter => {
                     let line = std::mem::take(&mut app.input);
                     app.execute_line(&mut nexus, line);
                 }
                 KeyCode::Up => app.history_up(),
                 KeyCode::Down => app.history_down(),
-                KeyCode::PageUp => app.scroll_offset = app.scroll_offset.saturating_add(10).min(app.scrollback.len()),
+                KeyCode::PageUp => {
+                    app.scroll_offset = app
+                        .scroll_offset
+                        .saturating_add(10)
+                        .min(app.scrollback.len())
+                }
                 KeyCode::PageDown => app.scroll_offset = app.scroll_offset.saturating_sub(10),
                 KeyCode::Tab => app.handle_tab(),
                 KeyCode::Esc => app.private_target = None,

@@ -19,17 +19,61 @@ pub struct RoomSpec {
 }
 
 pub const ROOMS: [RoomSpec; 4] = [
-    RoomSpec { channel: "#observatory", mode_id: "analytical", region_id: "observatory", label: "Observatory / Analytical" },
-    RoomSpec { channel: "#archive", mode_id: "historical", region_id: "archive", label: "Archive / Historical" },
-    RoomSpec { channel: "#agora", mode_id: "cultural", region_id: "agora", label: "Agora / Cultural" },
-    RoomSpec { channel: "#commons", mode_id: "meme_casual", region_id: "commons", label: "Commons / Meme-Casual" },
+    RoomSpec {
+        channel: "#observatory",
+        mode_id: "analytical",
+        region_id: "observatory",
+        label: "Observatory / Analytical",
+    },
+    RoomSpec {
+        channel: "#archive",
+        mode_id: "historical",
+        region_id: "archive",
+        label: "Archive / Historical",
+    },
+    RoomSpec {
+        channel: "#agora",
+        mode_id: "cultural",
+        region_id: "agora",
+        label: "Agora / Cultural",
+    },
+    RoomSpec {
+        channel: "#commons",
+        mode_id: "meme_casual",
+        region_id: "commons",
+        label: "Commons / Meme-Casual",
+    },
 ];
 
 pub const COMMANDS: [&str; 28] = [
-    "/help", "/join", "/mode", "/topic", "/ask", "/council", "/me", "/msg",
-    "/nick", "/who", "/names", "/upload", "/dcc", "/evidence", "/ref", "/unref",
-    "/addmock", "/addollama", "/kick", "/alias", "/aliases", "/set", "/unset", "/vars",
-    "/search", "/save", "/clear", "/quit",
+    "/help",
+    "/join",
+    "/mode",
+    "/topic",
+    "/ask",
+    "/council",
+    "/me",
+    "/msg",
+    "/nick",
+    "/who",
+    "/names",
+    "/upload",
+    "/dcc",
+    "/evidence",
+    "/ref",
+    "/unref",
+    "/addmock",
+    "/addollama",
+    "/kick",
+    "/alias",
+    "/aliases",
+    "/set",
+    "/unset",
+    "/vars",
+    "/search",
+    "/save",
+    "/clear",
+    "/quit",
 ];
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -100,35 +144,68 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/unref" => require(rest, "/unref <object:sha256>").map(InputCommand::Unref),
         "/kick" => require(rest, "/kick <nick>").map(InputCommand::Kick),
         "/search" => require(rest, "/search <text>").map(InputCommand::Search),
-        "/upload" => require(rest, "/upload <path>").map(|p| InputCommand::Upload(PathBuf::from(unquote(&p)))),
-        "/save" => require(rest, "/save <path>").map(|p| InputCommand::Save(PathBuf::from(unquote(&p)))),
+        "/upload" => require(rest, "/upload <path>")
+            .map(|p| InputCommand::Upload(PathBuf::from(unquote(&p)))),
+        "/save" => {
+            require(rest, "/save <path>").map(|p| InputCommand::Save(PathBuf::from(unquote(&p))))
+        }
         "/msg" => {
-            let (target, text) = split_first(rest).ok_or_else(|| "usage: /msg <nick> <text>".to_string())?;
-            if text.is_empty() { return Err("usage: /msg <nick> <text>".to_string()); }
-            Ok(InputCommand::Msg { target: target.to_string(), text: text.to_string() })
+            let (target, text) =
+                split_first(rest).ok_or_else(|| "usage: /msg <nick> <text>".to_string())?;
+            if text.is_empty() {
+                return Err("usage: /msg <nick> <text>".to_string());
+            }
+            Ok(InputCommand::Msg {
+                target: target.to_string(),
+                text: text.to_string(),
+            })
         }
         "/addollama" => {
-            let (nick, model) = split_first(rest).ok_or_else(|| "usage: /addollama <nick> <ollama-model>".to_string())?;
-            if model.is_empty() { return Err("usage: /addollama <nick> <ollama-model>".to_string()); }
-            Ok(InputCommand::AddOllama { nick: nick.to_string(), model: model.to_string() })
+            let (nick, model) = split_first(rest)
+                .ok_or_else(|| "usage: /addollama <nick> <ollama-model>".to_string())?;
+            if model.is_empty() {
+                return Err("usage: /addollama <nick> <ollama-model>".to_string());
+            }
+            Ok(InputCommand::AddOllama {
+                nick: nick.to_string(),
+                model: model.to_string(),
+            })
         }
         "/addmock" => {
-            if rest.trim().is_empty() { return Err("usage: /addmock <nick> [profile]".to_string()); }
+            if rest.trim().is_empty() {
+                return Err("usage: /addmock <nick> [profile]".to_string());
+            }
             let (nick, profile) = split_first(rest).unwrap();
             Ok(InputCommand::AddMock {
                 nick: nick.to_string(),
-                profile: if profile.is_empty() { "balanced".to_string() } else { profile.to_string() },
+                profile: if profile.is_empty() {
+                    "balanced".to_string()
+                } else {
+                    profile.to_string()
+                },
             })
         }
         "/alias" => {
-            let (name, expansion) = split_first(rest).ok_or_else(|| "usage: /alias <name> <expansion>".to_string())?;
-            if expansion.is_empty() { return Err("usage: /alias <name> <expansion>".to_string()); }
-            Ok(InputCommand::Alias { name: name.trim_start_matches('/').to_string(), expansion: expansion.to_string() })
+            let (name, expansion) =
+                split_first(rest).ok_or_else(|| "usage: /alias <name> <expansion>".to_string())?;
+            if expansion.is_empty() {
+                return Err("usage: /alias <name> <expansion>".to_string());
+            }
+            Ok(InputCommand::Alias {
+                name: name.trim_start_matches('/').to_string(),
+                expansion: expansion.to_string(),
+            })
         }
         "/set" => {
-            let (name, value) = split_first(rest).ok_or_else(|| "usage: /set %name <value>".to_string())?;
-            if value.is_empty() { return Err("usage: /set %name <value>".to_string()); }
-            Ok(InputCommand::Set { name: name.to_string(), value: value.to_string() })
+            let (name, value) =
+                split_first(rest).ok_or_else(|| "usage: /set %name <value>".to_string())?;
+            if value.is_empty() {
+                return Err("usage: /set %name <value>".to_string());
+            }
+            Ok(InputCommand::Set {
+                name: name.to_string(),
+                value: value.to_string(),
+            })
         }
         "/unset" => require(rest, "/unset %name").map(InputCommand::Unset),
         "/dcc" => parse_dcc(rest).map(InputCommand::Dcc),
@@ -137,20 +214,37 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
 }
 
 fn parse_dcc(rest: &str) -> Result<DccCommand, String> {
-    let (sub, tail) = split_first(rest).ok_or_else(|| "usage: /dcc <send|chat|close|list> ...".to_string())?;
+    let (sub, tail) =
+        split_first(rest).ok_or_else(|| "usage: /dcc <send|chat|close|list> ...".to_string())?;
     match sub.to_ascii_lowercase().as_str() {
         "list" => Ok(DccCommand::List),
-        "chat" => Ok(DccCommand::Chat { nick: require(tail, "/dcc chat <nick>")? }),
+        "chat" => Ok(DccCommand::Chat {
+            nick: require(tail, "/dcc chat <nick>")?,
+        }),
         "send" => {
-            let (target, path) = split_first(tail).ok_or_else(|| "usage: /dcc send <nick|#room> <file>".to_string())?;
-            if path.is_empty() { return Err("usage: /dcc send <nick|#room> <file>".to_string()); }
-            Ok(DccCommand::Send { target: target.to_string(), path: PathBuf::from(unquote(path)) })
+            let (target, path) = split_first(tail)
+                .ok_or_else(|| "usage: /dcc send <nick|#room> <file>".to_string())?;
+            if path.is_empty() {
+                return Err("usage: /dcc send <nick|#room> <file>".to_string());
+            }
+            Ok(DccCommand::Send {
+                target: target.to_string(),
+                path: PathBuf::from(unquote(path)),
+            })
         }
         "close" => {
-            let (kind, nick) = split_first(tail).ok_or_else(|| "usage: /dcc close <send|chat> <nick>".to_string())?;
-            if nick.is_empty() { return Err("usage: /dcc close <send|chat> <nick>".to_string()); }
-            if kind != "send" && kind != "chat" { return Err("DCC close type must be send or chat".to_string()); }
-            Ok(DccCommand::Close { kind: kind.to_string(), nick: nick.to_string() })
+            let (kind, nick) = split_first(tail)
+                .ok_or_else(|| "usage: /dcc close <send|chat> <nick>".to_string())?;
+            if nick.is_empty() {
+                return Err("usage: /dcc close <send|chat> <nick>".to_string());
+            }
+            if kind != "send" && kind != "chat" {
+                return Err("DCC close type must be send or chat".to_string());
+            }
+            Ok(DccCommand::Close {
+                kind: kind.to_string(),
+                nick: nick.to_string(),
+            })
         }
         _ => Err("usage: /dcc <send|chat|close|list> ...".to_string()),
     }
@@ -163,20 +257,28 @@ fn split_command(value: &str) -> (&str, &str) {
 
 fn split_first(value: &str) -> Option<(&str, &str)> {
     let trimmed = value.trim();
-    if trimmed.is_empty() { return None; }
+    if trimmed.is_empty() {
+        return None;
+    }
     let split = trimmed.find(char::is_whitespace).unwrap_or(trimmed.len());
     Some((&trimmed[..split], trimmed[split..].trim_start()))
 }
 
 fn require(value: &str, usage: &str) -> Result<String, String> {
-    if value.trim().is_empty() { Err(format!("usage: {usage}")) } else { Ok(value.trim().to_string()) }
+    if value.trim().is_empty() {
+        Err(format!("usage: {usage}"))
+    } else {
+        Ok(value.trim().to_string())
+    }
 }
 
 pub fn unquote(value: &str) -> String {
     let value = value.trim();
     if value.len() >= 2 {
         let bytes = value.as_bytes();
-        if (bytes[0] == b'"' && bytes[value.len() - 1] == b'"') || (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'') {
+        if (bytes[0] == b'"' && bytes[value.len() - 1] == b'"')
+            || (bytes[0] == b'\'' && bytes[value.len() - 1] == b'\'')
+        {
             return value[1..value.len() - 1].to_string();
         }
     }
@@ -194,12 +296,20 @@ pub fn normalize_action(value: &str) -> String {
 
 pub fn room_from_name(value: &str) -> Option<RoomSpec> {
     let needle = value.trim().trim_start_matches('#').to_ascii_lowercase();
-    ROOMS.iter().copied().find(|room| room.channel.trim_start_matches('#') == needle || room.mode_id == needle || room.region_id == needle)
+    ROOMS.iter().copied().find(|room| {
+        room.channel.trim_start_matches('#') == needle
+            || room.mode_id == needle
+            || room.region_id == needle
+    })
 }
 
 pub fn command_completions(prefix: &str) -> Vec<&'static str> {
     let lower = prefix.to_ascii_lowercase();
-    COMMANDS.iter().copied().filter(|command| command.starts_with(&lower)).collect()
+    COMMANDS
+        .iter()
+        .copied()
+        .filter(|command| command.starts_with(&lower))
+        .collect()
 }
 
 #[derive(Debug, Clone, Default)]
@@ -210,8 +320,13 @@ pub struct AliasBook {
 impl AliasBook {
     pub fn define(&mut self, name: &str, expansion: &str) -> Result<(), String> {
         let key = name.trim().trim_start_matches('/').to_ascii_lowercase();
-        if key.is_empty() { return Err("alias name cannot be empty".to_string()); }
-        if COMMANDS.iter().any(|command| command.trim_start_matches('/') == key) {
+        if key.is_empty() {
+            return Err("alias name cannot be empty".to_string());
+        }
+        if COMMANDS
+            .iter()
+            .any(|command| command.trim_start_matches('/') == key)
+        {
             return Err("cannot replace a built-in NEXUS command".to_string());
         }
         if !expansion.trim_start().starts_with('/') {
@@ -223,7 +338,9 @@ impl AliasBook {
 
     pub fn expand(&self, input: &str, nick: &str, channel: &str) -> Option<String> {
         let trimmed = input.trim();
-        if !trimmed.starts_with('/') { return None; }
+        if !trimmed.starts_with('/') {
+            return None;
+        }
         let (cmd, rest) = split_command(trimmed);
         let name = cmd.trim_start_matches('/').to_ascii_lowercase();
         let template = self.aliases.get(&name)?;
@@ -231,7 +348,11 @@ impl AliasBook {
         let mut out = template.replace("$me", nick).replace("$chan", channel);
         for index in (1..=9).rev() {
             let range_token = format!("${index}-");
-            let range_value = if index <= args.len() { args[index - 1..].join(" ") } else { String::new() };
+            let range_value = if index <= args.len() {
+                args[index - 1..].join(" ")
+            } else {
+                String::new()
+            };
             out = out.replace(&range_token, &range_value);
             let token = format!("${index}");
             let value = args.get(index - 1).copied().unwrap_or("");
@@ -241,12 +362,18 @@ impl AliasBook {
     }
 
     pub fn list(&self) -> Vec<(String, String)> {
-        self.aliases.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+        self.aliases
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect()
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub enum DccKind { Send, Chat }
+pub enum DccKind {
+    Send,
+    Chat,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DccSession {
@@ -282,35 +409,77 @@ impl ImportedDocument {
 
 pub fn load_document(path: &Path) -> Result<ImportedDocument, String> {
     let meta = fs::metadata(path).map_err(|e| format!("cannot stat {}: {e}", path.display()))?;
-    if !meta.is_file() { return Err(format!("not a regular file: {}", path.display())); }
-    if meta.len() > MAX_UPLOAD_BYTES {
-        return Err(format!("file is {} bytes; local upload limit is {} bytes", meta.len(), MAX_UPLOAD_BYTES));
+    if !meta.is_file() {
+        return Err(format!("not a regular file: {}", path.display()));
     }
-    let filename = path.file_name().and_then(|s| s.to_str()).ok_or_else(|| "file name is not valid UTF-8".to_string())?.to_string();
-    let ext = path.extension().and_then(|s| s.to_str()).unwrap_or("").to_ascii_lowercase();
+    if meta.len() > MAX_UPLOAD_BYTES {
+        return Err(format!(
+            "file is {} bytes; local upload limit is {} bytes",
+            meta.len(),
+            MAX_UPLOAD_BYTES
+        ));
+    }
+    let filename = path
+        .file_name()
+        .and_then(|s| s.to_str())
+        .ok_or_else(|| "file name is not valid UTF-8".to_string())?
+        .to_string();
+    let ext = path
+        .extension()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
 
     let (format, content, metadata) = match ext.as_str() {
         "pdf" => {
-            let text = pdf_extract::extract_text(path).map_err(|e| format!("PDF text extraction failed: {e}"))?;
+            let text = pdf_extract::extract_text(path)
+                .map_err(|e| format!("PDF text extraction failed: {e}"))?;
             ("pdf".to_string(), text, json!({"extractor": "pdf-extract"}))
         }
-        "docx" => ("docx".to_string(), extract_zip_xml(path, "word/document.xml")?, json!({"extractor": "zip+xml"})),
-        "odt" => ("odt".to_string(), extract_zip_xml(path, "content.xml")?, json!({"extractor": "zip+xml"})),
+        "docx" => (
+            "docx".to_string(),
+            extract_zip_xml(path, "word/document.xml")?,
+            json!({"extractor": "zip+xml"}),
+        ),
+        "odt" => (
+            "odt".to_string(),
+            extract_zip_xml(path, "content.xml")?,
+            json!({"extractor": "zip+xml"}),
+        ),
         "json" => {
             let text = read_utf8(path)?;
-            let parsed: Value = serde_json::from_str(&text).map_err(|e| format!("invalid JSON: {e}"))?;
-            let kind = match parsed { Value::Object(_) => "object", Value::Array(_) => "array", Value::String(_) => "string", Value::Number(_) => "number", Value::Bool(_) => "boolean", Value::Null => "null" };
-            ("json".to_string(), text, json!({"validated": true, "top_level": kind}))
+            let parsed: Value =
+                serde_json::from_str(&text).map_err(|e| format!("invalid JSON: {e}"))?;
+            let kind = match parsed {
+                Value::Object(_) => "object",
+                Value::Array(_) => "array",
+                Value::String(_) => "string",
+                Value::Number(_) => "number",
+                Value::Bool(_) => "boolean",
+                Value::Null => "null",
+            };
+            (
+                "json".to_string(),
+                text,
+                json!({"validated": true, "top_level": kind}),
+            )
         }
         "jsonl" | "ndjson" => {
             let text = read_utf8(path)?;
             let mut records = 0usize;
             for (index, line) in text.lines().enumerate() {
-                if line.trim().is_empty() { continue; }
-                serde_json::from_str::<Value>(line).map_err(|e| format!("invalid JSONL record at line {}: {e}", index + 1))?;
+                if line.trim().is_empty() {
+                    continue;
+                }
+                serde_json::from_str::<Value>(line)
+                    .map_err(|e| format!("invalid JSONL record at line {}: {e}", index + 1))?;
                 records += 1;
             }
-            ("jsonl".to_string(), text, json!({"validated": true, "records": records}))
+            (
+                "jsonl".to_string(),
+                text,
+                json!({"validated": true, "records": records}),
+            )
         }
         "csv" => {
             let text = read_utf8(path)?;
@@ -325,21 +494,39 @@ pub fn load_document(path: &Path) -> Result<ImportedDocument, String> {
         _ => {
             let text = read_utf8(path).map_err(|_| format!("unsupported binary document type '.{}'; supported binary formats are PDF, DOCX and ODT", if ext.is_empty() { "?" } else { ext.as_str() }))?;
             let lines = text.lines().count();
-            (if ext.is_empty() { "text" } else { ext.as_str() }.to_string(), text, json!({"lines": lines, "detected_as": "utf8_text"}))
+            (
+                if ext.is_empty() { "text" } else { ext.as_str() }.to_string(),
+                text,
+                json!({"lines": lines, "detected_as": "utf8_text"}),
+            )
         }
     };
 
     let (content, truncated) = truncate_chars(content, MAX_EVIDENCE_CHARS);
-    if content.trim().is_empty() { return Err("document contained no extractable text".to_string()); }
-    Ok(ImportedDocument { filename, format, content, metadata, truncated, original_bytes: meta.len() })
+    if content.trim().is_empty() {
+        return Err("document contained no extractable text".to_string());
+    }
+    Ok(ImportedDocument {
+        filename,
+        format,
+        content,
+        metadata,
+        truncated,
+        original_bytes: meta.len(),
+    })
 }
 
 fn read_utf8(path: &Path) -> Result<String, String> {
-    fs::read_to_string(path).map_err(|e| format!("cannot read {} as UTF-8 text: {e}", path.display()))
+    fs::read_to_string(path)
+        .map_err(|e| format!("cannot read {} as UTF-8 text: {e}", path.display()))
 }
 
 fn delimited_summary(text: &str, delimiter: u8) -> Result<Value, String> {
-    let mut reader = csv::ReaderBuilder::new().has_headers(false).flexible(true).delimiter(delimiter).from_reader(text.as_bytes());
+    let mut reader = csv::ReaderBuilder::new()
+        .has_headers(false)
+        .flexible(true)
+        .delimiter(delimiter)
+        .from_reader(text.as_bytes());
     let mut rows = 0usize;
     let mut max_columns = 0usize;
     for record in reader.records() {
@@ -352,10 +539,15 @@ fn delimited_summary(text: &str, delimiter: u8) -> Result<Value, String> {
 
 fn extract_zip_xml(path: &Path, member: &str) -> Result<String, String> {
     let file = File::open(path).map_err(|e| format!("cannot open {}: {e}", path.display()))?;
-    let mut archive = ZipArchive::new(file).map_err(|e| format!("invalid ZIP-based document: {e}"))?;
-    let mut entry = archive.by_name(member).map_err(|e| format!("document is missing {member}: {e}"))?;
+    let mut archive =
+        ZipArchive::new(file).map_err(|e| format!("invalid ZIP-based document: {e}"))?;
+    let mut entry = archive
+        .by_name(member)
+        .map_err(|e| format!("document is missing {member}: {e}"))?;
     let mut xml = String::new();
-    entry.read_to_string(&mut xml).map_err(|e| format!("cannot read {member}: {e}"))?;
+    entry
+        .read_to_string(&mut xml)
+        .map_err(|e| format!("cannot read {member}: {e}"))?;
     Ok(strip_xml(&xml))
 }
 
@@ -365,11 +557,18 @@ fn strip_xml(xml: &str) -> String {
     let mut tag = String::new();
     for ch in xml.chars() {
         match ch {
-            '<' => { in_tag = true; tag.clear(); }
+            '<' => {
+                in_tag = true;
+                tag.clear();
+            }
             '>' if in_tag => {
                 in_tag = false;
                 let lower = tag.to_ascii_lowercase();
-                if lower.starts_with("/w:p") || lower.starts_with("/text:p") || lower.starts_with("w:br") || lower.starts_with("text:line-break") {
+                if lower.starts_with("/w:p")
+                    || lower.starts_with("/text:p")
+                    || lower.starts_with("w:br")
+                    || lower.starts_with("text:line-break")
+                {
                     out.push('\n');
                 } else if lower.starts_with("w:tab") || lower.starts_with("text:tab") {
                     out.push('\t');
@@ -379,12 +578,22 @@ fn strip_xml(xml: &str) -> String {
             _ => out.push(ch),
         }
     }
-    out.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">").replace("&quot;", "\"").replace("&apos;", "'")
+    out.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
 }
 
 fn truncate_chars(mut content: String, limit: usize) -> (String, bool) {
-    if content.chars().count() <= limit { return (content, false); }
-    let byte_index = content.char_indices().nth(limit).map(|(index, _)| index).unwrap_or(content.len());
+    if content.chars().count() <= limit {
+        return (content, false);
+    }
+    let byte_index = content
+        .char_indices()
+        .nth(limit)
+        .map(|(index, _)| index)
+        .unwrap_or(content.len());
     content.truncate(byte_index);
     content.push_str("\n\n[NEXUS TUI: extracted content truncated at local evidence limit]\n");
     (content, true)
@@ -396,32 +605,75 @@ mod tests {
 
     #[test]
     fn parses_trout_action_and_dcc_commands() {
-        assert_eq!(parse_input("/me *slapped Grok with a large trout*").unwrap(), InputCommand::Me("*slapped Grok with a large trout*".to_string()));
-        assert_eq!(normalize_action("*slapped Grok with a large trout*"), "slapped Grok with a large trout");
-        assert_eq!(parse_input("/dcc chat Grok").unwrap(), InputCommand::Dcc(DccCommand::Chat { nick: "Grok".to_string() }));
-        assert_eq!(parse_input("/dcc send #agora notes.csv").unwrap(), InputCommand::Dcc(DccCommand::Send { target: "#agora".to_string(), path: PathBuf::from("notes.csv") }));
+        assert_eq!(
+            parse_input("/me *slapped Grok with a large trout*").unwrap(),
+            InputCommand::Me("*slapped Grok with a large trout*".to_string())
+        );
+        assert_eq!(
+            normalize_action("*slapped Grok with a large trout*"),
+            "slapped Grok with a large trout"
+        );
+        assert_eq!(
+            parse_input("/dcc chat Grok").unwrap(),
+            InputCommand::Dcc(DccCommand::Chat {
+                nick: "Grok".to_string()
+            })
+        );
+        assert_eq!(
+            parse_input("/dcc send #agora notes.csv").unwrap(),
+            InputCommand::Dcc(DccCommand::Send {
+                target: "#agora".to_string(),
+                path: PathBuf::from("notes.csv")
+            })
+        );
     }
 
     #[test]
     fn maps_rooms_to_world_modes() {
         assert_eq!(room_from_name("#agora").unwrap().mode_id, "cultural");
         assert_eq!(room_from_name("commons").unwrap().mode_id, "meme_casual");
-        assert_eq!(room_from_name("analytical").unwrap().channel, "#observatory");
+        assert_eq!(
+            room_from_name("analytical").unwrap().channel,
+            "#observatory"
+        );
     }
 
     #[test]
     fn aliases_support_mirc_style_argument_ranges() {
         let mut aliases = AliasBook::default();
         aliases.define("slap", "/me slaps $1 with $2-").unwrap();
-        assert_eq!(aliases.expand("/slap Grok a large trout", "Trent", "#commons").unwrap(), "/me slaps Grok with a large trout");
+        assert_eq!(
+            aliases
+                .expand("/slap Grok a large trout", "Trent", "#commons")
+                .unwrap(),
+            "/me slaps Grok with a large trout"
+        );
         assert!(aliases.define("join", "/me nope").is_err());
     }
 
     #[test]
     fn parses_variables_and_local_model_addition() {
-        assert_eq!(parse_input("/set %weapon a large trout").unwrap(), InputCommand::Set { name: "%weapon".to_string(), value: "a large trout".to_string() });
-        assert_eq!(parse_input("hello room").unwrap(), InputCommand::Say("hello room".to_string()));
-        assert_eq!(parse_input("/join #commons").unwrap(), InputCommand::Join("#commons".to_string()));
-        assert_eq!(parse_input("/addollama LocalQwen qwen2.5:0.5b").unwrap(), InputCommand::AddOllama { nick: "LocalQwen".to_string(), model: "qwen2.5:0.5b".to_string() });
+        assert_eq!(
+            parse_input("/set %weapon a large trout").unwrap(),
+            InputCommand::Set {
+                name: "%weapon".to_string(),
+                value: "a large trout".to_string()
+            }
+        );
+        assert_eq!(
+            parse_input("hello room").unwrap(),
+            InputCommand::Say("hello room".to_string())
+        );
+        assert_eq!(
+            parse_input("/join #commons").unwrap(),
+            InputCommand::Join("#commons".to_string())
+        );
+        assert_eq!(
+            parse_input("/addollama LocalQwen qwen2.5:0.5b").unwrap(),
+            InputCommand::AddOllama {
+                nick: "LocalQwen".to_string(),
+                model: "qwen2.5:0.5b".to_string()
+            }
+        );
     }
 }
