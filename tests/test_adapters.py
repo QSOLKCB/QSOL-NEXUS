@@ -41,6 +41,7 @@ class _StubTransport:
     def __init__(self, raw: str) -> None:
         self.raw = raw
         self.last_options: dict[str, object] | None = None
+        self.last_require_complete: bool | None = None
 
     def generate(
         self,
@@ -49,8 +50,10 @@ class _StubTransport:
         *,
         format_schema: dict[str, object] | None = None,
         options: dict[str, object] | None = None,
+        require_complete: bool = True,
     ) -> str:
         self.last_options = options
+        self.last_require_complete = require_complete
         return self.raw
 
 
@@ -169,7 +172,17 @@ class AdapterBoundaryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "truncated"):
             transport.generate("fixture", "prompt")
 
-    def test_ollama_phase_response_uses_nexus_budget(self) -> None:
+    def test_ollama_freeform_phase_can_accept_bounded_truncation(self) -> None:
+        transport = OllamaTransport("http://127.0.0.1:11434")
+        transport._local_opener = _FakeOpener(
+            {"response": "A bounded but usable Council contribution", "done": True, "done_reason": "length"}
+        )
+        self.assertEqual(
+            transport.generate("fixture", "prompt", require_complete=False),
+            "A bounded but usable Council contribution",
+        )
+
+    def test_ollama_phase_response_uses_nexus_budget_and_allows_bound(self) -> None:
         context = PhaseContext(
             "session",
             Phase.WHITE,
@@ -186,6 +199,7 @@ class AdapterBoundaryTests(unittest.TestCase):
         )
         self.assertEqual(actor.respond(context), "Evidence-based restatement.")
         self.assertEqual(transport.last_options, {"num_predict": 192})
+        self.assertFalse(transport.last_require_complete)
 
     def test_ollama_ballot_validates_local_schema_and_budget(self) -> None:
         context = PhaseContext("session", Phase.BLUE, "question", "object:" + "a" * 64, {})
@@ -199,6 +213,7 @@ class AdapterBoundaryTests(unittest.TestCase):
         self.assertEqual(choice, Ballot.TEST_FURTHER)
         self.assertEqual(rationale, "Needs replication.")
         self.assertEqual(transport.last_options, {"num_predict": 256, "temperature": 0})
+        self.assertTrue(transport.last_require_complete)
 
     def test_ollama_ballot_rejects_malformed_non_object_and_extra_keys(self) -> None:
         context = PhaseContext("session", Phase.BLUE, "question", "object:" + "a" * 64, {})
