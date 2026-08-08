@@ -1,0 +1,51 @@
+name: One-shot alpha6 Council telemetry implementation
+
+on:
+  push:
+    branches:
+      - agent/council-information-telemetry
+    paths:
+      - '.github/scripts/apply-alpha6-telemetry.py'
+      - '.github/workflows/alpha6-telemetry-autofix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-verify:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout alpha6 branch
+        uses: actions/checkout@v4
+        with:
+          ref: agent/council-information-telemetry
+
+      - name: Apply alpha6 implementation
+        run: python3 .github/scripts/apply-alpha6-telemetry.py
+
+      - name: Format Rust
+        run: cargo fmt --manifest-path tui/Cargo.toml
+
+      - name: Rust tests
+        run: cargo test --manifest-path tui/Cargo.toml --all-targets
+
+      - name: Rust compile check
+        run: cargo check --manifest-path tui/Cargo.toml --all-targets
+
+      - name: Python tests
+        env:
+          PYTHONPATH: src
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Remove one-shot helpers and commit verified alpha6
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/scripts/apply-alpha6-telemetry.py .github/workflows/alpha6-telemetry-autofix.yml
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -A
+          git commit -m 'Add Council information telemetry'
+          git push origin HEAD:agent/council-information-telemetry
