@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict
-from typing import Iterable
+import os
+from typing import Callable, Iterable, TypeVar
 
 from .adapters.base import CouncilActor
 from .canonical import canonical_json, sha256_ref
@@ -17,6 +19,10 @@ from .world import WorldStore
 
 MAX_EVIDENCE_CONTEXT_CHARS = 6_000
 MAX_EVIDENCE_OBJECT_CHARS = 3_000
+MAX_COUNCIL_PARALLEL_WORKERS = 256
+DEFAULT_COUNCIL_PARALLEL_WORKERS = 8
+
+_ResultT = TypeVar("_ResultT")
 
 
 class CouncilCoordinator:
@@ -27,12 +33,18 @@ class CouncilCoordinator:
         guard: EqualityGuard | None = None,
         scrubber: SecretScrubber | None = None,
         geometry: WorldGeometry | None = None,
+        max_parallel_workers: int = DEFAULT_COUNCIL_PARALLEL_WORKERS,
     ) -> None:
+        if type(max_parallel_workers) is not int or not 1 <= max_parallel_workers <= MAX_COUNCIL_PARALLEL_WORKERS:
+            raise ValueError(
+                f"max_parallel_workers must be an exact integer in [1, {MAX_COUNCIL_PARALLEL_WORKERS}]"
+            )
         self.world = world
         self.policy = policy or CouncilPolicy()
         self.guard = guard or EqualityGuard()
         self.scrubber = scrubber or SecretScrubber()
         self.geometry = geometry or DEFAULT_WORLD_GEOMETRY
+        self.max_parallel_workers = max_parallel_workers
 
     def run(
         self,
@@ -116,38 +128,46 @@ class CouncilCoordinator:
         guard_events: list[dict] = []
 
         for phase in PHASE_ORDER:
-            current: dict[str, str] = {}
-            records: list[dict] = []
-            for actor in actors:
+            # Every actor in one hat receives the same frozen view of all earlier
+            # hats. Same-phase work may run concurrently, but the next phase is a
+            # hard barrier and cannot begin until this ordered collection joins.
+            completed_snapshot = {name: dict(values) for name, values in completed.items()}
+
+            def collect_phase(actor: CouncilActor) -> tuple[str, str, dict, list[str]]:
                 context = PhaseContext(
                     session_id=session_id,
                     phase=phase,
                     question=scrubbed.text,
                     evidence_snapshot_ref=evidence.object_id,
-                    completed_phases={name: dict(values) for name, values in completed.items()},
+                    completed_phases={name: dict(values) for name, values in completed_snapshot.items()},
                     mode_id=mode.mode_id,
                     mode_instruction=mode.prompt_instruction,
                     geometry_region_id=region.region_id,
                     evidence_context=evidence_context,
                 )
                 content, member_guard_events = self._collect_guarded(actor, context)
-                current[actor.member.member_id] = content
                 submission = PhaseSubmission(
                     member_id=actor.member.member_id,
                     phase=phase,
                     content=content,
                     guard_events=tuple(member_guard_events),
                 )
-                records.append(
-                    {
-                        "member_id": submission.member_id,
-                        "phase": submission.phase.value,
-                        "content": submission.content,
-                        "guard_events": list(submission.guard_events),
-                    }
-                )
+                record = {
+                    "member_id": submission.member_id,
+                    "phase": submission.phase.value,
+                    "content": submission.content,
+                    "guard_events": list(submission.guard_events),
+                }
+                return actor.member.member_id, content, record, member_guard_events
+
+            current: dict[str, str] = {}
+            records: list[dict] = []
+            for member_id, content, record, member_guard_events in self._ordered_parallel_map(actors, collect_phase):
+                current[member_id] = content
+                records.append(record)
                 for event in member_guard_events:
-                    guard_events.append({"member_id": actor.member.member_id, "phase": phase.value, "event": event})
+                    guard_events.append({"member_id": member_id, "phase": phase.value, "event": event})
+
             completed[phase.value] = current
             phase_records[phase.value] = records
 
@@ -273,6 +293,30 @@ class CouncilCoordinator:
             if actor.member.epistemic_privilege != "none":
                 raise ValueError("Council equality invariant violated")
 
+    def _effective_worker_count(self, actor_count: int) -> int:
+        """Bound concurrency by request cap, roster size, and host capacity."""
+        host_capacity = os.cpu_count()
+        if type(host_capacity) is not int or host_capacity <= 0:
+            host_capacity = 1
+        return max(1, min(self.max_parallel_workers, actor_count, host_capacity))
+
+    def _ordered_parallel_map(
+        self,
+        actors: tuple[CouncilActor, ...],
+        operation: Callable[[CouncilActor], _ResultT],
+    ) -> tuple[_ResultT, ...]:
+        """Execute actor-local work concurrently and join in canonical roster order.
+
+        Thread completion order is intentionally not observable in the semantic
+        Council artifact. A single-worker coordinator is the scalar reference
+        path and must produce identical deterministic Council bytes.
+        """
+        workers = self._effective_worker_count(len(actors))
+        if workers == 1:
+            return tuple(operation(actor) for actor in actors)
+        with ThreadPoolExecutor(max_workers=workers, thread_name_prefix="nexus-council") as executor:
+            return tuple(executor.map(operation, actors))
+
     def _collect_guarded(self, actor: CouncilActor, context: PhaseContext) -> tuple[str, list[str]]:
         first = actor.respond(context)
         inspected = self.guard.inspect(first)
@@ -313,14 +357,15 @@ class CouncilCoordinator:
         geometry_region_id: str,
         evidence_context: str,
     ) -> tuple[BallotRecord, ...]:
-        records: list[BallotRecord] = []
-        for actor in actors:
+        completed_snapshot = {name: dict(values) for name, values in completed.items()}
+
+        def collect_ballot(actor: CouncilActor) -> BallotRecord:
             context = PhaseContext(
                 session_id=session_id,
                 phase=Phase.BLUE,
                 question=question,
                 evidence_snapshot_ref=evidence_snapshot_ref,
-                completed_phases={name: dict(values) for name, values in completed.items()},
+                completed_phases={name: dict(values) for name, values in completed_snapshot.items()},
                 mode_id=mode_id,
                 mode_instruction=mode_instruction,
                 geometry_region_id=geometry_region_id,
@@ -336,8 +381,9 @@ class CouncilCoordinator:
                     "rationale": rationale,
                 },
             )
-            records.append(BallotRecord(actor.member.member_id, choice, rationale, commitment))
-        return tuple(records)
+            return BallotRecord(actor.member.member_id, choice, rationale, commitment)
+
+        return self._ordered_parallel_map(actors, collect_ballot)
 
     def _tally(self, ballots: tuple[BallotRecord, ...], evidence_state: str) -> dict:
         counts = Counter(ballot.choice.value for ballot in ballots)
