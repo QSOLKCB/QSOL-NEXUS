@@ -177,6 +177,21 @@ def _validate_state(state: dict[str, Any]) -> None:
         raise ValueError("game turn must be a non-negative exact integer")
     if not isinstance(state.get("content"), str) or not state["content"]:
         raise ValueError("game state requires a non-empty model-readable content view")
+    if state.get("fictional_only") is not True:
+        raise ValueError("UN simulation game state must be marked fictional_only=true")
+    boundary = state.get("claim_boundary")
+    required_boundary = {
+        "fictional_simulation": True,
+        "real_world_policy_claim": False,
+        "real_weapon_procurement": False,
+        "game_stats_are_real_world_measurements": False,
+    }
+    if not isinstance(boundary, dict) or any(
+        boundary.get(key) is not value for key, value in required_boundary.items()
+    ):
+        raise ValueError(
+            "UN simulation game state claim_boundary must explicitly forbid real-world policy/procurement claims"
+        )
     countries = state.get("countries")
     wars = state.get("wars")
     if not isinstance(countries, dict) or not countries:

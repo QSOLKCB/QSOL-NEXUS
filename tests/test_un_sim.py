@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import unittest
 
 from nexus_runtime.api import NexusAPI
@@ -122,6 +123,36 @@ class UNSimulationEngineTests(unittest.TestCase):
         obj = world.create_object("note", {"text": "not a game"}, {"actor": "test"})
         with self.assertRaises(ValueError):
             inspect_game(world, obj.object_id)
+
+    def test_tampered_fictional_claim_boundary_is_rejected_before_transition(self) -> None:
+        world = WorldStore()
+        game = new_game(world, "tamper-boundary")
+
+        non_fictional_payload = copy.deepcopy(game.payload)
+        non_fictional_payload["fictional_only"] = False
+        non_fictional = world.create_object(
+            "un_sim_game_state",
+            non_fictional_payload,
+            {"actor": "test", "reason": "tamper_fixture"},
+        )
+        with self.assertRaisesRegex(ValueError, "fictional_only"):
+            inspect_game(world, non_fictional.object_id)
+
+        bad_boundary_payload = copy.deepcopy(game.payload)
+        bad_boundary_payload["claim_boundary"]["real_world_policy_claim"] = True
+        bad_boundary = world.create_object(
+            "un_sim_game_state",
+            bad_boundary_payload,
+            {"actor": "test", "reason": "tamper_fixture"},
+        )
+        for operation in (
+            lambda: inspect_game(world, bad_boundary.object_id),
+            lambda: apply_action(world, bad_boundary.object_id, "do_nothing", []),
+            lambda: advance_turn(world, bad_boundary.object_id),
+        ):
+            with self.subTest(operation=operation):
+                with self.assertRaisesRegex(ValueError, "claim_boundary"):
+                    operation()
 
 
 class UNSimulationAPITests(unittest.TestCase):

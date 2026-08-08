@@ -580,7 +580,18 @@ impl App {
     }
 
     fn current_game_ref(&self) -> Option<&str> {
-        self.game_refs.get(self.room.channel).map(String::as_str)
+        let channel = self.room.channel;
+        let game_ref = self.game_refs.get(channel).map(String::as_str)?;
+        let in_evidence = self
+            .room_evidence
+            .get(channel)
+            .map(|refs| refs.iter().any(|value| value == game_ref))
+            .unwrap_or(false);
+        if in_evidence {
+            Some(game_ref)
+        } else {
+            None
+        }
     }
 
     fn set_game_ref(&mut self, game_ref: String) {
@@ -1504,5 +1515,23 @@ mod tests {
             "/alias slap /me slaps $1 with $2-"
         );
         assert_eq!(app.preprocess("/unset %weapon"), "/unset %weapon");
+    }
+
+    #[test]
+    fn current_game_ref_requires_board_to_remain_shared_evidence() {
+        let mut app = App::new(
+            "Trent".to_string(),
+            PathBuf::from("/definitely/not/a/state/file"),
+        );
+        app.room = room_from_name("#un-sim").expect("UN sim room");
+        let game_ref = "object:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        app.set_game_ref(game_ref.to_string());
+        assert_eq!(app.current_game_ref(), Some(game_ref));
+
+        app.room_evidence
+            .get_mut("#un-sim")
+            .expect("room evidence")
+            .retain(|value| value != game_ref);
+        assert_eq!(app.current_game_ref(), None);
     }
 }
