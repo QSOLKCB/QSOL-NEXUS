@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ipaddress
 import json
+import math
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
@@ -39,6 +40,15 @@ class OllamaTransport:
             raise ValueError("invalid Ollama base_url")
         if not self.allow_remote and not self._is_loopback(parsed.hostname):
             raise ValueError("Ollama transport is loopback-only by default")
+        if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, (int, float)):
+            raise ValueError("Ollama timeout_seconds must be a positive finite number")
+        try:
+            timeout_seconds = float(self.timeout_seconds)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("Ollama timeout_seconds must be a positive finite number") from exc
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            raise ValueError("Ollama timeout_seconds must be a positive finite number")
+        self.timeout_seconds = timeout_seconds
         # Even explicitly configured remote transports retain the hardened HTTP
         # boundary: no ambient proxies and no redirect following.
         self._local_opener = build_opener(ProxyHandler({}), _NoRedirectHandler())
