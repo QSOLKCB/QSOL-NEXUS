@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the local Ollama boundary, the PR #16 provider-neutral authentication substrate, the PR #17 xAI adapter—the first admitted remote inference transport—the PR #19 local synthetic Decoy Gate / Trap Base, and the PR #20 Courtroom Stenographer. No provider-specific browser OAuth client is registered for xAI; the supported public API path uses an xAI API key. Trap Base is a defensive local simulation, not an internet-facing honeypot, and the Stenographer is a local study ledger rather than a provider or legal audit log.
+This threat model covers the local Ollama boundary, the PR #16 provider-neutral authentication substrate, the PR #17 xAI adapter—the first admitted remote inference transport—the PR #19 local synthetic Decoy Gate / Trap Base, the PR #20 Courtroom Stenographer, and PR #22's deterministic human/AI game tables plus human-only DORK v2. No provider-specific browser OAuth client is registered for xAI; the supported public API path uses an xAI API key. Trap Base is a defensive local simulation, not an internet-facing honeypot, and the Stenographer is a local study ledger rather than a provider or legal audit log.
 
 The first live acceptance fixture is:
 
@@ -480,6 +480,38 @@ Controls:
 - **Enforcement:** owner-only interprocess lock around reconstruct-read-append-index replacement, immutable file creation, strict lock/index file checks and lineage reconstruction.
 - **Tests:** two-instance append ordering, symlink-lock rejection, index repair and canonical restart verification.
 - **Residual risk:** network filesystems with broken local-lock semantics and hostile kernel/filesystem behavior are out of scope.
+
+### T39 — Hidden table information leaks into Council evidence
+
+- **Asset:** UNO/500 hands, the deterministic shoe, and the unrevealed Blackjack dealer hole card.
+- **Attacker capability:** attach the authoritative game ref to a Council or request another seat's ordinary view.
+- **Enforcement:** every game derives a bounded public `content` representation that contains counts and visible cards only; registered player views contain one seat's hand and omit decks/shoes; forged public content fails canonical inspection.
+- **Tests:** private-view, opponent-card absence, hidden-hole and tampered-content regressions in `test_tabletop_games.py`.
+- **Residual risk:** JSONL stdio is a trusted local operator boundary and can inspect full authoritative objects; this is not a multi-tenant card-server ACL.
+
+### T40 — Model narration becomes a game mutation
+
+- **Asset:** authoritative turn order, ownership, scoring, inventory and outcomes.
+- **Attacker capability:** emit convincing prose that claims a move occurred, impersonate another seat, or act out of turn.
+- **Enforcement:** model text has no transition parser or world-write handle; only exact `game.*.act` schemas reach engines, which bind a registered `player_id`, validate phase/turn/action, and create immutable successors.
+- **Tests:** out-of-turn UNO/Monopoly failures, explicit API player identities, TUI proxy syntax, and DORK alternate-player rejection.
+- **Residual risk:** the trusted operator can explicitly proxy a table action with `as <model-nick>`; the transcript makes that identity visible.
+
+### T41 — Forged or nondeterministic game state
+
+- **Asset:** replay identity, card conservation, dice/deck order and deterministic dealer behavior.
+- **Attacker capability:** modify a stored payload, duplicate/drop a card, change derived public content, or rely on process RNG/time.
+- **Enforcement:** SHA-256 domain-separated permutations and rolls use scrubbed seeds and transition counters; engines validate schemas, controller rosters, card multisets, phase invariants, derived public content and predecessor refs before transition.
+- **Tests:** same-seed/same-action identity, canonical inspection, tampered-content, deterministic dice and deterministic dealer regressions.
+- **Residual risk:** deterministic order makes a seed unsuitable as a gambling secret; all Blackjack chips are fictional and real-money use is out of scope.
+
+### T42 — Human-only DORK gains an AI authority path
+
+- **Asset:** the one-human adventure boundary and upstream-content claim boundary.
+- **Attacker capability:** request an AI view/action, use TUI proxy syntax, or treat the familiar opening as an embedded commercial story.
+- **Enforcement:** state binds exactly one `human_operator_id`; engine/API/TUI reject alternate actors and `as`; the implementation contains original Python state/prose and no Z-machine, story binary, or upstream DORK source.
+- **Tests:** alternate-player view/action, TUI human-only parser, full victory, deterministic replay and claim-boundary regressions.
+- **Residual risk:** the adventure intentionally parodies familiar text-adventure grammar and names its upstream inspiration; it does not claim affiliation.
 
 ## Explicitly out of scope for the current remote-provider slice
 

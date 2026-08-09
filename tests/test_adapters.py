@@ -71,7 +71,7 @@ class AdapterBoundaryTests(unittest.TestCase):
     def test_remote_ollama_requires_explicit_override(self) -> None:
         transport = OllamaTransport("https://example.com:11434", allow_remote=True)
         self.assertTrue(transport.allow_remote)
-        self.assertIsNone(transport._local_opener)
+        self.assertIsNotNone(transport._local_opener)
 
     def test_local_ollama_does_not_use_environment_proxy(self) -> None:
         class TargetHandler(BaseHTTPRequestHandler):

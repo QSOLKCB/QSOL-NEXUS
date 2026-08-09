@@ -102,6 +102,61 @@ _MODES = {
         ),
         region_id="dungeon",
     ),
+    "game_uno": WorldMode(
+        mode_id="game_uno",
+        label="UNO Table",
+        description="Deterministic shedding-card table for human and AI seats.",
+        prompt_instruction=(
+            "You are seated in NEXUS UNO. Treat the public table and your player-specific hand view as authoritative. "
+            "You may propose a card, color, draw or pass action, but prose never plays a card. Do not infer hidden hands "
+            "from the content-addressed object. Every human and AI seat uses the same validated rules."
+        ),
+        region_id="commons",
+    ),
+    "game_monopoly": WorldMode(
+        mode_id="game_monopoly",
+        label="Monopoly Table",
+        description="Compact deterministic property-trading table on an original NEXUS board.",
+        prompt_instruction=(
+            "You are seated in NEXUS MONOPOLY: Substrate Edition. The original compact board, cash ledger, property "
+            "ownership, deterministic dice and explicit house rules are authoritative game state. You may advise or "
+            "propose a validated move for your seat; narration, prestige and provider identity cannot alter the ledger."
+        ),
+        region_id="commons",
+    ),
+    "game_500": WorldMode(
+        mode_id="game_500",
+        label="500 Table",
+        description="Four-seat deterministic Australian partnership 500 without the misere contracts.",
+        prompt_instruction=(
+            "You are seated in four-player partnership NEXUS 500. Use only the public auction/trick state and your "
+            "player-specific hand. Partners occupy opposite seats. Follow effective suit, including bowers, and treat "
+            "the joker and declared contract exactly as the runtime reports them. Prose never bids or plays a card."
+        ),
+        region_id="commons",
+    ),
+    "game_blackjack": WorldMode(
+        mode_id="game_blackjack",
+        label="Blackjack Table",
+        description="Fictional-chip Blackjack with a deterministic six-deck dealer that stands on soft 17.",
+        prompt_instruction=(
+            "You are seated at NEXUS BLACKJACK. The dealer, shoe, bets, hand totals and payouts are deterministic and "
+            "runtime-owned. The dealer stands on soft 17 and this profile has no splits. Treat chips as fictional game "
+            "tokens only. A model suggestion does not become hit, stand or double until an explicit game operation."
+        ),
+        region_id="commons",
+    ),
+    "game_dork": WorldMode(
+        mode_id="game_dork",
+        label="DORK v2 / Human Only",
+        description="A Zork-shaped, DORK-revealing single-human text adventure through the software ruins.",
+        prompt_instruction=(
+            "The human operator alone plays DORK v2. You may discuss clues or offer advice, but you have no avatar, "
+            "inventory, score or mutation authority in this adventure. Treat the displayed room and human action result "
+            "as authoritative; never claim that model narration moved, took, opened, prompted, deployed or won."
+        ),
+        region_id="dungeon",
+    ),
 }
 
 

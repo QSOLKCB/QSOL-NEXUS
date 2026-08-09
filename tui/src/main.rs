@@ -12,7 +12,7 @@ use nexus_irc_tui::scripting::{expand_identifiers, IdentifierContext, VariableBo
 use nexus_irc_tui::{
     command_completions, is_watch_only_room, load_document, normalize_action, parse_input,
     room_from_name, sanitize_terminal_text, AliasBook, DccCommand, DccKind, DccSession,
-    GameCommand, InputCommand, MudCommand, RoomSpec, StenographerCommand, ROOMS,
+    GameCommand, InputCommand, MudCommand, RoomSpec, StenographerCommand, TableCommand, ROOMS,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -254,7 +254,7 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS TUI 2.0 alpha9.2 — local room, no IRC server");
+        app.append("*** NEXUS TUI 2.0 alpha10 — local room, no IRC server");
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );
@@ -532,6 +532,10 @@ impl App {
             InputCommand::Mud(command) => {
                 self.reject_stenographer_mutation()?;
                 self.execute_mud(nexus, command)?
+            }
+            InputCommand::Table(command) => {
+                self.reject_stenographer_mutation()?;
+                self.execute_table(nexus, command)?
             }
             InputCommand::Trap(command) => {
                 self.reject_stenographer_mutation()?;
@@ -1004,6 +1008,229 @@ impl App {
         }
         if let Some(mud_ref) = response.get("mud_ref").and_then(Value::as_str) {
             self.append(&format!("*** MUD STATE: {mud_ref}"));
+        }
+        Ok(())
+    }
+
+    fn require_table_room(&self, game_id: &str) -> Result<(), String> {
+        let expected_mode = format!("game_{game_id}");
+        if self.room.mode_id != expected_mode {
+            return Err(format!(
+                "/{game_id} commands are available in #{game_id}; use /join #{game_id}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn table_roster(&self, game_id: &str) -> Result<Vec<String>, String> {
+        let players = self.mud_roster()?;
+        match game_id {
+            "500" if players.len() != 4 => Err(format!(
+                "NEXUS 500 requires exactly four seats; the human plus model roster currently has {}",
+                players.len()
+            )),
+            "uno" | "monopoly" if !(2..=8).contains(&players.len()) => Err(format!(
+                "NEXUS {game_id} requires 2-8 total human/model seats"
+            )),
+            "blackjack" if !(1..=7).contains(&players.len()) => {
+                Err("NEXUS Blackjack requires 1-7 total human/model seats".to_string())
+            }
+            _ => Ok(players),
+        }
+    }
+
+    fn table_help(&mut self, game_id: &str) {
+        let lines: &[&str] = match game_id {
+            "uno" => &[
+                "*** UNO: /uno new [seed] | /uno status [player] | /uno play <card-id> [color] | /uno draw | /uno pass",
+                "*** AI SEAT: /uno as <model-nick> <play|draw|pass> [args...]",
+            ],
+            "monopoly" => &[
+                "*** MONOPOLY: /monopoly new [seed] | status [player] | roll | buy | pass | pay_bail | bankrupt",
+                "*** ASSETS: /monopoly build|sell_house|mortgage|unmortgage <property-id>",
+                "*** AI SEAT: /monopoly as <model-nick> <action> [args...]",
+            ],
+            "500" => &[
+                "*** 500: /500 new [seed] | status [player] | bid <6S..10NT> | pass | discard <card> <card> <card> | play <card>",
+                "*** AI SEAT: /500 as <model-nick> <bid|pass|discard|play> [args...] | opposite seats are partners",
+            ],
+            "blackjack" => &[
+                "*** BLACKJACK: /blackjack new [seed] | status [player] | bet <even-chips> | hit | stand | double | new_round",
+                "*** AI SEAT: /blackjack as <model-nick> <action> [args...] | dealer deterministically stands on soft 17",
+            ],
+            "dork" => &[
+                "*** DORK v2 HUMAN ONLY: /dork new [seed] | look | n|s|e|w | go <direction> | open <thing>",
+                "*** ITEMS: /dork take|drop|read <item-id> | inventory | score",
+                "*** INTERNET: /dork shitpost | ratio <target> | mute <target> | lurk | prompt | deploy | subscribe | grass",
+                "*** Models may advise through the room Council, but /dork has no AI/proxy player seat.",
+            ],
+            _ => &["*** Unknown table game."],
+        };
+        for line in lines {
+            self.append(line);
+        }
+        self.append(
+            "*** Runtime state is authoritative. Human/model narration never mutates a game.",
+        );
+    }
+
+    fn execute_table(
+        &mut self,
+        nexus: &mut NexusProcess,
+        command: TableCommand,
+    ) -> Result<(), String> {
+        let game_id = match &command {
+            TableCommand::Help { game_id }
+            | TableCommand::New { game_id, .. }
+            | TableCommand::Status { game_id, .. }
+            | TableCommand::Act { game_id, .. } => game_id.clone(),
+        };
+        self.require_table_room(&game_id)?;
+        match command {
+            TableCommand::Help { .. } => self.table_help(&game_id),
+            TableCommand::New { seed, .. } => {
+                let mut request = if game_id == "dork" {
+                    json!({
+                        "operation": "game.dork.new",
+                        "human_player_id": self.nick,
+                    })
+                } else {
+                    let players = self.table_roster(&game_id)?;
+                    json!({
+                        "operation": format!("game.{game_id}.new"),
+                        "players": players,
+                        "human_players": [self.nick.clone()],
+                    })
+                };
+                if !seed.trim().is_empty() {
+                    request["seed"] = json!(seed);
+                }
+                let response = nexus.request(request)?;
+                let game_ref = response
+                    .get("game_ref")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("{game_id} response missing game_ref"))?
+                    .to_string();
+                self.set_game_ref(game_ref.clone());
+                self.append(&format!("*** New {game_id} state: {game_ref}"));
+                self.render_table_state(&response)?;
+            }
+            TableCommand::Status { player, .. } => {
+                let game_ref = self
+                    .current_game_ref()
+                    .ok_or_else(|| format!("no game in #{}; use /{} new [seed]", game_id, game_id))?
+                    .to_string();
+                let player_id = if game_id == "dork" {
+                    self.nick.clone()
+                } else {
+                    player.unwrap_or_else(|| self.nick.clone())
+                };
+                let response = nexus.request(json!({
+                    "operation": format!("game.{game_id}.inspect"),
+                    "game_ref": game_ref,
+                    "player_id": player_id,
+                }))?;
+                self.render_table_state(&response)?;
+            }
+            TableCommand::Act {
+                player,
+                action,
+                args,
+                ..
+            } => {
+                let game_ref = self
+                    .current_game_ref()
+                    .ok_or_else(|| format!("no game in #{}; use /{} new [seed]", game_id, game_id))?
+                    .to_string();
+                if game_id == "dork" && player.is_some() {
+                    return Err("DORK v2 is human-only and cannot proxy an AI seat".to_string());
+                }
+                let player_id = player.unwrap_or_else(|| self.nick.clone());
+                let response = nexus.request(json!({
+                    "operation": format!("game.{game_id}.act"),
+                    "game_ref": game_ref,
+                    "player_id": player_id,
+                    "action": action,
+                    "args": args,
+                }))?;
+                let next_ref = response
+                    .get("game_ref")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("{game_id} response missing game_ref"))?
+                    .to_string();
+                self.set_game_ref(next_ref);
+                self.render_table_state(&response)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn render_table_state(&mut self, response: &Value) -> Result<(), String> {
+        let game = response
+            .get("game")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "table response missing game object".to_string())?;
+        if let Some(content) = game.get("content").and_then(Value::as_str) {
+            for line in content.lines() {
+                self.append(&format!("*** {line}"));
+            }
+        }
+        let view = response
+            .get("view")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "table response missing player view".to_string())?;
+        if let Some(player) = view.get("player_id").and_then(Value::as_str) {
+            self.append(&format!("--- PRIVATE PLAYER VIEW: {player} ---"));
+        }
+        if let Some(message) = view.get("message").and_then(Value::as_str) {
+            self.append(&format!("*** {message}"));
+        }
+        if let Some(hand) = view.get("hand").and_then(Value::as_array) {
+            let cards: Vec<&str> = hand
+                .iter()
+                .filter_map(|card| card.get("card_id").and_then(Value::as_str))
+                .collect();
+            self.append(&format!(
+                "*** HAND: {}",
+                if cards.is_empty() {
+                    "-".to_string()
+                } else {
+                    cards.join(", ")
+                }
+            ));
+        }
+        if let Some(inventory) = view.get("inventory").and_then(Value::as_array) {
+            let items: Vec<&str> = inventory
+                .iter()
+                .filter_map(|item| item.get("item_id").and_then(Value::as_str))
+                .collect();
+            self.append(&format!(
+                "*** INVENTORY: {}",
+                if items.is_empty() {
+                    "-".to_string()
+                } else {
+                    items.join(", ")
+                }
+            ));
+        }
+        if let Some(account) = view.get("account").and_then(Value::as_object) {
+            let cash = account.get("cash").and_then(Value::as_i64).unwrap_or(0);
+            let position = account.get("position").and_then(Value::as_u64).unwrap_or(0);
+            self.append(&format!("*** ACCOUNT: cash={cash} position={position}"));
+        }
+        if let Some(bankroll) = view.get("bankroll").and_then(Value::as_u64) {
+            let bet = view.get("bet").and_then(Value::as_u64).unwrap_or(0);
+            let total = view.get("hand_total").and_then(Value::as_u64).unwrap_or(0);
+            let status = view.get("status").and_then(Value::as_str).unwrap_or("?");
+            self.append(&format!(
+                "*** BLACKJACK: bankroll={bankroll} bet={bet} total={total} status={status}"
+            ));
+        }
+        if let Some(team) = view.get("team").and_then(Value::as_str) {
+            self.append(&format!("*** TEAM: {team}"));
+        }
+        if let Some(game_ref) = response.get("game_ref").and_then(Value::as_str) {
+            self.append(&format!("*** GAME STATE: {game_ref}"));
         }
         Ok(())
     }
@@ -1709,6 +1936,8 @@ impl App {
             "*** Core: /join #room | /mode mode | /topic text | /ask text | plain text = Council question",
             "*** Game: /join #un-sim | /game new [seed] | /game status | /game act ... | /game turn",
             "*** MUD: /join #mud | /mud new [seed] | /mud look | /mud n|s|e|w | /mud attack ... | /mud help",
+            "*** Tables: /join #uno|#monopoly|#500|#blackjack then use the matching slash command and /help",
+            "*** DORK v2: /join #dork | /dork new [seed] | /dork look | /dork n|s|e|w | /dork help (human only)",
             "*** Trap: /join #trap-control | /join #trap-base | /trap <closed command>",
             "*** Watchman: /join #stenographer | /steno status|list|inspect|verify|summary|export",
             "*** IRC: /me action | /msg nick text | /nick name | /who | /search text | /save file | /clear | /quit",

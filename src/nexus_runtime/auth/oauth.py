@@ -133,9 +133,13 @@ class OAuthHTTPClient:
             },
             method="POST",
         )
-        handlers: list[Any] = [_RejectRedirects(), HTTPSHandler(context=ssl.create_default_context())]
-        if config.allow_insecure_loopback_provider:
-            handlers.insert(0, ProxyHandler({}))
+        # OAuth token/code/device requests carry credential material. They must
+        # never inherit HTTP(S)_PROXY from the NEXUS process environment.
+        handlers: list[Any] = [
+            ProxyHandler({}),
+            _RejectRedirects(),
+            HTTPSHandler(context=ssl.create_default_context()),
+        ]
         opener = build_opener(*handlers)
         try:
             with opener.open(request, timeout=self.timeout_seconds) as response:

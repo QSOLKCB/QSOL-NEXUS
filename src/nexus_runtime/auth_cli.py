@@ -26,6 +26,14 @@ def configure_auth_parser(subparsers: Any) -> None:
         choices=("browser", "browser-key", "device", "api-key", "env", "external-command"),
     )
     add.add_argument("--env", dest="env_var", help="environment variable containing an API credential")
+    add.add_argument(
+        "--helper-env",
+        dest="helper_env_vars",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="environment variable explicitly forwarded to an external credential helper; repeatable",
+    )
     add.add_argument("--no-open", action="store_true", help="print a browser URL without opening it")
     add.add_argument("--replace", action="store_true", help="replace an existing profile")
     add.add_argument(
@@ -84,7 +92,7 @@ def emit_auth_error(exc: BaseException) -> int:
 
 def _add_profile(args: argparse.Namespace, broker: AuthBroker) -> dict[str, Any]:
     if args.method == "browser":
-        if args.env_var or args.command_argv:
+        if args.env_var or args.helper_env_vars or args.command_argv:
             raise AuthError("browser mode does not accept env or external-command options")
         return broker.add_browser(
             args.adapter_id,
@@ -94,7 +102,7 @@ def _add_profile(args: argparse.Namespace, broker: AuthBroker) -> dict[str, Any]
             replace=args.replace,
         )
     if args.method == "device":
-        if args.env_var or args.command_argv:
+        if args.env_var or args.helper_env_vars or args.command_argv:
             raise AuthError("device mode does not accept env or external-command options")
         return broker.add_device(
             args.adapter_id,
@@ -103,11 +111,11 @@ def _add_profile(args: argparse.Namespace, broker: AuthBroker) -> dict[str, Any]
             replace=args.replace,
         )
     if args.method == "api-key":
-        if args.env_var or args.command_argv:
+        if args.env_var or args.helper_env_vars or args.command_argv:
             raise AuthError("api-key mode reads from a hidden prompt; use env or external-command for headless setup")
         return _prompt_and_store_api_key(args, broker)
     if args.method == "browser-key":
-        if args.env_var or args.command_argv:
+        if args.env_var or args.helper_env_vars or args.command_argv:
             raise AuthError("browser-key mode does not accept env or external-command options")
         setup_url = broker.setup_url(args.adapter_id)
         print(f"Create a provider API key in your browser:\n{setup_url}", file=sys.stderr)
@@ -124,6 +132,8 @@ def _add_profile(args: argparse.Namespace, broker: AuthBroker) -> dict[str, Any]
             raise AuthError("env mode requires --env NAME")
         if args.command_argv:
             raise AuthError("env mode does not accept --command")
+        if args.helper_env_vars:
+            raise AuthError("env mode does not accept --helper-env")
         return broker.add_environment(
             args.adapter_id,
             args.profile,
@@ -139,6 +149,7 @@ def _add_profile(args: argparse.Namespace, broker: AuthBroker) -> dict[str, Any]
             args.adapter_id,
             args.profile,
             args.command_argv,
+            environment_variables=args.helper_env_vars,
             replace=args.replace,
         )
     raise AuthError("unsupported auth method")

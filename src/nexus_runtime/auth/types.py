@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 import math
+import os
 from pathlib import Path
 import re
 from typing import Any, Mapping
@@ -13,6 +14,7 @@ AUTH_SCHEMA_VERSION = "nexus-auth/1"
 PROFILE_STORE_SCHEMA_VERSION = "nexus-auth-profiles/1"
 SECRET_STORE_SCHEMA_VERSION = "nexus-auth-secret/1"
 MAX_SECRET_TOKEN_LENGTH = 65_536
+MAX_EXTERNAL_HELPER_ENVIRONMENT_VARIABLES = 16
 
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 _ENVIRONMENT_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]{0,127}$")
@@ -435,7 +437,10 @@ class AuthProfile:
                 raise AuthError("environment profile metadata is invalid")
             validate_environment_name(self.source_metadata["env_var"])
         elif self.secret_source == "external_command":
-            if set(self.source_metadata) != {"argv"}:
+            if set(self.source_metadata) not in (
+                {"argv"},
+                {"argv", "environment_variables"},
+            ):
                 raise AuthError("external-command profile metadata is invalid")
             argv = self.source_metadata["argv"]
             if (
@@ -455,6 +460,20 @@ class AuthProfile:
                 or not Path(argv[0]).is_absolute()
             ):
                 raise AuthError("external command argv must be a non-empty string list")
+            environment_variables = self.source_metadata.get("environment_variables", [])
+            if (
+                not isinstance(environment_variables, list)
+                or len(environment_variables) > MAX_EXTERNAL_HELPER_ENVIRONMENT_VARIABLES
+                or not all(isinstance(name, str) for name in environment_variables)
+            ):
+                raise AuthError("external-command environment allowlist is invalid")
+            normalized_environment_names: set[str] = set()
+            for name in environment_variables:
+                validate_environment_name(name)
+                normalized = name.casefold() if os.name == "nt" else name
+                if normalized in normalized_environment_names:
+                    raise AuthError("external-command environment names must be unique")
+                normalized_environment_names.add(normalized)
         elif self.source_metadata:
             raise AuthError("stored and no-auth profiles must not carry source metadata")
         expected_contract = {
@@ -531,6 +550,9 @@ class AuthProfile:
         elif self.secret_source == "external_command":
             argv = self.source_metadata["argv"]
             source["executable"] = argv[0].rsplit("/", 1)[-1].rsplit("\\", 1)[-1]
+            source["environment_variables"] = list(
+                self.source_metadata.get("environment_variables", [])
+            )
         elif self.secret_source == "stored":
             source["backend"] = self.secret_backend
         return {
