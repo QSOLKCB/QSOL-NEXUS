@@ -14,7 +14,6 @@ from ._controller_impl import (
 )
 from .commands import (
     CommandOrigin,
-    TrapCommand,
     TrapCommandContext,
     TrapCommandError,
     authorize_trap_command,
@@ -197,6 +196,32 @@ class TrapController(_TrapControllerImpl):
                 active.last_activity_at = self._now()
                 if self._active is active:
                     self._watchdog(active)
+
+    def command_batch(
+        self,
+        proposals: Mapping[str, str | Mapping[str, object]],
+        *,
+        approving_defender_ids: Sequence[str] = (),
+    ) -> list[dict[str, object]]:
+        """Snapshot roster order, then run each proposal without an outer lock."""
+
+        if not isinstance(proposals, Mapping):
+            raise TrapCommandError("trap_invalid_command", "command proposals must be a mapping")
+        with self._lock:
+            active = self._current()
+            self._require_same_open_incident(active)
+            unknown = set(proposals) - set(active.defender_ids)
+            if unknown:
+                raise TrapCommandError("trap_command_not_authorized", "proposal actor is not a defender")
+            ordered = tuple(member_id for member_id in active.defender_ids if member_id in proposals)
+        return [
+            self.command(
+                proposals[member_id],
+                actor_id=member_id,
+                approving_defender_ids=approving_defender_ids,
+            )
+            for member_id in ordered
+        ]
 
     def _say(self, active: _ActiveTrap, actor_id: str, text: str) -> dict[str, object]:
         """Run potentially blocking inference without the controller state lock."""
