@@ -180,8 +180,13 @@ class ThirdPartyTransport:
             "GET",
             self.spec.model_list_path,
             maximum_bytes=THIRD_PARTY_MAX_MODEL_RESPONSE_BYTES,
+            allow_list=self.adapter_id == "together",
         )
-        if self.spec.api_style == "gemini_generate_content":
+        if self.adapter_id == "together":
+            if not isinstance(value, list):
+                raise AdapterProtocolError("together returned an invalid model list")
+            models = [self._public_model(item) for item in value]
+        elif self.spec.api_style == "gemini_generate_content":
             items = value.get("models")
             if not isinstance(items, list):
                 raise AdapterProtocolError("Gemini returned an invalid model list")
@@ -282,7 +287,8 @@ class ThirdPartyTransport:
         *,
         payload: dict[str, Any] | None = None,
         maximum_bytes: int,
-    ) -> dict[str, Any]:
+        allow_list: bool = False,
+    ) -> Any:
         if not self._path_is_admitted(method, path):
             raise AdapterProtocolError("provider adapter attempted an unregistered endpoint")
         data = None
@@ -309,7 +315,7 @@ class ThirdPartyTransport:
             value = json.loads(raw.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
             raise AdapterProtocolError("provider returned an invalid JSON response") from exc
-        if not isinstance(value, dict):
+        if not isinstance(value, dict) and not (allow_list and isinstance(value, list)):
             raise AdapterProtocolError("provider returned an invalid JSON response")
         credential_kind = self._credential_kind(value)
         if credential_kind == "configured":
