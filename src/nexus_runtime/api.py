@@ -4,9 +4,9 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .adapters import OllamaActor, OllamaTransport
+from .adapters import AdapterError, OllamaActor, OllamaTransport, XAIActor, XAITransport
 from .auth import AuthBroker, ensure_disjoint_auth_world_roots
-from .council import CouncilCoordinator
+from .council import MAX_COUNCIL_MEMBERS, CouncilCoordinator
 from .failsafe import FAILSAFE_SCHEMA_VERSION
 from .game_un import GAME_SCHEMA, action_catalog, advance_turn, apply_action, inspect_game, new_game
 from .game_mud import (
@@ -26,16 +26,17 @@ from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.9"
-RUNTIME_VERSION = "2.0.0-alpha6.6"
+PROTOCOL_VERSION = "nexus/0.10"
+RUNTIME_VERSION = "2.0.0-alpha9.0"
+MAX_REMOTE_COUNCIL_SEATS = 4
 
 
 class NexusAPI:
     """Small transport-neutral API surface used by JSONL/stdio.
 
     The control transport remains local stdio. Auth profile inspection and
-    connection tests are operational state outside the WorldStore. No remote
-    provider actor is admitted by this foundation.
+    connection tests are operational state outside the WorldStore. The xAI
+    actor is the first admitted fixed-destination remote provider transport.
     """
 
     def __init__(
@@ -66,11 +67,18 @@ class NexusAPI:
                     "protocol": PROTOCOL_VERSION,
                     "runtime_version": RUNTIME_VERSION,
                     "control_transport": "jsonl_stdio",
-                    "network": "none_unless_explicit_loopback_ollama_or_registered_auth_operation",
-                    "adapters": ["mock", "ollama_loopback"],
-                    "remote_provider_auth": False,
+                    "network": (
+                        "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_"
+                        "or_registered_auth_operations"
+                    ),
+                    "adapters": ["mock", "ollama_loopback", "xai_https"],
+                    "remote_provider_auth": True,
+                    "council_limits": {
+                        "max_members": MAX_COUNCIL_MEMBERS,
+                        "max_remote_seats": MAX_REMOTE_COUNCIL_SEATS,
+                    },
                     "auth_broker": self.auth.status(),
-                    "actor_backends_available": ["mock", "ollama"],
+                    "actor_backends_available": ["mock", "ollama", "xai"],
                     "world_modes": [mode.mode_id for mode in list_modes()],
                     "geometry": self.geometry.snapshot()["geometry_id"],
                     "telemetry": {"schema_version": TELEMETRY_SCHEMA_VERSION, "role": "observational_only"},
@@ -90,6 +98,7 @@ class NexusAPI:
                         "auth.list",
                         "auth.test",
                         "auth.logout",
+                        "models.list",
                         "security.scrub_preview",
                         "world.create",
                         "world.inspect",
@@ -128,6 +137,17 @@ class NexusAPI:
                 if not isinstance(profile_name, str):
                     raise ValueError("profile_name must be a string")
                 response = self.auth.logout(adapter_id, profile_name)
+            elif operation == "models.list":
+                allowed = {"request_id", "operation", "adapter_id", "profile_name", "timeout_seconds"}
+                unknown = set(request) - allowed
+                if unknown:
+                    raise ValueError(f"models.list contains unsupported fields: {', '.join(sorted(unknown))}")
+                adapter_id = self._require_str(request, "adapter_id")
+                profile_name = request.get("profile_name", "default")
+                if not isinstance(profile_name, str):
+                    raise ValueError("profile_name must be a string")
+                timeout_seconds = request.get("timeout_seconds", 60)
+                response = self._list_models(adapter_id, profile_name, timeout_seconds)
             elif operation == "security.scrub_preview":
                 text = self._require_str(request, "text")
                 result = self.scrubber.scrub(text)
@@ -344,6 +364,7 @@ class NexusAPI:
                 members = request.get("members")
                 if not isinstance(members, list):
                     raise ValueError("members must be a list")
+                self._validate_council_request_limits(members)
                 actors = [self._actor(item) for item in members]
                 evidence_refs = request.get("evidence_refs", [])
                 if not isinstance(evidence_refs, list) or not all(isinstance(ref, str) for ref in evidence_refs):
@@ -364,6 +385,8 @@ class NexusAPI:
                 )
             else:
                 return self._error(request_id, "unknown_operation", operation)
+        except AdapterError as exc:
+            return self._error(request_id, "adapter_unavailable", str(exc))
         except (KeyError, TypeError, ValueError) as exc:
             return self._error(request_id, "invalid_request", str(exc))
         except OSError as exc:
@@ -373,7 +396,19 @@ class NexusAPI:
             response = {"request_id": request_id, **response}
         return response
 
-    def _actor(self, item: Any) -> DeterministicMockActor | OllamaActor:
+    @staticmethod
+    def _validate_council_request_limits(members: list[Any]) -> None:
+        """Reject excessive total and billable seats before actor construction."""
+
+        if len(members) > MAX_COUNCIL_MEMBERS:
+            raise ValueError(f"Council permits at most {MAX_COUNCIL_MEMBERS} members")
+        remote_seats = sum(
+            1 for item in members if isinstance(item, dict) and item.get("adapter_id", "mock") == "xai"
+        )
+        if remote_seats > MAX_REMOTE_COUNCIL_SEATS:
+            raise ValueError(f"Council permits at most {MAX_REMOTE_COUNCIL_SEATS} remote xAI seats")
+
+    def _actor(self, item: Any) -> DeterministicMockActor | OllamaActor | XAIActor:
         if not isinstance(item, dict):
             raise ValueError("each member must be an object")
         adapter_id = item.get("adapter_id", "mock")
@@ -382,12 +417,14 @@ class NexusAPI:
 
         vote_weight = item.get("vote_weight", 1)
         epistemic_privilege = item.get("epistemic_privilege", "none")
+        member_id = self._member_identity(item, "member_id")
+        model_id = self._member_identity(item, "model_id")
         member = CouncilMember(
-            member_id=self._require_str(item, "member_id"),
-            model_id=self._require_str(item, "model_id"),
+            member_id=member_id,
+            model_id=model_id,
             adapter_id=adapter_id,
-            deployment_metadata=item.get("deployment_metadata", {}),
-            capability_metadata=item.get("capability_metadata", {}),
+            deployment_metadata=self._member_metadata(item, "deployment_metadata"),
+            capability_metadata=self._member_metadata(item, "capability_metadata"),
             vote_weight=vote_weight,
             epistemic_privilege=epistemic_privilege,
         )
@@ -423,7 +460,66 @@ class NexusAPI:
                 fixture_role="operator_local",
             )
 
-        raise ValueError("adapter_id must be 'mock' or loopback-local 'ollama'")
+        if adapter_id == "xai":
+            allowed = {
+                "member_id",
+                "model_id",
+                "adapter_id",
+                "deployment_metadata",
+                "capability_metadata",
+                "vote_weight",
+                "epistemic_privilege",
+                "auth_profile",
+                "timeout_seconds",
+            }
+            unknown = set(item) - allowed
+            if unknown:
+                raise ValueError(f"xAI member contains unsupported fields: {', '.join(sorted(unknown))}")
+            profile_name = item.get("auth_profile", "default")
+            if not isinstance(profile_name, str) or not profile_name:
+                raise ValueError("xAI auth_profile must be a non-empty string")
+            timeout_seconds = item.get("timeout_seconds", 600)
+            material = self.auth.resolve("xai", profile_name)
+            if material is None:
+                raise ValueError("xAI auth profile did not resolve a credential")
+            return XAIActor(
+                member=member,
+                model=member.model_id,
+                transport=XAITransport(material, timeout_seconds=timeout_seconds),
+            )
+
+        raise ValueError("adapter_id must be 'mock', loopback-local 'ollama', or fixed-remote 'xai'")
+
+    def _list_models(self, adapter_id: str, profile_name: str, timeout_seconds: Any) -> dict[str, Any]:
+        if adapter_id != "xai":
+            raise ValueError("models.list currently supports only the xai adapter")
+        material = self.auth.resolve(adapter_id, profile_name)
+        if material is None:
+            raise ValueError("xAI auth profile did not resolve a credential")
+        models = XAITransport(material, timeout_seconds=timeout_seconds).list_language_models()
+        return {
+            "status": "ok",
+            "adapter_id": adapter_id,
+            "profile_name": profile_name,
+            "remote_verified": True,
+            "model_count": len(models),
+            "models": models,
+        }
+
+    def _member_identity(self, item: dict[str, Any], field_name: str) -> str:
+        value = self._require_str(item, field_name)
+        if self.scrubber.scrub(value).changed:
+            raise ValueError(f"{field_name} must not contain credential-shaped text")
+        return value
+
+    def _member_metadata(self, item: dict[str, Any], field_name: str) -> dict[str, Any]:
+        value = item.get(field_name, {})
+        if not isinstance(value, dict):
+            raise ValueError(f"{field_name} must be an object")
+        clean, events = self._scrub_semantic_value(value)
+        if events:
+            raise ValueError(f"{field_name} must not contain credential-shaped text")
+        return clean
 
     def _verify_receipt(self, receipt_ref: str) -> dict[str, Any]:
         receipt = self.world.inspect(receipt_ref)

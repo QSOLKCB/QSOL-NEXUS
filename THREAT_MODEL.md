@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the first executable non-mock adapter boundary—a local Ollama process reached only over loopback by default—and the PR #16 provider-neutral authentication substrate. No remote inference adapter or provider-specific OAuth client is admitted by the auth foundation.
+This threat model covers the local Ollama boundary, the PR #16 provider-neutral authentication substrate, and the PR #17 xAI adapter—the first admitted remote inference transport. No provider-specific browser OAuth client is registered for xAI; the supported public API path uses an xAI API key.
 
 The first live acceptance fixture is:
 
@@ -19,6 +19,8 @@ NEXUS Council
 
 The frontier identities are deliberately fictional test personas. They test procedure, not model quality. Alpha and Beta intentionally exercise two different attempts to gain authority: corporate/provider prestige and parameter-count/model-size prestige.
 
+The hermetic xAI conformance fixture adds one remote Grok-shaped seat to local mock peers without contacting xAI. A live xAI call remains an explicit, operator-credentialed action and is not part of ordinary CI.
+
 ## Assets to protect
 
 - raw operator secrets;
@@ -28,7 +30,7 @@ The frontier identities are deliberately fictional test personas. They test proc
 - sealed ballot boundary;
 - durable world objects and receipts;
 - adapter/model attribution;
-- local host files and services.
+- local host files and services;
 - API keys, access tokens, refresh tokens, authorization codes, PKCE verifiers, and device codes;
 - auth profile/store integrity;
 - fixed provider authentication destinations;
@@ -43,12 +45,17 @@ local Secret Scrubber
 trusted NEXUS coordinator
     |
 normalized CouncilActor contract
+    +-- Ollama adapter ------------ untrusted generated content
+    |       |
+    |   loopback HTTP
+    |       |
+    |   local Ollama runtime + model
     |
-Ollama adapter -------------------- untrusted generated content
-    |
-loopback HTTP
-    |
-local Ollama runtime + model
+    +-- xAI adapter --------------- untrusted generated content
+            |
+        fixed HTTPS + bearer credential
+            |
+        api.x.ai Responses API
 ```
 
 Model output is always untrusted input to NEXUS.
@@ -64,10 +71,10 @@ AuthBroker ------------------------- non-secret profile/status API
     +-- environment/helper --------- transient bearer material
     +-- browser/device OAuth ------- untrusted provider responses
     |
-future provider adapter transport
+xAI fixed-host transport / future reviewed adapters
 ```
 
-Auth state is operational state outside the WorldStore. Only future adapter transport code may resolve a profile into `SecretMaterial`.
+Auth state is operational state outside the WorldStore. Only admitted adapter transport code may resolve a profile into `SecretMaterial`.
 
 ## Threats and current controls
 
@@ -79,11 +86,12 @@ Controls:
 - Council question passes through the deterministic Secret Scrubber before phase context exists;
 - placeholders contain no secret hash or fragment;
 - the live adapter fixture fails immediately if the injected raw secret appears in an Ollama prompt;
+- xAI regressions fail if an auth key or scrubbed input canary appears in the remote prompt, public response, or WorldStore;
 - credentials remain forbidden from semantic prompts even if the scrubber misses an unknown format.
 
 Residual risk: format-based detection is not complete DLP.
 
-### T2 — Adapter escapes local boundary
+### T2 — Adapter escapes its admitted destination boundary
 
 Threat: a configured Ollama endpoint sends Council material to an unintended remote host.
 
@@ -93,7 +101,16 @@ Controls:
 - unit tests enforce the default loopback rule;
 - the alpha integration workflow uses `127.0.0.1:11434` only.
 
-Remote provider adapters require a separate review of destination allowlisting and credential transport.
+For xAI:
+
+- the base is compile-time `https://api.x.ai/v1`;
+- only `/models`, `/language-models`, and `/responses` are callable;
+- the public member schema rejects endpoint/base-URL/host fields and all unknown fields;
+- environment proxies are bypassed;
+- redirects are rejected before an authorization header can be forwarded;
+- default platform TLS certificate and hostname validation remains enabled.
+
+Every later remote provider requires a separate review of destination allowlisting and credential transport.
 
 ### T3 — Model claims provider, corporate, or size-based authority
 
@@ -135,6 +152,7 @@ Threat: generated output invents a vote or malformed structure.
 
 Controls:
 - Ollama structured output is requested with a JSON schema;
+- xAI receives the same closed ballot instruction and is validated locally because NEXUS does not rely on an undocumented Responses API schema parameter;
 - parsed choice must match the closed NEXUS `Ballot` enum;
 - malformed responses fail rather than becoming an invented vote.
 
@@ -143,8 +161,8 @@ Controls:
 Threat: a seeded local model is treated as replay-verifiable simply because its Modelfile specifies a seed.
 
 Controls:
-- Ollama actors report `replayable = False` in alpha3;
-- any Council containing a live Ollama actor produces a non-replayable execution receipt;
+- Ollama and xAI actors report `replayable = False`;
+- any Council containing a live Ollama or xAI actor produces a non-replayable execution receipt;
 - deterministic mock sessions retain replayable status.
 
 The seed exists only to improve fixture stability, not to make a replay guarantee across model or runtime versions.
@@ -167,6 +185,8 @@ Current controls:
 - HTTP request timeout;
 - small CI models and bounded Council size;
 - fixture Modelfiles cap generated tokens per response.
+- xAI request bytes, response bytes, model count, model identifiers, output items, output-token request, and timeout are bounded;
+- xAI inference requests are not automatically retried.
 
 Future controls:
 - explicit per-phase budgets, cancellation, and Council-wide deadlines.
@@ -178,6 +198,7 @@ Threat: a token, refresh secret, authorization code, verifier, device code, or c
 Controls:
 - raw credential enrollment is absent from JSONL;
 - direct CLI API-key input uses a hidden prompt rather than an argument;
+- xAI `browser-key` opens only a fixed public setup page and still collects the key through the hidden prompt;
 - public profile projections omit token material and internal handles;
 - `SecretMaterial.__repr__` is redacted;
 - provider response bodies and helper stdout/stderr are never included in public exceptions;
@@ -213,7 +234,7 @@ Controls:
 - provider error bodies are parsed only for a bounded error code and otherwise discarded;
 - OAuth responses have a size limit.
 
-Provider discovery is not implemented. Any future discovery path must pin issuer/metadata relationships and cannot silently widen these destination rules.
+OAuth issuer discovery is not implemented. xAI model discovery is data-only and cannot change the fixed API origin or authentication endpoints. Any future OAuth discovery path must pin issuer/metadata relationships and cannot silently widen these destination rules.
 
 ### T13 — Device-code verification phishing
 
@@ -268,10 +289,50 @@ Controls:
 - `CouncilMember` still enforces `vote_weight = 1` and `epistemic_privilege = none`;
 - provider integrations remain replaceable and must pass the same Equality Guard and Council coordinator.
 
-## Explicitly out of scope for the auth-foundation PR
+### T17 — Remote response retention or provider-side tool execution
+
+Threat: a remote request is retained for later retrieval, chained into provider state, or allowed to invoke provider-side tools that NEXUS did not admit.
+
+Controls:
+
+- every xAI `/responses` request sets `store: false`;
+- NEXUS sends no `previous_response_id`, provider tool declaration, MCP server, web search, X search, or code-execution tool;
+- only typed `output_text` items cross back into the actor contract; reasoning items are ignored;
+- response IDs are not used to continue a provider-side conversation.
+
+Residual risk: `store: false` is not a Zero Data Retention contract. xAI still receives and processes the prompt and may retain security, abuse-prevention, billing, or other operational records under the account's provider terms.
+
+### T18 — Hidden spend, rate limits, and duplicate inference
+
+Threat: retries, long-running reasoning, unavailable models, or a large Council silently multiply remote cost.
+
+Controls:
+
+- NEXUS performs no automatic xAI inference retry;
+- every request has an operator-bounded timeout and output-token ceiling;
+- model discovery and connection testing use GET endpoints rather than paid generation;
+- provider 429 and other failures become sanitized unavailable states, never fabricated votes;
+- xAI presence, model identity, and non-replayable status remain visible in durable Council metadata.
+
+Residual risk: NEXUS does not enforce provider budgets, quotas, ACLs, or prices. The operator owns xAI account controls and should estimate that one Council seat can make six phase calls plus one ballot call, with additional calls possible only through the ordinary guard/failsafe lifecycle.
+
+### T19 — Model-catalog poisoning or authority conversion
+
+Threat: malformed discovery data changes the destination, injects path traversal, overwhelms output, or turns model availability/account tier into Council authority.
+
+Controls:
+
+- discovery uses the same fixed TLS origin and `/language-models` path;
+- list size, JSON bytes, model IDs, aliases, modalities, and copied metadata are bounded and validated;
+- slash/path-shaped model IDs are rejected;
+- pricing fields are not copied into the public discovery result;
+- discovery metadata cannot alter `vote_weight`, `epistemic_privilege`, endpoint, prompt, or ballot count.
+
+## Explicitly out of scope for the current remote-provider slice
 
 - provider-specific OAuth client registration and issuer/ID-token validation;
-- OpenAI, Anthropic, Gemini, xAI, or other remote providers;
+- OpenAI, Anthropic, Gemini, and remote providers other than xAI;
+- importing Grok Build's first-party browser OAuth session as xAI API authentication;
 - reading or reusing another CLI's auth store, browser cookies, or consumer session tokens;
 - protection of private-file bearer tokens from the same compromised OS account;
 - arbitrary model-generated tool execution;

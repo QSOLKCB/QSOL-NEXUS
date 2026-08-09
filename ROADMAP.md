@@ -345,7 +345,7 @@ Upgrade development storage into a robust persistent world:
 
 ## 2.0-alpha9 — Authentication and remote-provider setup
 
-Only after the world, modes, operator surface, telemetry, instruments and persistence contracts are mature enough should NEXUS invite remote providers into the operator-configurable runtime.
+The intended broad sequencing remains world, modes, operator surface, telemetry, instruments, persistence, then multiple remote providers. PR #17 admits one deliberately narrow xAI slice with a fixed destination and unchanged world/Council contracts; the alpha9 milestone as a whole remains incomplete until the alpha7/alpha8 dependencies are finished.
 
 Planned UX:
 
@@ -373,7 +373,7 @@ Initial remote-provider targets, one at a time:
 - OpenAI;
 - Anthropic / Claude;
 - Google / Gemini;
-- xAI / Grok.
+- [x] xAI / Grok — first fixed-destination adapter in PR #17.
 
 Provider integrations remain replaceable and confer no voting authority.
 
@@ -388,13 +388,25 @@ Provider-neutral foundation implemented in PR #16:
 - [x] non-secret auth list/test/logout protocol operations;
 - [x] auth/world directory separation and adversarial secret-boundary tests.
 
+Provider-specific xAI slice implemented in PR #17:
+
+- [x] documented API-key, environment, and external-helper auth paths;
+- [x] fixed official browser-assisted key setup without Grok Build session reuse;
+- [x] bounded authenticated connection test;
+- [x] language-model discovery;
+- [x] stateless Responses API inference with fixed destination and error/size controls;
+- [x] mixed local/remote equal-vote Council regression.
+
 Still required before the milestone is complete:
 
 - [ ] finish the alpha7 instrument admission work;
 - [ ] finish the alpha8 persistent-world contracts;
-- [ ] admit the first provider-specific descriptor, registered client/auth path, connection test, and threat-model extension;
-- [ ] add remote model discovery and inference transport;
-- [ ] demonstrate one local and one remote model as equal-vote Council peers.
+- [x] admit the first provider-specific descriptor, supported auth path, connection test, and threat-model extension;
+- [x] add first-provider remote model discovery and inference transport;
+- [x] demonstrate one local and one remote model as equal-vote Council peers in the hermetic conformance suite;
+- [ ] run and archive an operator-authorized live xAI acceptance session;
+- [ ] expose remote roster/model setup in the Rust TUI;
+- [ ] admit any second provider only through its own review.
 
 ## 2.0-alpha10 — Three minds, one world demo
 

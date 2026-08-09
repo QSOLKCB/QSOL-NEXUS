@@ -86,6 +86,8 @@ class AdapterAuthRegistry:
 
 
 def builtin_auth_descriptors() -> tuple[AdapterAuthDescriptor, ...]:
+    from ..adapters.xai import xai_auth_descriptor
+
     return (
         AdapterAuthDescriptor(
             adapter_id="mock",
@@ -101,6 +103,7 @@ def builtin_auth_descriptors() -> tuple[AdapterAuthDescriptor, ...]:
             auth_methods=(AuthMethod.LOCAL_ENDPOINT, AuthMethod.NO_AUTH_REQUIRED),
             auth_flows=(AuthFlow.LOCAL_ENDPOINT, AuthFlow.NONE),
         ),
+        xai_auth_descriptor(),
     )
 
 
@@ -124,7 +127,7 @@ class AuthBroker:
         device_flow: DeviceCodeFlow | None = None,
         token_client: OAuthTokenClient | None = None,
         connection_testers: Mapping[str, ConnectionTester] | None = None,
-        remote_adapters_admitted: bool = False,
+        remote_adapters_admitted: bool = True,
         clock: Callable[[], float] = time.time,
         environment: Mapping[str, str] | None = None,
     ) -> None:
@@ -159,7 +162,12 @@ class AuthBroker:
         self.token_client = token_client or OAuthTokenClient(clock=clock)
         self.browser_flow = browser_flow or BrowserPKCEFlow(token_client=self.token_client)
         self.device_flow = device_flow or DeviceCodeFlow(clock=clock)
-        self.connection_testers = dict(connection_testers or {})
+        if connection_testers is None:
+            from ..adapters.xai import xai_connection_test
+
+            self.connection_testers = {"xai": xai_connection_test}
+        else:
+            self.connection_testers = dict(connection_testers)
         for adapter_id in self.connection_testers:
             self.registry.get(adapter_id)
         self.remote_adapters_admitted = remote_adapters_admitted
@@ -186,6 +194,12 @@ class AuthBroker:
 
     def adapters(self) -> dict[str, Any]:
         return {"status": "ok", "schema_version": AUTH_SCHEMA_VERSION, "adapters": self.registry.public_list()}
+
+    def setup_url(self, adapter_id: str) -> str:
+        descriptor = self.registry.get(adapter_id)
+        if descriptor.setup_url is None:
+            raise AuthUnavailableError(f"adapter {adapter_id} does not publish a browser setup URL")
+        return descriptor.setup_url
 
     def list_profiles(self) -> dict[str, Any]:
         profiles = self.profile_store.load()

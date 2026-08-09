@@ -38,6 +38,7 @@ _PATTERNS: tuple[_Pattern, ...] = (
     ),
     _Pattern("GITHUB_TOKEN", re.compile(r"(?P<secret>gh[pousr]_[A-Za-z0-9]{20,})")),
     _Pattern("OPENAI_STYLE_TOKEN", re.compile(r"(?P<secret>sk-[A-Za-z0-9_-]{20,})")),
+    _Pattern("XAI_API_KEY", re.compile(r"(?P<secret>xai-[A-Za-z0-9_-]{20,})", re.I)),
     _Pattern("STRIPE_SECRET", re.compile(r"(?P<secret>(?:sk|rk)_live_[A-Za-z0-9]{16,})")),
     _Pattern("SLACK_TOKEN", re.compile(r"(?P<secret>xox[baprs]-[A-Za-z0-9-]{16,})")),
     _Pattern("GOOGLE_API_KEY", re.compile(r"(?P<secret>AIza[0-9A-Za-z_-]{30,})")),

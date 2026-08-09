@@ -122,17 +122,27 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
             response = api.handle({"operation": "system.health"})
             _require(response.get("status") == "ok", "health did not return ok")
             _require(response.get("control_transport") == "jsonl_stdio", "control transport changed")
-            _require(response.get("remote_provider_auth") is False, "remote provider auth unexpectedly enabled")
+            _require(response.get("remote_provider_auth") is True, "admitted xAI provider auth is not reported")
+            _require(
+                response.get("council_limits") == {"max_members": 32, "max_remote_seats": 4},
+                "Council seat limits changed",
+            )
             _require(
                 response.get("network")
-                == "none_unless_explicit_loopback_ollama_or_registered_auth_operation",
+                == (
+                    "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_"
+                    "or_registered_auth_operations"
+                ),
                 "network boundary changed",
             )
             failsafe = response.get("failsafe", {})
             boundary = failsafe.get("claim_boundary", {}) if isinstance(failsafe, dict) else {}
             _require(boundary.get("truth_metric") is False, "Failsafe became a truth metric")
             _require(boundary.get("provider_status_is_violation") is False, "provider status became a violation")
-            return "local stdio/network/provider/Failsafe claim boundary intact"
+            return (
+                "local stdio, loopback Ollama, fixed-host xAI, registered auth operations, "
+                "and Failsafe claim boundary intact"
+            )
 
     yield _run_check("health-boundary", "invariant", health_boundary)
 
@@ -227,7 +237,7 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
     def remote_adapter_boundary() -> str:
         with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-remote-") as tmp:
             api = NexusAPI(tmp)
-            response = api.handle(
+            ollama = api.handle(
                 {
                     "operation": "actor.chat",
                     "member": {
@@ -239,14 +249,54 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
                     "message": "do not connect",
                 }
             )
-            error = response.get("error", {})
+            error = ollama.get("error", {})
             _require(
-                response.get("status") == "error"
+                ollama.get("status") == "error"
                 and isinstance(error, dict)
                 and error.get("code") == "invalid_request",
                 "non-loopback Ollama endpoint was not rejected at validation",
             )
-            return error.get("message", "remote endpoint rejected")
+            xai = api.handle(
+                {
+                    "operation": "actor.chat",
+                    "member": {
+                        "member_id": "XAIProbe",
+                        "model_id": "grok-4.5",
+                        "adapter_id": "xai",
+                        "endpoint": "https://evil.example/v1",
+                    },
+                    "message": "do not connect",
+                }
+            )
+            xai_error = xai.get("error", {})
+            _require(
+                xai.get("status") == "error"
+                and isinstance(xai_error, dict)
+                and xai_error.get("code") == "invalid_request",
+                "xAI destination override was not rejected before credential resolution",
+            )
+            excessive_remote = api.handle(
+                {
+                    "operation": "council.run",
+                    "question": "do not spend",
+                    "members": [
+                        {
+                            "member_id": f"XAIProbe{index}",
+                            "model_id": f"grok-{index}",
+                            "adapter_id": "xai",
+                        }
+                        for index in range(5)
+                    ],
+                }
+            )
+            remote_error = excessive_remote.get("error", {})
+            _require(
+                excessive_remote.get("status") == "error"
+                and isinstance(remote_error, dict)
+                and remote_error.get("code") == "invalid_request",
+                "excessive remote Council seats reached credential resolution",
+            )
+            return "non-loopback Ollama, xAI overrides, and excessive remote seats rejected"
 
     yield _run_check("remote-adapter-boundary", "invariant", remote_adapter_boundary)
 

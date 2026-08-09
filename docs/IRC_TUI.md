@@ -469,7 +469,7 @@ The public stdio API does **not** expose an `allow_remote` override. The configu
 
 This is not the provider-authentication system. PR #16 adds a separate conventional `nexus auth` CLI and runtime broker outside TUI roster state.
 
-OpenAI, Claude, Gemini, Grok cloud transports, provider client registration, generic remote endpoints, and provider discovery remain deferred. The neutral browser/device/keyring/headless auth substrate alone does not make a cloud actor available. See [`AUTH.md`](AUTH.md).
+xAI/Grok is available through the Python JSONL runtime with a configured auth profile and fixed `api.x.ai` transport, but this Rust TUI does not yet expose roster commands for that adapter. OpenAI, Claude, Gemini, provider-specific OAuth client registration, generic remote endpoints, and additional-provider discovery remain deferred. See [`AUTH.md`](AUTH.md) and [`XAI_ADAPTER.md`](XAI_ADAPTER.md).
 
 ## Evidence visibility boundary
 

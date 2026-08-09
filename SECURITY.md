@@ -15,7 +15,7 @@ persistent world
 scientific / deterministic instruments
 ```
 
-Remote model traffic should occur only inside explicitly configured adapters. The first executable real-model adapter is local Ollama and is loopback-only by default.
+Remote model traffic occurs only inside explicitly configured adapters. Ollama is loopback-only by default; xAI is the first admitted remote adapter and is pinned to `https://api.x.ai/v1`.
 
 ## Why CLI/TUI first
 
@@ -52,14 +52,14 @@ This does not make a CLI automatically secure. It makes the intended trust bound
               |
 +-------------v---------------+
 | model adapters              |
-| mock / Ollama now           |
-| remote providers later      |
+| mock / Ollama / xAI         |
+| later providers reviewed    |
 +-------------+---------------+
               |
        model runtime/API
 ```
 
-The auth broker may transiently open the system browser for a provider-supported authorization flow. The browser is an authorization user agent, not a NEXUS control surface or credential store.
+The auth broker may transiently open the system browser for a provider-supported authorization flow or fixed API-key setup page. The browser is an authorization/setup user agent, not a NEXUS control surface or credential store.
 
 ## Credential boundary
 
@@ -79,11 +79,11 @@ They must never be written to:
 
 Authentication material belongs only in adapter authentication or transport fields and must never become semantic prompt content exposed to a model.
 
-The first Ollama integration requires no provider credential.
+Ollama requires no provider credential. xAI credentials are resolved only inside `XAITransport`.
 
 ## Authentication broker boundary
 
-PR #16 adds a provider-neutral auth broker without admitting a remote inference adapter.
+PR #16 added the provider-neutral auth broker. PR #17 admits xAI through its documented public API-key path.
 
 The broker owns:
 
@@ -97,6 +97,8 @@ The broker owns:
 Only adapter transport code may resolve a profile into secret material. JSONL requests cannot add raw credentials. Normal CLI/API output omits access tokens, refresh tokens, API keys, authorization codes, PKCE verifiers, device codes, provider response bodies, helper output, and internal credential handles.
 
 Browser authorization uses an ephemeral `127.0.0.1` callback, state comparison, PKCE `S256`, provider-descriptor endpoint allowlists, HTTPS outside loopback fixtures, and token-endpoint redirect rejection. Device authorization separately allowlists the provider-returned verification URL. These controls follow the provider-neutral substrate; every provider still requires its own supported client-registration and threat-model decision.
+
+xAI does not register either OAuth flow. `browser-key` opens the fixed official xAI key page and then uses hidden terminal input. NEXUS does not import Grok Build's OAuth session, token file, cookies, or client identity.
 
 Credential storage order is:
 
@@ -149,7 +151,7 @@ Therefore the stronger rule remains:
 
 > Credentials belong in adapter authentication/transport fields and must never intentionally be placed in semantic prompts.
 
-The live Ollama acceptance test injects a fake credential into the human question and fails if the raw value appears in any prompt crossing the adapter boundary.
+The live Ollama acceptance test and hermetic xAI adapter tests inject fake credentials and fail if raw material appears in prompts, public output, or WorldStore files.
 
 ## Provider-neutral actor boundary
 
@@ -191,6 +193,14 @@ requires explicit allow_remote=True
 The CI integration uses `127.0.0.1:11434` only.
 
 This is an initial local safety boundary, not a substitute for process identity verification. Local endpoint impersonation remains a documented threat for later TUI/process supervision work.
+
+## xAI remote boundary
+
+`XAITransport` uses only the fixed `api.x.ai` HTTPS origin and the `/models`, `/language-models`, and `/responses` paths. The member schema rejects endpoint overrides, unknown fields, and inline credentials. Environment proxies and HTTP redirects are disabled so a bearer credential cannot silently move to another destination.
+
+Every inference request sets `store: false`, supplies no provider tools or prior response ID, and returns only typed `output_text`. Requests, responses, model catalogues, identifiers, timeouts, and output budgets are bounded. Successful bodies are rejected before projection if they contain the configured bearer token or other recognized credential-shaped text. Provider error bodies and HTTP protocol diagnostics are discarded. There is no automatic inference retry.
+
+Council requests are capped at 32 total seats and four xAI seats before actor construction and credential resolution. These controls do not make xAI local or private: xAI receives the scrubbed Council prompt, each remote seat can make multiple calls, provider billing and rate limits apply, and `store: false` is not a Zero Data Retention guarantee. See [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md).
 
 ## Equality Guard security role
 
@@ -246,10 +256,11 @@ JSONL mock control API   outbound: none
 Ollama actor             loopback by default
 auth browser/device flow explicit provider descriptor only
 auth external helper     explicit operator configuration only
-remote providers         not implemented
+xAI adapter              fixed api.x.ai HTTPS, explicit profile only
+other remote providers   not implemented
 ```
 
-The JSONL control transport itself remains stdio. `auth.list` is local-only; `auth.test` can perform network I/O only after a provider-specific connection tester is registered. Browser/device enrollment is a direct `nexus auth add` operator action rather than a raw-secret JSONL operation. Remote inference remains unimplemented.
+The JSONL control transport itself remains stdio. `auth.list` is local-only. `auth.test xai`, `models.list` for xAI, and an explicitly configured xAI actor can perform fixed-destination network I/O. A custom broker can also perform registered auth operations against descriptor-allowlisted endpoints. `system.health` reports that category even when the stock xAI descriptor is the only configured remote provider. Enrollment remains a direct `nexus auth add` action rather than a raw-secret JSONL operation.
 
 ## Logging
 
@@ -283,7 +294,7 @@ private local paths unless intentionally included
 
 ## Adapter threat model
 
-The first executable non-mock adapter boundary is covered by [`THREAT_MODEL.md`](THREAT_MODEL.md).
+The executable Ollama, auth-broker, and xAI boundaries are covered by [`THREAT_MODEL.md`](THREAT_MODEL.md).
 
 It addresses:
 
@@ -299,7 +310,7 @@ It addresses:
 
 The same threat model now also covers the neutral auth substrate: callback CSRF/code interception, destination redirects, device verification phishing, credential-store permissions, external-helper isolation, public-output redaction, and auth/world crossover.
 
-Remote/cloud adapters will require additional threat-model work covering credentials, destination validation, provider response spoofing, rate limits, account/session handling, and provider-specific tool surfaces before admission.
+It also covers the xAI fixed destination, stateless request posture, response/model-list limits, error sanitization, spend/retry boundary, and equality invariants. Every later remote/cloud adapter requires equivalent provider-specific work before admission.
 
 ## Current claims boundary
 
@@ -307,6 +318,8 @@ The current runtime does **not** claim:
 
 - complete DLP;
 - that a neutral OAuth substrate makes any unreviewed provider flow secure or supported;
+- that xAI `store: false` is Zero Data Retention or prevents provider-side operational logging;
+- provider budget, ACL, quota, availability, or price enforcement;
 - protection of fallback bearer-token files from the same compromised OS account;
 - strong local process authentication;
 - cryptographic ballot sealing;

@@ -247,6 +247,7 @@ class AdapterAuthDescriptor:
     auth_flows: tuple[AuthFlow, ...]
     browser_oauth: BrowserOAuthConfig | None = None
     device_oauth: DeviceOAuthConfig | None = None
+    setup_url: str | None = None
     implementation_status: str = "available"
 
     def __post_init__(self) -> None:
@@ -280,6 +281,20 @@ class AdapterAuthDescriptor:
             raise AuthError("device_code requires provider-owned OAuth configuration")
         if AuthFlow.DEVICE_CODE not in self.auth_flows and self.device_oauth is not None:
             raise AuthError("device OAuth configuration requires the device_code flow")
+        if self.setup_url is not None:
+            if not isinstance(self.setup_url, str) or len(self.setup_url) > 2048:
+                raise AuthError("adapter setup_url must be a bounded HTTPS URL")
+            parsed_setup = urlsplit(self.setup_url)
+            if (
+                parsed_setup.scheme != "https"
+                or not parsed_setup.hostname
+                or parsed_setup.username is not None
+                or parsed_setup.password is not None
+                or parsed_setup.fragment
+            ):
+                raise AuthError("adapter setup_url must be a bounded HTTPS URL")
+            if AuthFlow.API_KEY not in self.auth_flows:
+                raise AuthError("adapter setup_url requires the api_key flow")
         required_methods = {
             AuthFlow.API_KEY: AuthMethod.API_CREDENTIAL,
             AuthFlow.BROWSER_PKCE: AuthMethod.PROVIDER_SUPPORTED_INTERACTIVE,
@@ -295,7 +310,7 @@ class AdapterAuthDescriptor:
             raise AuthError("implementation_status must be available, planned, or disabled")
 
     def public_dict(self) -> dict[str, Any]:
-        return {
+        value = {
             "adapter_id": self.adapter_id,
             "provider_name": self.provider_name,
             "local_or_remote": self.local_or_remote,
@@ -303,6 +318,9 @@ class AdapterAuthDescriptor:
             "auth_flows": [flow.value for flow in self.auth_flows],
             "implementation_status": self.implementation_status,
         }
+        if self.setup_url is not None:
+            value["setup_url"] = self.setup_url
+        return value
 
 
 @dataclass(frozen=True, repr=False)

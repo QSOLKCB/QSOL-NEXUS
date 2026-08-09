@@ -8,6 +8,7 @@ from typing import Sequence
 from .api import NexusAPI
 from .auth import AuthBroker, AuthError, ensure_disjoint_auth_world_roots
 from .auth_cli import configure_auth_parser, emit_auth_error, run_auth_command
+from .model_cli import configure_models_parser, run_models_command
 
 
 def _demo_request() -> dict:
@@ -32,6 +33,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--demo", action="store_true", help="run one deterministic mock Council demo and exit")
     subparsers = parser.add_subparsers(dest="command")
     configure_auth_parser(subparsers)
+    configure_models_parser(subparsers)
     args = parser.parse_args(argv)
 
     if args.command == "auth":
@@ -42,6 +44,15 @@ def main(argv: Sequence[str] | None = None) -> int:
         except (AuthError, EOFError, OSError) as exc:
             return emit_auth_error(exc)
         return run_auth_command(args, broker)
+
+    if args.command == "models":
+        try:
+            broker = AuthBroker(args.auth_root)
+            if args.world is not None:
+                ensure_disjoint_auth_world_roots(broker.root, args.world)
+        except (AuthError, EOFError, OSError) as exc:
+            return emit_auth_error(exc)
+        return run_models_command(args, broker)
 
     api = NexusAPI(args.world, auth_root=args.auth_root)
     if args.demo:

@@ -21,6 +21,7 @@ from .world import WorldStore
 
 MAX_EVIDENCE_CONTEXT_CHARS = 6_000
 MAX_EVIDENCE_OBJECT_CHARS = 3_000
+MAX_COUNCIL_MEMBERS = 32
 MAX_COUNCIL_PARALLEL_WORKERS = 256
 DEFAULT_COUNCIL_PARALLEL_WORKERS = 8
 
@@ -361,6 +362,8 @@ class CouncilCoordinator:
     def _validate_roster(self, actors: tuple[CouncilActor, ...]) -> None:
         if len(actors) < self.policy.minimum_members:
             raise ValueError(f"Council requires at least {self.policy.minimum_members} members")
+        if len(actors) > MAX_COUNCIL_MEMBERS:
+            raise ValueError(f"Council permits at most {MAX_COUNCIL_MEMBERS} members")
         ids = [actor.member.member_id for actor in actors]
         if len(ids) != len(set(ids)):
             raise ValueError("Council member_id values must be unique")

@@ -48,7 +48,7 @@ NEXUS does not attempt to define how a model must think internally. It defines h
 
 The Rust TUI is an operator interface, not an epistemic authority. The Python layer remains the first reference tooling/runtime because it is easy to inspect, script, test, and connect to the existing scientific Python ecosystem.
 
-The provider-neutral authentication substrate is implemented outside the WorldStore. Provider-specific remote inference remains deferred until the prerequisite world/instrument contracts and each provider's security/transport review are complete.
+The provider-neutral authentication substrate is implemented outside the WorldStore. xAI is the first fixed-destination remote adapter; every later provider remains deferred until its own security/transport review and the broader world/instrument milestones are complete.
 
 ## Trust domains
 
@@ -291,7 +291,7 @@ NEXUS envelope
 | provider adapter |
 |------------------|
 | auth capability  |  # neutral substrate implemented
-| model discovery  |  # provider-specific later
+| model discovery  |  # xAI implemented; later providers reviewed
 | prompt transport |
 | response parsing |
 | usage metadata   |
@@ -366,7 +366,7 @@ nexus models list
 
 PR #16 implements the provider-neutral broker, browser PKCE and device-code state machines, refresh handling, credential-source routing, safe profile/status operations, and storage isolation. The broker is operational infrastructure; it is not world state and cannot construct a Council actor by itself.
 
-Provider-specific OAuth client registration, model discovery, connection tests, and remote inference remain later adapter work. Credentials remain outside world state, Council prompts, receipts and lineage. See [`docs/AUTH.md`](docs/AUTH.md).
+PR #17 admits xAI's documented API-key path, fixed `api.x.ai` transport, connection test, language-model discovery, and Responses API actor. It deliberately does not import Grok Build's first-party browser session or invent a NEXUS OAuth client registration. Credentials remain outside world state, Council prompts, receipts and lineage. See [`docs/AUTH.md`](docs/AUTH.md) and [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md).
 
 ## Instrument boundary
 

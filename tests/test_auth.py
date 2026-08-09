@@ -1009,9 +1009,9 @@ class AuthAPITests(unittest.TestCase):
             self.assertNotIn(FAKE_ACCESS_TOKEN, encoded)
             self.assertNotIn(FAKE_REFRESH_TOKEN, encoded)
             self.assertIn("auth.list", operations["operations"])
-            self.assertFalse(health["remote_provider_auth"])
-            self.assertEqual(health["auth_broker"]["remote_auth_descriptor_count"], 1)
-            self.assertFalse(health["auth_broker"]["remote_adapters_admitted"])
+            self.assertTrue(health["remote_provider_auth"])
+            self.assertEqual(health["auth_broker"]["remote_auth_descriptor_count"], 2)
+            self.assertTrue(health["auth_broker"]["remote_adapters_admitted"])
             if world_root.exists():
                 world_bytes = b"".join(path.read_bytes() for path in world_root.rglob("*") if path.is_file())
                 self.assertNotIn(FAKE_ACCESS_TOKEN.encode("utf-8"), world_bytes)
@@ -1030,8 +1030,9 @@ class AuthAPITests(unittest.TestCase):
                 exit_code = main(["--auth-root", directory, "auth", "adapters"])
             self.assertEqual(exit_code, 0)
             value = json.loads(output.getvalue())
-            self.assertEqual([row["adapter_id"] for row in value["adapters"]], ["mock", "ollama"])
-            self.assertNotIn("credential", output.getvalue())
+            self.assertEqual([row["adapter_id"] for row in value["adapters"]], ["mock", "ollama", "xai"])
+            for forbidden in ("access_token", "refresh_token", "credential_handle"):
+                self.assertNotIn(forbidden, output.getvalue())
 
     def test_cli_rejects_auth_storage_nested_inside_world_storage(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

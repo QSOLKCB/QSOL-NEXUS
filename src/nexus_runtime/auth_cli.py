@@ -5,6 +5,7 @@ from getpass import getpass
 import json
 import sys
 from typing import Any
+import webbrowser
 
 from .auth import AuthBroker, AuthError, DeviceAuthorizationPrompt
 
@@ -22,10 +23,10 @@ def configure_auth_parser(subparsers: Any) -> None:
     add.add_argument(
         "--method",
         required=True,
-        choices=("browser", "device", "api-key", "env", "external-command"),
+        choices=("browser", "browser-key", "device", "api-key", "env", "external-command"),
     )
     add.add_argument("--env", dest="env_var", help="environment variable containing an API credential")
-    add.add_argument("--no-open", action="store_true", help="print the browser URL without opening it")
+    add.add_argument("--no-open", action="store_true", help="print a browser URL without opening it")
     add.add_argument("--replace", action="store_true", help="replace an existing profile")
     add.add_argument(
         "--command",
@@ -104,10 +105,20 @@ def _add_profile(args: argparse.Namespace, broker: AuthBroker) -> dict[str, Any]
     if args.method == "api-key":
         if args.env_var or args.command_argv:
             raise AuthError("api-key mode reads from a hidden prompt; use env or external-command for headless setup")
-        api_key = getpass("Provider API credential (input hidden): ")
-        if not api_key:
-            raise AuthError("API credential must not be empty")
-        return broker.add_api_key(args.adapter_id, args.profile, api_key, replace=args.replace)
+        return _prompt_and_store_api_key(args, broker)
+    if args.method == "browser-key":
+        if args.env_var or args.command_argv:
+            raise AuthError("browser-key mode does not accept env or external-command options")
+        setup_url = broker.setup_url(args.adapter_id)
+        print(f"Create a provider API key in your browser:\n{setup_url}", file=sys.stderr)
+        if not args.no_open:
+            try:
+                webbrowser.open(setup_url)
+            except (OSError, webbrowser.Error):
+                # The fixed URL is already printed, so a missing desktop
+                # browser does not prevent secure hidden-prompt enrollment.
+                pass
+        return _prompt_and_store_api_key(args, broker)
     if args.method == "env":
         if not args.env_var:
             raise AuthError("env mode requires --env NAME")
@@ -131,6 +142,13 @@ def _add_profile(args: argparse.Namespace, broker: AuthBroker) -> dict[str, Any]
             replace=args.replace,
         )
     raise AuthError("unsupported auth method")
+
+
+def _prompt_and_store_api_key(args: argparse.Namespace, broker: AuthBroker) -> dict[str, Any]:
+    api_key = getpass("Provider API credential (input hidden): ")
+    if not api_key:
+        raise AuthError("API credential must not be empty")
+    return broker.add_api_key(args.adapter_id, args.profile, api_key, replace=args.replace)
 
 
 def _print_device_prompt(prompt: DeviceAuthorizationPrompt) -> None:
