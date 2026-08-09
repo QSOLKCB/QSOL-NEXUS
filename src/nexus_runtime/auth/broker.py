@@ -55,6 +55,24 @@ _CREDENTIAL_LABEL_IN_HELPER_VALUE = re.compile(
 _HEX_HELPER_VALUE = re.compile(r"^[A-Fa-f0-9-]+$")
 _HELPER_VALUE_FRAGMENT = re.compile(r"[^\s'\"`(){}\[\],;:]+")
 _WINDOWS_ABSOLUTE_HELPER_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\)")
+_EXTERNAL_HELPER_ENV_ALLOWLIST = frozenset(
+    {
+        "PATH",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "HOME",
+        "USERPROFILE",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "SYSTEMROOT",
+        "SystemRoot",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+    }
+)
 
 
 def _is_supported_helper_path(value: str) -> bool:
@@ -120,6 +138,28 @@ def _credential_candidate_helper_values(command: Sequence[str]) -> list[str]:
             continue
         candidates.append(item)
     return candidates
+
+
+def _external_helper_environment(
+    environment: Mapping[str, str],
+    *,
+    adapter_id: str,
+    profile_name: str,
+) -> dict[str, str]:
+    """Build the least-privilege environment visible to a credential helper."""
+
+    clean = {
+        key: value
+        for key, value in environment.items()
+        if key in _EXTERNAL_HELPER_ENV_ALLOWLIST and isinstance(value, str)
+    }
+    clean.update(
+        {
+            "NEXUS_AUTH_ADAPTER": adapter_id,
+            "NEXUS_AUTH_PROFILE": profile_name,
+        }
+    )
+    return clean
 
 
 @dataclass(frozen=True)
@@ -536,12 +576,10 @@ class AuthBroker:
 
     def _resolve_external_command(self, profile: AuthProfile) -> SecretMaterial:
         argv = self._validated_external_command(profile.source_metadata["argv"])
-        command_environment = dict(self.environment)
-        command_environment.update(
-            {
-                "NEXUS_AUTH_ADAPTER": profile.adapter_id,
-                "NEXUS_AUTH_PROFILE": profile.profile_name,
-            }
+        command_environment = _external_helper_environment(
+            self.environment,
+            adapter_id=profile.adapter_id,
+            profile_name=profile.profile_name,
         )
         try:
             process = subprocess.Popen(
