@@ -43,10 +43,21 @@ class ProviderNexusAPI(CoreNexusAPI):
         # CoreNexusAPI owns malformed/unknown operation validation. Guard the
         # provider-specific membership test so unhashable JSON shapes (arrays,
         # objects) cannot escape the structured error boundary as TypeError.
-        if isinstance(operation, str) and operation in _LOCAL_ROLE_OPERATIONS:
-            response = self._handle_local_role_operation(request)
-        else:
-            response = super().handle(request)
+        try:
+            if isinstance(operation, str) and operation in _LOCAL_ROLE_OPERATIONS:
+                response = self._handle_local_role_operation(request)
+            else:
+                response = super().handle(request)
+        except OverflowError:
+            # A pathological JSON integer must never tear down the JSONL
+            # runtime merely because a lower-level numeric conversion missed
+            # its local range guard. Known timeout paths validate earlier; this
+            # remains a final structured-error boundary for provider overlays.
+            return self._error(
+                request.get("request_id"),
+                "invalid_request",
+                "numeric value is outside the admitted range",
+            )
 
         if operation == "system.health" and response.get("status") == "ok":
             response = dict(response)
