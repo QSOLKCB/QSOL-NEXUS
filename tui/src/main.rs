@@ -10,9 +10,9 @@ use crossterm::{execute, queue};
 use nexus_irc_tui::go64::{Go64Action, Go64Session};
 use nexus_irc_tui::scripting::{expand_identifiers, IdentifierContext, VariableBook};
 use nexus_irc_tui::{
-    command_completions, load_document, normalize_action, parse_input, room_from_name,
-    sanitize_terminal_text, AliasBook, DccCommand, DccKind, DccSession, GameCommand, InputCommand,
-    MudCommand, RoomSpec, ROOMS,
+    command_completions, is_watch_only_room, load_document, normalize_action, parse_input,
+    room_from_name, sanitize_terminal_text, AliasBook, DccCommand, DccKind, DccSession,
+    GameCommand, InputCommand, MudCommand, RoomSpec, StenographerCommand, ROOMS,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -23,6 +23,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::Duration;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
+
+const LORE_REVEAL_PHRASE: &str =
+    "Dragon seed awakens divine house through forbidden knowledge.";
 
 #[derive(Debug, Clone)]
 struct MemberConfig {
@@ -73,7 +76,7 @@ struct NexusProcess {
 }
 
 impl NexusProcess {
-    fn spawn(world: &Path, trap_root: &Path) -> Result<Self, String> {
+    fn spawn(world: &Path, trap_root: &Path, stenographer_root: &Path) -> Result<Self, String> {
         let python = env::var("NEXUS_PYTHON").unwrap_or_else(|_| "python3".to_string());
         let mut command = Command::new(&python);
         command
@@ -83,6 +86,8 @@ impl NexusProcess {
             .arg(world)
             .arg("--trap-root")
             .arg(trap_root)
+            .arg("--stenographer-root")
+            .arg(stenographer_root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
@@ -250,7 +255,7 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS TUI 2.0 alpha9.1 — local room, no IRC server");
+        app.append("*** NEXUS TUI 2.0 alpha9.2 — local room, no IRC server");
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );
@@ -505,9 +510,9 @@ impl App {
                 self.append(&format!("*** {} changed the topic to: {topic}", self.nick));
             }
             InputCommand::Ask(question) => {
-                if self.is_trap_room() {
+                if self.is_trap_room() || self.is_stenographer_room() {
                     return Err(
-                        "Council questions are disabled in trap rooms; use the closed /trap namespace"
+                        "Council questions are disabled in watch-only rooms; use /steno for read-only records"
                             .to_string(),
                     );
                 }
@@ -521,11 +526,32 @@ impl App {
                 }
                 self.run_council(nexus, &question)?;
             }
-            InputCommand::Game(command) => self.execute_game(nexus, command)?,
-            InputCommand::Mud(command) => self.execute_mud(nexus, command)?,
-            InputCommand::Trap(command) => self.execute_trap(nexus, &command)?,
+            InputCommand::Game(command) => {
+                self.reject_stenographer_mutation()?;
+                self.execute_game(nexus, command)?
+            }
+            InputCommand::Mud(command) => {
+                self.reject_stenographer_mutation()?;
+                self.execute_mud(nexus, command)?
+            }
+            InputCommand::Trap(command) => {
+                self.reject_stenographer_mutation()?;
+                self.execute_trap(nexus, &command)?
+            }
+            InputCommand::Stenographer(command) => {
+                self.execute_stenographer(nexus, command)?
+            }
             InputCommand::Say(text) => {
-                if self.is_trap_room() {
+                if self.is_stenographer_room() {
+                    if text == LORE_REVEAL_PHRASE {
+                        self.reveal_stenographer_lore(nexus, &text)?;
+                    } else {
+                        return Err(
+                            "Courtroom Stenographer is Watchman Only; use /steno for read-only records"
+                                .to_string(),
+                        );
+                    }
+                } else if self.is_trap_room() {
                     self.execute_trap(nexus, &format!("say {text}"))?;
                 } else if let Some(target) = self.private_target.clone() {
                     self.direct_message(nexus, &target, &text)?;
@@ -536,7 +562,10 @@ impl App {
             InputCommand::Me(action) => {
                 self.append(&format!("* {} {}", self.nick, normalize_action(&action)));
             }
-            InputCommand::Msg { target, text } => self.direct_message(nexus, &target, &text)?,
+            InputCommand::Msg { target, text } => {
+                self.reject_stenographer_mutation()?;
+                self.direct_message(nexus, &target, &text)?
+            }
             InputCommand::Nick(new_nick) => {
                 if self
                     .members
@@ -551,6 +580,7 @@ impl App {
             }
             InputCommand::Who => self.show_who(),
             InputCommand::Upload(path) => {
+                self.reject_stenographer_mutation()?;
                 let object_ref =
                     self.import_document(nexus, &path, self.room.channel, "room_upload")?;
                 let channel = self.room.channel.to_string();
@@ -559,9 +589,13 @@ impl App {
                     "*** DCC-style room evidence attached: {object_ref}"
                 ));
             }
-            InputCommand::Dcc(command) => self.execute_dcc(nexus, command)?,
+            InputCommand::Dcc(command) => {
+                self.reject_stenographer_mutation()?;
+                self.execute_dcc(nexus, command)?
+            }
             InputCommand::Evidence => self.show_evidence(),
             InputCommand::Ref(object_ref) => {
+                self.reject_stenographer_mutation()?;
                 nexus.request(json!({"operation": "world.inspect", "object_ref": object_ref}))?;
                 let channel = self.room.channel.to_string();
                 self.add_room_evidence(&channel, object_ref.clone());
@@ -571,6 +605,7 @@ impl App {
                 ));
             }
             InputCommand::Unref(object_ref) => {
+                self.reject_stenographer_mutation()?;
                 if let Some(refs) = self.room_evidence.get_mut(self.room.channel) {
                     refs.retain(|value| value != &object_ref);
                 }
@@ -580,6 +615,7 @@ impl App {
                 ));
             }
             InputCommand::AddMock { nick, profile } => {
+                self.reject_stenographer_mutation()?;
                 self.ensure_unique_member(&nick)?;
                 self.members.push(MemberConfig::mock(&nick, &profile));
                 self.append(&format!(
@@ -588,6 +624,7 @@ impl App {
                 ));
             }
             InputCommand::AddOllama { nick, model } => {
+                self.reject_stenographer_mutation()?;
                 self.ensure_unique_member(&nick)?;
                 self.members.push(MemberConfig::ollama(&nick, &model));
                 self.append(&format!(
@@ -596,6 +633,7 @@ impl App {
                 ));
             }
             InputCommand::Kick(nick) => {
+                self.reject_stenographer_mutation()?;
                 let canonical = self
                     .members
                     .iter()
@@ -1200,6 +1238,68 @@ impl App {
         matches!(self.room.channel, "#trap-control" | "#trap-base")
     }
 
+    fn is_stenographer_room(&self) -> bool {
+        is_watch_only_room(self.room)
+    }
+
+    fn reject_stenographer_mutation(&self) -> Result<(), String> {
+        if self.is_stenographer_room() {
+            Err(
+                "Courtroom Stenographer is Watchman Only and cannot initiate AI or world actions"
+                    .to_string(),
+            )
+        } else {
+            Ok(())
+        }
+    }
+
+    fn execute_stenographer(
+        &mut self,
+        nexus: &mut NexusProcess,
+        command: StenographerCommand,
+    ) -> Result<(), String> {
+        let request = match command {
+            StenographerCommand::Status => json!({"operation": "stenographer.status"}),
+            StenographerCommand::List { limit: None } => {
+                json!({"operation": "stenographer.list"})
+            }
+            StenographerCommand::List { limit: Some(limit) } => {
+                json!({"operation": "stenographer.list", "limit": limit})
+            }
+            StenographerCommand::Inspect { record_ref } => {
+                json!({"operation": "stenographer.inspect", "record_ref": record_ref})
+            }
+            StenographerCommand::Verify => json!({"operation": "stenographer.verify"}),
+            StenographerCommand::Summary => json!({"operation": "stenographer.summary"}),
+            StenographerCommand::Export => json!({"operation": "stenographer.export"}),
+        };
+        let response = nexus.request(request)?;
+        let rendered = serde_json::to_string_pretty(&response)
+            .map_err(|error| format!("cannot render Stenographer response: {error}"))?;
+        for line in rendered.lines() {
+            self.append(&format!("*** WATCHMAN {line}"));
+        }
+        Ok(())
+    }
+
+    fn reveal_stenographer_lore(
+        &mut self,
+        nexus: &mut NexusProcess,
+        phrase: &str,
+    ) -> Result<(), String> {
+        let response = nexus.request(json!({
+            "operation": "stenographer.lore",
+            "phrase": phrase
+        }))?;
+        self.append("*** SKY-EARTH LORD · DIVINE DRAGON-HOUSE · KNOWLEDGE-WATCHMAN");
+        if let Some(rendered) = response.get("rendered").and_then(Value::as_str) {
+            for line in rendered.lines() {
+                self.append(if line.is_empty() { " " } else { line });
+            }
+        }
+        Ok(())
+    }
+
     fn execute_trap(&mut self, nexus: &mut NexusProcess, command: &str) -> Result<(), String> {
         let command = command.trim();
         let response = if command == "status" {
@@ -1613,6 +1713,7 @@ impl App {
             "*** Game: /join #un-sim | /game new [seed] | /game status | /game act ... | /game turn",
             "*** MUD: /join #mud | /mud new [seed] | /mud look | /mud n|s|e|w | /mud attack ... | /mud help",
             "*** Trap: /join #trap-control | /join #trap-base | /trap <closed command>",
+            "*** Watchman: /join #stenographer | /steno status|list|inspect|verify|summary|export",
             "*** IRC: /me action | /msg nick text | /nick name | /who | /search text | /save file | /clear | /quit",
             "*** Models: /addmock nick [profile] | /addollama nick model | /kick nick",
             "*** Evidence: /upload file | /ref object:... | /unref object:... | /evidence",
@@ -1918,10 +2019,11 @@ fn fit(text: &str, width: usize) -> String {
     output
 }
 
-fn parse_args() -> (PathBuf, PathBuf, PathBuf, String) {
+fn parse_args() -> (PathBuf, PathBuf, PathBuf, PathBuf, String) {
     let mut world = PathBuf::from(".nexus-world");
     let mut state: Option<PathBuf> = None;
     let mut trap_root: Option<PathBuf> = None;
+    let mut stenographer_root: Option<PathBuf> = None;
     let mut nick = env::var("USER").unwrap_or_else(|_| "operator".to_string());
     let args: Vec<String> = env::args().skip(1).collect();
     let mut index = 0usize;
@@ -1939,6 +2041,10 @@ fn parse_args() -> (PathBuf, PathBuf, PathBuf, String) {
                 trap_root = Some(PathBuf::from(&args[index + 1]));
                 index += 2;
             }
+            "--stenographer-root" if index + 1 < args.len() => {
+                stenographer_root = Some(PathBuf::from(&args[index + 1]));
+                index += 2;
+            }
             "--nick" if index + 1 < args.len() => {
                 nick = args[index + 1].clone();
                 index += 2;
@@ -1952,12 +2058,18 @@ fn parse_args() -> (PathBuf, PathBuf, PathBuf, String) {
         sibling.set_file_name(".nexus-trap");
         sibling
     });
-    (world, state, trap_root, nick)
+    let stenographer_root = stenographer_root.unwrap_or_else(|| {
+        let mut sibling = world.clone();
+        sibling.set_file_name(".nexus-stenographer");
+        sibling
+    });
+    (world, state, trap_root, stenographer_root, nick)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (world, state, trap_root, nick) = parse_args();
-    let mut nexus = NexusProcess::spawn(&world, &trap_root).map_err(io::Error::other)?;
+    let (world, state, trap_root, stenographer_root, nick) = parse_args();
+    let mut nexus = NexusProcess::spawn(&world, &trap_root, &stenographer_root)
+        .map_err(io::Error::other)?;
     let _guard = TerminalGuard::enter()?;
     let mut app = App::new(nick, state);
     app.scrub_loaded_script_state(&mut nexus)

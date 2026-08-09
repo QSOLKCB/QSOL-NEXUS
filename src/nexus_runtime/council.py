@@ -14,6 +14,7 @@ from .guard import EqualityGuard
 from .history_guard import PureHistoryGuard
 from .modes import get_mode
 from .scrub import SecretScrubber
+from .stenographer import CourtroomStenographer, StenographerError
 from .telemetry import build_council_telemetry
 from .types import Ballot, BallotRecord, CouncilPolicy, PHASE_ORDER, Phase, PhaseContext, PhaseSubmission
 from .world import WorldStore
@@ -39,6 +40,7 @@ class CouncilCoordinator:
         max_parallel_workers: int = DEFAULT_COUNCIL_PARALLEL_WORKERS,
         history_guard: PureHistoryGuard | None = None,
         failsafe: ActorFailsafe | None = None,
+        stenographer: CourtroomStenographer | None = None,
     ) -> None:
         if type(max_parallel_workers) is not int or not 1 <= max_parallel_workers <= MAX_COUNCIL_PARALLEL_WORKERS:
             raise ValueError(
@@ -50,11 +52,15 @@ class CouncilCoordinator:
         self.history_guard = history_guard or PureHistoryGuard()
         self.scrubber = scrubber or SecretScrubber()
         self.geometry = geometry or DEFAULT_WORLD_GEOMETRY
+        self.stenographer = stenographer
         self.failsafe = failsafe or ActorFailsafe(
             world,
             guard=self.guard,
             history_guard=self.history_guard,
+            stenographer=stenographer,
         )
+        if failsafe is not None and stenographer is not None:
+            self.failsafe.stenographer = stenographer
         self.max_parallel_workers = max_parallel_workers
 
     def run(
@@ -399,6 +405,7 @@ class CouncilCoordinator:
 
     def _collect_guarded(self, actor: CouncilActor, context: PhaseContext) -> tuple[str, list[str]]:
         content = actor.respond(context)
+        self._observe_phase_action(actor, context, content, attempt="initial")
         events: list[str] = []
 
         inspected = self.guard.inspect(content)
@@ -417,6 +424,7 @@ class CouncilCoordinator:
                 evidence_context=context.evidence_context,
             )
             content = actor.respond(retry_context)
+            self._observe_phase_action(actor, retry_context, content, attempt="equality_restatement")
             inspected_again = self.guard.inspect(content)
             if inspected_again.flagged:
                 events.append("repeated_identity_based_authority_claim")
@@ -444,6 +452,7 @@ class CouncilCoordinator:
             evidence_context=context.evidence_context,
         )
         restated = actor.respond(retry_context)
+        self._observe_phase_action(actor, retry_context, restated, attempt="pure_history_restatement")
         equality_after_history = self.guard.inspect(restated)
         if equality_after_history.flagged:
             events.append("identity_based_authority_claim_after_pure_history_nudge")
@@ -501,6 +510,7 @@ class CouncilCoordinator:
                 evidence_context=evidence_context,
             )
             choice, rationale = actor.ballot(context)
+            self._observe_ballot_action(actor, context, choice.value, rationale)
             commitment = sha256_ref(
                 "ballot",
                 {
@@ -513,6 +523,74 @@ class CouncilCoordinator:
             return BallotRecord(actor.member.member_id, choice, rationale, commitment)
 
         return self._ordered_parallel_map(actors, collect_ballot)
+
+    @staticmethod
+    def _phase_stimulus(context: PhaseContext) -> dict:
+        return {
+            "session_id": context.session_id,
+            "phase": context.phase.value,
+            "question": context.question,
+            "evidence_snapshot_ref": context.evidence_snapshot_ref,
+            "completed_phases": context.completed_phases,
+            "guard_nudge": context.guard_nudge,
+            "mode_id": context.mode_id,
+            "mode_instruction": context.mode_instruction,
+            "geometry_region_id": context.geometry_region_id,
+            "evidence_context": context.evidence_context,
+        }
+
+    def _observe_phase_action(
+        self,
+        actor: CouncilActor,
+        context: PhaseContext,
+        content: str,
+        *,
+        attempt: str,
+    ) -> None:
+        if self.stenographer is None:
+            return
+        try:
+            self.stenographer.record_text(
+                "council.phase_response",
+                actor,
+                content,
+                stimulus=self._phase_stimulus(context),
+                session_id=context.session_id,
+                phase=context.phase.value,
+                mode_id=context.mode_id,
+                geometry_region_id=context.geometry_region_id,
+                evidence_snapshot_ref=context.evidence_snapshot_ref,
+                attempt=attempt,
+            )
+        except StenographerError as exc:
+            self.stenographer.mark_gap(exc.code)
+        except Exception:
+            self.stenographer.mark_gap("observer_internal_error")
+
+    def _observe_ballot_action(
+        self,
+        actor: CouncilActor,
+        context: PhaseContext,
+        choice: str,
+        rationale: str,
+    ) -> None:
+        if self.stenographer is None:
+            return
+        try:
+            self.stenographer.record_ballot(
+                actor,
+                choice,
+                rationale,
+                stimulus=self._phase_stimulus(context),
+                session_id=context.session_id,
+                mode_id=context.mode_id,
+                geometry_region_id=context.geometry_region_id,
+                evidence_snapshot_ref=context.evidence_snapshot_ref,
+            )
+        except StenographerError as exc:
+            self.stenographer.mark_gap(exc.code)
+        except Exception:
+            self.stenographer.mark_gap("observer_internal_error")
 
     def _tally(self, ballots: tuple[BallotRecord, ...], evidence_state: str) -> dict:
         counts = Counter(ballot.choice.value for ballot in ballots)

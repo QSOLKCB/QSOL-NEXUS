@@ -2,6 +2,18 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.0.0-alpha9.2 — Courtroom Stenographer
+
+- add the passive Courtroom Stenographer with Sky-Earth Lord, Divine Dragon-House and Knowledge-Watchman lore plus an exact zero-authority boundary;
+- record admitted direct-model replies, every Council phase/restatement and sealed ballot, Failsafe rehabilitation replies, and synthetic Trap-subject replies;
+- store secret-scrubbed AI outputs as owner-only canonical `steno:<sha256>` JSON in a linear append-only lineage with a rebuildable index and interprocess writer lock;
+- keep human commands, prompts, world/game/auth activity and control-plane decisions out of the AI-action ledger while binding stimuli by digest;
+- expose honest fail-passive completeness gaps so observation failure never changes the original AI result;
+- add read-only JSONL, Python CLI and Rust `#stenographer`/`/steno` status, list, inspect, verify, summary and export surfaces;
+- add a hidden display-only lore Easter egg with no authentication, command or mutation authority;
+- add canonical/tamper/concurrency/permission/symlink/scope/secret/gap and all-action boundary regressions and threats T33–T38;
+- bump the control protocol to `nexus/0.12`, runtime/TUI to `2.0.0-alpha9.2`, and Python package to `2.0.0a9.post2`.
+
 ## 2.0.0-alpha9.1 — Decoy Gate and Trap Base
 
 - add an explicit synthetic Decoy Gate that can never be reached by ordinary authentication failure and never admits its subject to real NEXUS;

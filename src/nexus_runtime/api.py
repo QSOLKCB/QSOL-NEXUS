@@ -22,6 +22,7 @@ from .geometry import DEFAULT_WORLD_GEOMETRY
 from .mock import DeterministicMockActor
 from .modes import get_mode, list_modes
 from .scrub import ScrubEvent, SecretScrubber
+from .stenographer import CourtroomStenographer, StenographerError
 from .telemetry import TELEMETRY_SCHEMA_VERSION, verify_session_telemetry
 from .trap.controller import TrapController
 from .trap.commands import TrapCommandError
@@ -33,8 +34,8 @@ from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.11"
-RUNTIME_VERSION = "2.0.0-alpha9.1"
+PROTOCOL_VERSION = "nexus/0.12"
+RUNTIME_VERSION = "2.0.0-alpha9.2"
 MAX_REMOTE_COUNCIL_SEATS = 4
 
 _TRAP_BLOCKED_MUTATIONS = frozenset(
@@ -65,6 +66,7 @@ class NexusAPI:
         auth_root: str | Path | None = None,
         auth_broker: AuthBroker | None = None,
         trap_root: str | Path | None = None,
+        stenographer_root: str | Path | None = None,
         trap_defenders: Sequence[object] = (),
         trap_subject_factory: Callable[[str], Any] | None = None,
     ) -> None:
@@ -75,14 +77,42 @@ class NexusAPI:
             self._ensure_disjoint_storage_roots(self.auth.root, trap_root, "auth", "trap")
             if world_root is not None:
                 self._ensure_disjoint_storage_roots(world_root, trap_root, "world", "trap")
+        if stenographer_root is not None:
+            self._ensure_disjoint_storage_roots(
+                self.auth.root,
+                stenographer_root,
+                "auth",
+                "stenographer",
+            )
+            if world_root is not None:
+                self._ensure_disjoint_storage_roots(
+                    world_root,
+                    stenographer_root,
+                    "world",
+                    "stenographer",
+                )
+            if trap_root is not None:
+                self._ensure_disjoint_storage_roots(
+                    trap_root,
+                    stenographer_root,
+                    "trap",
+                    "stenographer",
+                )
         self.world = WorldStore(world_root)
         self.scrubber = SecretScrubber()
         self.geometry = DEFAULT_WORLD_GEOMETRY
-        self.council = CouncilCoordinator(self.world, scrubber=self.scrubber, geometry=self.geometry)
+        self.stenographer = CourtroomStenographer(stenographer_root)
+        self.council = CouncilCoordinator(
+            self.world,
+            scrubber=self.scrubber,
+            geometry=self.geometry,
+            stenographer=self.stenographer,
+        )
         self.trap = TrapController(
             trap_root,
             defender_roster_provider=lambda: tuple(trap_defenders),
             subject_factory=trap_subject_factory,
+            stenographer=self.stenographer,
         )
         self.trap_store = self.trap.store
         self.trap_registry = self.trap.registry
@@ -130,6 +160,7 @@ class NexusAPI:
                     "world_modes": [mode.mode_id for mode in list_modes()],
                     "geometry": self.geometry.snapshot()["geometry_id"],
                     "telemetry": {"schema_version": TELEMETRY_SCHEMA_VERSION, "role": "observational_only"},
+                    "stenographer": self.stenographer.status(),
                     "failsafe": self.council.failsafe.policy_dict(),
                     "trap_base": self.decoy_gate.health_status(),
                     "games": [
@@ -157,6 +188,12 @@ class NexusAPI:
                         "receipt.verify",
                         "telemetry.verify",
                         "failsafe.status",
+                        "stenographer.status",
+                        "stenographer.list",
+                        "stenographer.inspect",
+                        "stenographer.verify",
+                        "stenographer.summary",
+                        "stenographer.export",
                         "trap.status",
                         "trap.inspect",
                         "trap.transcript",
@@ -284,6 +321,38 @@ class NexusAPI:
                     "schema_version": FAILSAFE_SCHEMA_VERSION,
                     **self.council.failsafe.status_snapshot(member_id),
                 }
+            elif operation == "stenographer.status":
+                self._require_exact_fields(request, operation, set())
+                response = self.stenographer.status()
+            elif operation == "stenographer.list":
+                self._require_exact_fields(request, operation, {"limit", "action_type", "member_id"})
+                limit = request.get("limit", 100)
+                action_type = request.get("action_type")
+                member_id = request.get("member_id")
+                if action_type is not None and not isinstance(action_type, str):
+                    raise ValueError("action_type must be a string when supplied")
+                if member_id is not None and not isinstance(member_id, str):
+                    raise ValueError("member_id must be a string when supplied")
+                response = self.stenographer.list_records(
+                    limit=limit,
+                    action_type=action_type,
+                    member_id=member_id,
+                )
+            elif operation == "stenographer.inspect":
+                self._require_exact_fields(request, operation, {"record_ref"})
+                response = self.stenographer.inspect(self._require_str(request, "record_ref"))
+            elif operation == "stenographer.verify":
+                self._require_exact_fields(request, operation, set())
+                response = self.stenographer.verify()
+            elif operation == "stenographer.summary":
+                self._require_exact_fields(request, operation, set())
+                response = self.stenographer.summary()
+            elif operation == "stenographer.export":
+                self._require_exact_fields(request, operation, set())
+                response = self.stenographer.export_manifest()
+            elif operation == "stenographer.lore":
+                self._require_exact_fields(request, operation, {"phrase"})
+                response = self.stenographer.reveal_lore(self._require_str(request, "phrase"))
             elif operation == "trap.status":
                 self._require_exact_fields(request, operation, set())
                 response = self.trap.status()
@@ -553,6 +622,27 @@ class NexusAPI:
                     geometry_region_id=region.region_id,
                     evidence_context=evidence_context,
                 )
+                try:
+                    self.stenographer.record_text(
+                        "actor.direct_response",
+                        actor,
+                        text,
+                        stimulus={
+                            "message": scrubbed.text,
+                            "mode_id": mode.mode_id,
+                            "mode_instruction": mode.prompt_instruction,
+                            "geometry_region_id": region.region_id,
+                            "evidence_refs": list(evidence_refs),
+                            "evidence_context": evidence_context,
+                        },
+                        mode_id=mode.mode_id,
+                        geometry_region_id=region.region_id,
+                        attempt="direct_response",
+                    )
+                except StenographerError as exc:
+                    self.stenographer.mark_gap(exc.code)
+                except Exception:
+                    self.stenographer.mark_gap("observer_internal_error")
                 response = {
                     "status": "ok",
                     "non_council": True,
@@ -594,7 +684,14 @@ class NexusAPI:
                 )
             else:
                 return self._error(request_id, "unknown_operation", "operation is not supported")
-        except (TrapError, TrapCommandError, TrapYAMLError, TrapYAMLRuntimeError, TrapSubjectError) as exc:
+        except (
+            TrapError,
+            TrapCommandError,
+            TrapYAMLError,
+            TrapYAMLRuntimeError,
+            TrapSubjectError,
+            StenographerError,
+        ) as exc:
             return self._error(request_id, exc.code, str(exc))
         except AdapterError as exc:
             return self._error(request_id, "adapter_unavailable", str(exc))

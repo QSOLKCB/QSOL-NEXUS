@@ -31,13 +31,14 @@ NEXUS now has:
 - a hidden Rust-TUI **`/GO64` Secret Alias Mode** with a text demoscene and DR. S.BAITSO tribute;
 - **NEXUS Failsafe** containment with the cursed Upside Down, bounded rehabilitation, Shadow Realm, and deterministic equal-vote relief actors.
 - an isolated **Decoy Gate / Trap Base** for explicit synthetic hostile fixtures, with a separate `trap:<sha256>` store, owner-checked Council mutation lock, equal-vote defender session, restricted Trap YAML, and inert candidate quarantine.
+- the append-only **Courtroom Stenographer / Knowledge-Watchman**, recording admitted AI actions as private canonical `steno:<sha256>` JSON without prompt, vote, command, decision, or mutation authority.
 
 Current posture:
 
 ```text
-protocol: nexus/0.11
-runtime version: 2.0.0-alpha9.1
-operator TUI version: 2.0.0-alpha9.1
+protocol: nexus/0.12
+runtime version: 2.0.0-alpha9.2
+operator TUI version: 2.0.0-alpha9.2
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
 actor backends: mock + explicit loopback Ollama + fixed-HTTPS xAI
@@ -48,6 +49,7 @@ remote/cloud providers: xAI admitted; OpenAI / Anthropic / Google deferred
 provider authentication: xAI API key, environment, or external helper
 world persistence: optional local canonical JSON files
 trap simulation: explicit synthetic triggers only; local Ollama or deterministic test subject
+AI action study record: private append-only canonical JSON; Watchman Only
 ```
 
 The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`archives/v1.0.0/`](archives/v1.0.0/) as referential prior work.
@@ -75,6 +77,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
             | modes + geometry    |
             | telemetry + games   |
             | Failsafe / Shadow   |
+            | Stenographer        |
             | Secret Scrubber     |
             | auth broker         |
             +----------+----------+
@@ -175,7 +178,10 @@ There is **no IRC server, IRC network connection, listening port, browser servic
 Run it from the repository root:
 
 ```bash
-cargo run --manifest-path tui/Cargo.toml -- --world .nexus-world --nick Trent
+cargo run --manifest-path tui/Cargo.toml -- \
+  --world .nexus-world \
+  --stenographer-root .nexus-stenographer \
+  --nick Trent
 ```
 
 Normal public text is treated as a Council question. Council phases and ballots stream into chronological text scrollback so results are easy to copy, quote and archive.
@@ -193,6 +199,16 @@ If a Council actor repeats a registered procedural guard violation after the ord
 Failsafe state is recorded as immutable content-addressed world objects; a durable pointer index preserves Shadow-Realm state across runtime restarts. See [`docs/FAILSAFE.md`](docs/FAILSAFE.md).
 
 > **The troll layer may be cursed. The trigger must be boring.**
+
+### Courtroom Stenographer
+
+`#stenographer` is a read-only view over an independent append-only AI-action
+ledger. `/steno status|list|inspect|verify|summary|export` can study it; plain
+room text cannot start a Council or direct-model action. Recorder failures mark
+a visible gap and never rewrite, reject, or delay an otherwise valid AI result.
+The lore titles **Sky-Earth Lord**, **Divine Dragon-House**, and
+**Knowledge-Watchman** confer no authority. See
+[`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md).
 
 Useful commands:
 
@@ -397,7 +413,10 @@ nexus models list xai --profile personal
 Run the JSONL stdio runtime directly:
 
 ```bash
-python -m nexus_runtime --world .nexus-world
+python -m nexus_runtime \
+  --world .nexus-world \
+  --trap-root .nexus-trap \
+  --stenographer-root .nexus-stenographer
 ```
 
 Then send one JSON request per line:
@@ -424,6 +443,23 @@ auth.logout
 models.list
 receipt.verify
 telemetry.verify
+failsafe.status
+stenographer.status
+stenographer.list
+stenographer.inspect
+stenographer.verify
+stenographer.summary
+stenographer.export
+trap.status
+trap.inspect
+trap.transcript
+trap.command
+trap.challenge.submit
+trap.challenge.validate
+trap.challenge.execute
+trap.replay
+trap.export
+trap.close
 game.un.catalog
 game.un.new
 game.un.inspect
@@ -452,6 +488,7 @@ See [`docs/API.md`](docs/API.md).
 11. **The Rust TUI is a shell, not the source of truth.**
 12. **Credentials are not cognitive state.** Secrets never belong in Council prompts, world objects, receipts, or lineage.
 13. **Game narration is not game state.** Only explicit runtime game transitions mutate the authoritative board.
+14. **The Stenographer watches; it never rules.** An observation record cannot prompt, vote, decide, command, mutate state, or alter AI output.
 
 ## De Bono-style Council
 
@@ -638,6 +675,7 @@ OpenAI, Anthropic, Google, generic remote endpoints, and additional providers re
 - [`docs/AUTH.md`](docs/AUTH.md) — provider-neutral auth broker, storage, PKCE/device flows, and admission boundary
 - [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md) — xAI setup, fixed transport, discovery, and Council configuration
 - [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md) — synthetic Decoy Gate, isolated Trap Base, restricted YAML, recovery, and claim boundary
+- [`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md) — passive canonical AI-action ledger, read-only interfaces, integrity, and claim boundary
 - [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) — World Modes and named-region geometry
 - [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md) — source-forensic `#pure-history` mode and discipline guard
 - [`docs/IRC_TUI.md`](docs/IRC_TUI.md) — implemented Rust IRC-style operator interface

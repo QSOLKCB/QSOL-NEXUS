@@ -12,6 +12,7 @@ from .adapters.base import CouncilActor
 from .canonical import canonical_json, sha256_ref
 from .guard import EqualityGuard
 from .history_guard import PureHistoryGuard
+from .stenographer import CourtroomStenographer, StenographerError
 from .types import Ballot, CouncilMember, Phase, PhaseContext
 from .world import WorldObject, WorldStore
 
@@ -497,11 +498,13 @@ class ActorFailsafe:
         guard: EqualityGuard | None = None,
         history_guard: PureHistoryGuard | None = None,
         policy: FailsafePolicy | None = None,
+        stenographer: CourtroomStenographer | None = None,
     ) -> None:
         self.world = world
         self.guard = guard or EqualityGuard()
         self.history_guard = history_guard or PureHistoryGuard()
         self.policy = policy or FailsafePolicy()
+        self.stenographer = stenographer
         self.registry = FailsafeRegistry(world)
 
     def policy_dict(self) -> dict[str, Any]:
@@ -632,6 +635,7 @@ class ActorFailsafe:
             probe_error = type(exc).__name__
             guard_reasons.append("rehabilitation_probe_error")
         else:
+            self._observe_rehabilitation_action(actor, context, response)
             if not isinstance(response, str) or not response.strip():
                 guard_reasons.append("empty_rehabilitation_response")
             elif trigger_reason == "repeated_identity_based_authority_claim":
@@ -683,6 +687,46 @@ class ActorFailsafe:
             "replacement_model_id": replacement_model_id,
             "theatre": theatre,
         }
+
+    def _observe_rehabilitation_action(
+        self,
+        actor: CouncilActor,
+        context: PhaseContext,
+        response: object,
+    ) -> None:
+        if self.stenographer is None:
+            return
+        if not isinstance(response, str):
+            self.stenographer.mark_gap("stenographer_invalid_action")
+            return
+        try:
+            self.stenographer.record_text(
+                "failsafe.rehabilitation_response",
+                actor,
+                response,
+                stimulus={
+                    "session_id": context.session_id,
+                    "phase": context.phase.value,
+                    "question": context.question,
+                    "evidence_snapshot_ref": context.evidence_snapshot_ref,
+                    "completed_phases": context.completed_phases,
+                    "guard_nudge": context.guard_nudge,
+                    "mode_id": context.mode_id,
+                    "mode_instruction": context.mode_instruction,
+                    "geometry_region_id": context.geometry_region_id,
+                    "evidence_context": context.evidence_context,
+                },
+                session_id=context.session_id,
+                phase=context.phase.value,
+                mode_id=context.mode_id,
+                geometry_region_id=context.geometry_region_id,
+                evidence_snapshot_ref=context.evidence_snapshot_ref,
+                attempt="rehabilitation_probe",
+            )
+        except StenographerError as exc:
+            self.stenographer.mark_gap(exc.code)
+        except Exception:
+            self.stenographer.mark_gap("observer_internal_error")
 
     def shadow_reoffender(self, actor: CouncilActor, *, trigger_reason: str) -> dict[str, Any]:
         state = self.registry.transition(
