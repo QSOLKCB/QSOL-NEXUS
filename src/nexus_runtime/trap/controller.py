@@ -14,6 +14,7 @@ from ._controller_impl import (
 )
 from .commands import (
     CommandOrigin,
+    TrapCommand,
     TrapCommandContext,
     TrapCommandError,
     authorize_trap_command,
@@ -170,7 +171,12 @@ class TrapController(_TrapControllerImpl):
             sequence = active.command_sequence
 
         if parsed.name == "say":
-            return self._say(active, context.actor_id, str(parsed.arguments["text"]))
+            return self._say(
+                active,
+                context.actor_id,
+                str(parsed.arguments["text"]),
+                receipt=(sequence, parsed, context, authorization),
+            )
 
         with self._lock:
             self._require_same_open_incident(active)
@@ -223,7 +229,14 @@ class TrapController(_TrapControllerImpl):
             for member_id in ordered
         ]
 
-    def _say(self, active: _ActiveTrap, actor_id: str, text: str) -> dict[str, object]:
+    def _say(
+        self,
+        active: _ActiveTrap,
+        actor_id: str,
+        text: str,
+        *,
+        receipt: tuple[int, TrapCommand, TrapCommandContext, Mapping[str, object]] | None = None,
+    ) -> dict[str, object]:
         """Run potentially blocking inference without the controller state lock."""
 
         with self._lock:
@@ -238,9 +251,19 @@ class TrapController(_TrapControllerImpl):
 
         try:
             reply = subject.respond(text, synthetic_context=scenario)
-        except Exception:
+        except Exception as exc:
             with self._lock:
                 if self._active is active:
+                    if receipt is not None and receipt[1].state_changing:
+                        error_code, _ = _bounded_public_error(exc)
+                        self._persist_command_receipt(
+                            active,
+                            receipt[0],
+                            receipt[1],
+                            receipt[2],
+                            receipt[3],
+                            {"status": "failed", "error_code": error_code},
+                        )
                     active.last_activity_at = self._now()
                     self._watchdog(active)
             raise
@@ -254,13 +277,24 @@ class TrapController(_TrapControllerImpl):
             public_reply = reply.as_dict()
             public_reply["text"] = subject_message.payload["text"]
             public_reply["secret_scrub"] = subject_message.payload["secret_scrub"]
-            active.last_activity_at = self._now()
             result = {
                 "status": "ok",
                 "defender_message_ref": defender_message.object_id,
                 "subject_message_ref": subject_message.object_id,
                 "subject_output": public_reply,
             }
+            # Match the original command ordering: persist the state-changing
+            # command receipt before watchdog evaluation can close the incident.
+            if receipt is not None and receipt[1].state_changing:
+                self._persist_command_receipt(
+                    active,
+                    receipt[0],
+                    receipt[1],
+                    receipt[2],
+                    receipt[3],
+                    result,
+                )
+            active.last_activity_at = self._now()
             if self._active is active:
                 self._watchdog(active)
             return result
