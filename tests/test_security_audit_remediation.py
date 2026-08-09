@@ -10,6 +10,7 @@ from unittest.mock import patch
 from urllib.request import ProxyHandler
 
 from nexus_runtime.adapters.ollama import OllamaTransport
+from nexus_runtime.api import PROTOCOL_VERSION as API_PROTOCOL_VERSION
 from nexus_runtime.auth.broker import _external_helper_environment
 from nexus_runtime.auth.oauth import OAuthHTTPClient
 from nexus_runtime.canonical import canonical_json
@@ -150,6 +151,7 @@ class SecurityAuditRemediationTests(unittest.TestCase):
 
         session = world.inspect(result["session_ref"])
         receipt = world.inspect(result["receipt_ref"])
+        self.assertEqual(API_PROTOCOL_VERSION, PROTOCOL_VERSION)
         self.assertNotIn(canary, canonical_json(session.as_dict()))
         self.assertEqual(receipt.payload["protocol"], PROTOCOL_VERSION)
 
