@@ -166,11 +166,14 @@ class LocalAITransport:
         mcp_plugins: tuple[LocalMCPPlugin, ...] = (),
         session_key: str | None = None,
         max_output_tokens: int = LOCAL_AI_PHASE_OUTPUT_TOKENS,
+        enable_tools: bool = True,
     ) -> str:
         if not isinstance(prompt, str) or not prompt.strip():
             raise AdapterProtocolError("local AI prompt must be non-empty text")
         if len(prompt.encode("utf-8")) > LOCAL_AI_MAX_REQUEST_BYTES:
             raise AdapterProtocolError("local AI prompt exceeds the request limit")
+        if type(enable_tools) is not bool:
+            raise ValueError("local AI enable_tools must be a boolean")
         if (
             isinstance(max_output_tokens, bool)
             or not isinstance(max_output_tokens, int)
@@ -188,7 +191,8 @@ class LocalAITransport:
             if model is None:
                 raise ValueError("LM Studio local role requires a model")
             model = _validate_model(model)
-            if mcp_plugins and self.credential is None:
+            active_plugins = mcp_plugins if enable_tools else ()
+            if active_plugins and self.credential is None:
                 raise AdapterAuthenticationError(
                     "LM Studio configured MCP plugins require an API token"
                 )
@@ -200,8 +204,8 @@ class LocalAITransport:
                 "max_output_tokens": max_output_tokens,
                 "store": False,
             }
-            if mcp_plugins:
-                payload["integrations"] = [item.request_value() for item in mcp_plugins]
+            if active_plugins:
+                payload["integrations"] = [item.request_value() for item in active_plugins]
             value = self._request_json("/api/v1/chat", payload)
             return self._lmstudio_text(value)
 
@@ -213,7 +217,8 @@ class LocalAITransport:
             if workspace is None:
                 raise ValueError("AnythingLLM local role requires a workspace")
             workspace = _validate_workspace(workspace)
-            payload = {"message": f"@agent {prompt}", "mode": "chat"}
+            message = f"@agent {prompt}" if enable_tools else prompt
+            payload = {"message": message, "mode": "chat"}
             if session_key is not None:
                 if not isinstance(session_key, str) or not session_key or len(session_key) > 128:
                     raise ValueError("AnythingLLM session_key must be bounded text")
@@ -392,6 +397,7 @@ class LocalAIActor:
                 f"phase:{context.session_id}:{context.phase.value}:{self.member.member_id}"
             ),
             max_output_tokens=output_tokens,
+            enable_tools=True,
         )
 
     def direct_message(
@@ -422,10 +428,10 @@ class LocalAIActor:
             mcp_plugins=self.mcp_plugins,
             session_key=self._session_key(f"direct:{mode_id}:{geometry_region_id}:{message}"),
             max_output_tokens=output_tokens,
+            enable_tools=True,
         )
 
     def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
-        # Tools are deliberately unavailable while a model produces its sealed ballot.
         raw = self.transport.generate(
             build_ballot_prompt(context),
             model=self.model,
@@ -435,6 +441,7 @@ class LocalAIActor:
                 f"ballot:{context.session_id}:{self.member.member_id}"
             ),
             max_output_tokens=LOCAL_AI_BALLOT_OUTPUT_TOKENS,
+            enable_tools=False,
         )
         return parse_ballot_response(raw, self.transport.adapter_id)
 
