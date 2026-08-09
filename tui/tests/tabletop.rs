@@ -1,13 +1,9 @@
 use nexus_irc_tui::{parse_input, room_from_name, InputCommand, TableCommand};
 
-
 #[test]
 fn tabletop_rooms_map_to_explicit_modes() {
     assert_eq!(room_from_name("#uno").unwrap().mode_id, "game_uno");
-    assert_eq!(
-        room_from_name("monopoly").unwrap().mode_id,
-        "game_monopoly"
-    );
+    assert_eq!(room_from_name("monopoly").unwrap().mode_id, "game_monopoly");
     assert_eq!(room_from_name("#500").unwrap().region_id, "commons");
     assert_eq!(
         room_from_name("blackjack").unwrap().mode_id,
@@ -15,7 +11,6 @@ fn tabletop_rooms_map_to_explicit_modes() {
     );
     assert_eq!(room_from_name("#dork").unwrap().region_id, "dungeon");
 }
-
 
 #[test]
 fn parses_human_and_ai_table_actions() {
@@ -45,7 +40,6 @@ fn parses_human_and_ai_table_actions() {
         })
     );
 }
-
 
 #[test]
 fn dork_parser_has_no_proxy_player_surface() {

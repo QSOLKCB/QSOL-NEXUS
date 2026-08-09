@@ -1069,7 +1069,9 @@ impl App {
         for line in lines {
             self.append(line);
         }
-        self.append("*** Runtime state is authoritative. Human/model narration never mutates a game.");
+        self.append(
+            "*** Runtime state is authoritative. Human/model narration never mutates a game.",
+        );
     }
 
     fn execute_table(
