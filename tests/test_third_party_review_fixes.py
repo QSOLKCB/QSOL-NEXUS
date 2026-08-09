@@ -9,6 +9,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from nexus_runtime import NexusAPI as PackageNexusAPI
 from nexus_runtime.api import NexusAPI as CanonicalNexusAPI
+from nexus_runtime.adapters.base import AdapterProtocolError
 from nexus_runtime.adapters.third_party import (
     GEMINI_MODEL_PAGE_SIZE,
     THIRD_PARTY_DIRECT_OUTPUT_TOKENS,
@@ -154,7 +155,7 @@ class ThirdPartyReviewFixTests(unittest.TestCase):
             SecretMaterial("fixture-gemini-token"),
             _opener=opener,
         )
-        with self.assertRaisesRegex(Exception, "repeated a pagination cursor"):
+        with self.assertRaisesRegex(AdapterProtocolError, "repeated a pagination cursor"):
             transport.list_language_models()
 
     def test_public_third_party_actor_owns_roman_orator_budget(self) -> None:
