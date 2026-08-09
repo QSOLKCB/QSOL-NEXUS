@@ -58,10 +58,28 @@ class ReleaseWiringTests(unittest.TestCase):
     def test_release_version_triplet_is_aligned(self) -> None:
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         cargo = tomllib.loads((ROOT / "tui" / "Cargo.toml").read_text(encoding="utf-8"))
+        cargo_lock = tomllib.loads((ROOT / "tui" / "Cargo.lock").read_text(encoding="utf-8"))
+        api_reference = (ROOT / "docs" / "API.md").read_text(encoding="utf-8")
+
         self.assertEqual(PROTOCOL_VERSION, "nexus/0.14")
         self.assertEqual(RUNTIME_VERSION, "2.0.0-alpha10.3")
         self.assertEqual(pyproject["project"]["version"], "2.0.0a10.post3")
         self.assertEqual(cargo["package"]["version"], RUNTIME_VERSION)
+
+        tui_lock_packages = [
+            package
+            for package in cargo_lock["package"]
+            if package.get("name") == cargo["package"]["name"]
+        ]
+        self.assertEqual(len(tui_lock_packages), 1)
+        self.assertEqual(tui_lock_packages[0]["version"], RUNTIME_VERSION)
+
+        self.assertIn(
+            f"Runtime identifier:\n\n```text\n{RUNTIME_VERSION}\n```",
+            api_reference,
+        )
+        self.assertIn(f'"runtime_version": "{RUNTIME_VERSION}"', api_reference)
+        self.assertNotIn("2.0.0-alpha10.2", api_reference)
 
     def test_pathological_timeouts_fail_closed_before_network(self) -> None:
         huge = 10**400
