@@ -11,6 +11,7 @@ from typing import Any
 
 from ..canonical import canonical_json
 from ..scrub import SecretScrubber
+from ..stenographer import CourtroomStenographer, StenographerError
 from .commands import (
     CommandOrigin,
     TrapCommand,
@@ -153,6 +154,7 @@ class TrapController:
         store_factory: Callable[[str | Path | None], TrapStore] = TrapStore,
         policy: TrapPolicy | None = None,
         clock: Callable[[], float] = time.monotonic,
+        stenographer: CourtroomStenographer | None = None,
     ) -> None:
         self.policy = policy or TrapPolicy()
         self.store = store_factory(trap_root)
@@ -167,6 +169,7 @@ class TrapController:
         self._defender_roster_provider = defender_roster_provider or (lambda: ())
         self._subject_factory = subject_factory or self._unconfigured_subject_factory
         self._clock = clock
+        self._stenographer = stenographer
         self._dispatcher = TrapCommandDispatcher()
         self._scrubber = SecretScrubber()
         self._lock = threading.RLock()
@@ -654,6 +657,7 @@ class TrapController:
         active.defender_messages += 1
         defender_message = self._record_message(active, actor_id=actor_id, role="defender", text=text)
         reply = active.subject.respond(text, synthetic_context=active.scenario)
+        self._observe_subject_reply(active, text, reply)
         subject_message = self._record_subject_reply(active, reply)
         public_reply = reply.as_dict()
         public_reply["text"] = subject_message.payload["text"]
@@ -664,6 +668,26 @@ class TrapController:
             "subject_message_ref": subject_message.object_id,
             "subject_output": public_reply,
         }
+
+    def _observe_subject_reply(
+        self,
+        active: _ActiveTrap,
+        message: str,
+        reply: TrapSubjectReply,
+    ) -> None:
+        if self._stenographer is None:
+            return
+        try:
+            self._stenographer.observe_trap_reply(
+                reply,
+                message=message,
+                incident_id=active.incident_id,
+                scenario_id=active.scenario.scenario_id,
+            )
+        except StenographerError as exc:
+            self._stenographer.mark_gap(exc.code)
+        except Exception:
+            self._stenographer.mark_gap("observer_internal_error")
 
     def _clue(self, active: _ActiveTrap, actor_id: str, index: int) -> dict[str, object]:
         if index >= len(active.scenario.clues):

@@ -427,6 +427,26 @@ Production decoy deployment, remote attack traffic, credential classification,
 IP collection/banning, retaliation, and automatic production-code promotion are
 explicitly deferred to separately reviewed milestones.
 
+## 2.0-alpha9.2 — Courtroom Stenographer
+
+Implemented for PR #20:
+
+- [x] record every admitted direct, Council phase, sealed-ballot, Failsafe probe and synthetic Trap-subject AI result;
+- [x] exclude human/control/world/game/auth actions and persist prompt content only as a stimulus binding;
+- [x] secret-scrub copied AI output before owner-only canonical JSON persistence;
+- [x] create immutable `steno:<sha256>` objects with one linear previous-record chain and rebuildable index;
+- [x] serialize cross-process writers and reject unsafe permissions, symlinks, tamper, forks, gaps and cross-store references;
+- [x] make observation fail-passive while exposing an honest bounded completeness-gap status;
+- [x] expose read-only status/list/inspect/verify/summary/export API, CLI and `#stenographer` TUI views;
+- [x] encode the Knowledge-Watchman lore and zero-authority envelope in every record;
+- [x] add a hidden display-only lore Easter egg that cannot authenticate, command or mutate state;
+- [x] document threats T33–T38 and the admitted-output/local-study claim boundary.
+
+Provider-side audit logs, hidden reasoning capture, external transparency
+anchoring, retention automation, legal-record claims and generalized DLP remain
+deferred. The recorder is for later study and analysis; it is never a Council
+participant or enforcement oracle.
+
 ## 2.0-alpha10 — Three minds, one world demo
 
 Reference demonstration:

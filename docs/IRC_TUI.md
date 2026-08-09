@@ -50,6 +50,7 @@ Python NEXUS runtime
       +-- Council
       +-- modes / geometry
       +-- telemetry
+      +-- Courtroom Stenographer
       +-- deterministic game state
       +-- Secret Scrubber
       +-- mock actors
@@ -61,7 +62,10 @@ Python NEXUS runtime
 From the repository root:
 
 ```bash
-cargo run --manifest-path tui/Cargo.toml -- --world .nexus-world --nick Trent
+cargo run --manifest-path tui/Cargo.toml -- \
+  --world .nexus-world \
+  --stenographer-root .nexus-stenographer \
+  --nick Trent
 ```
 
 The TUI looks for the Python package in `src/` or `../src/`. Override when needed:
@@ -91,6 +95,7 @@ NEXUS rooms map directly to the built-in world geometry:
 #agora         -> cultural    -> Agora
 #commons       -> meme_casual -> Commons
 #un-sim        -> game_un     -> Assembly Hall
+#stenographer  -> watch-only canonical AI-action record (not a World Mode)
 ```
 
 Examples:
@@ -107,6 +112,31 @@ Examples:
 Changing room changes mode and world region. It does not change evidence rules, vote weights, verification, the Secret Scrubber, or the Equality Guard.
 
 > **The mode can change the vibe. It cannot change the vote.**
+
+## `#stenographer` and `/steno`
+
+The Courtroom Stenographer is a read-only Knowledge-Watchman view for later
+study and analysis:
+
+```text
+/join #stenographer
+/steno status
+/steno list 50
+/steno inspect steno:<sha256>
+/steno verify
+/steno summary
+/steno export
+```
+
+The room cannot initiate Council, direct-model, game, MUD, Trap, DCC/model or
+world-evidence actions. `/steno` works as a read-only query namespace and has no
+record/edit/delete command. Observation failure is shown as a completeness gap
+and does not alter the AI result that was already returned.
+
+The lore titles Sky-Earth Lord, Divine Dragon-House and Knowledge-Watchman are
+display metadata, never model or operator authority. The room contains a hidden
+exact-phrase Easter egg that is absent from help and completion, cannot
+authenticate, and cannot mutate state. See [`STENOGRAPHER.md`](STENOGRAPHER.md).
 
 ## Chat and Council behavior
 

@@ -129,6 +129,20 @@ A minority objection remains part of the evidence/history graph. It should not b
 
 Later experiments may support either the majority or minority branch.
 
+## Stenographer boundary
+
+A `steno:<sha256>` object verifies that the local NEXUS Stenographer persisted
+one canonical record with a valid content hash and position in its local
+lineage. It does not prove hidden model reasoning, provider-side processing,
+physical truth, legal admissibility, completeness before process start, or the
+absence of unrecognized sensitive content.
+
+The record is observational metadata for later study. It cannot become a
+prompt, evidence-status upgrade, vote, decision, command or state mutation by
+virtue of being recorded. `complete_since_process_start: false` means at least
+one admitted AI result could not be observed and the ledger must not be
+described as complete for that process interval.
+
 ## Equality boundary
 
 Open versus closed status is descriptive metadata only. It cannot be used as a scientific claim, confidence multiplier, or vote weight.

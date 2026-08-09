@@ -20,7 +20,7 @@ pub struct RoomSpec {
     pub label: &'static str,
 }
 
-pub const ROOMS: [RoomSpec; 9] = [
+pub const ROOMS: [RoomSpec; 10] = [
     RoomSpec {
         channel: "#observatory",
         mode_id: "analytical",
@@ -75,9 +75,15 @@ pub const ROOMS: [RoomSpec; 9] = [
         region_id: "trap_base",
         label: "Trap Base / Synthetic Subject",
     },
+    RoomSpec {
+        channel: "#stenographer",
+        mode_id: "stenographer",
+        region_id: "courtroom",
+        label: "Courtroom Stenographer / Knowledge-Watchman",
+    },
 ];
 
-pub const COMMANDS: [&str; 31] = [
+pub const COMMANDS: [&str; 32] = [
     "/help",
     "/join",
     "/mode",
@@ -87,6 +93,7 @@ pub const COMMANDS: [&str; 31] = [
     "/game",
     "/mud",
     "/trap",
+    "/steno",
     "/me",
     "/msg",
     "/nick",
@@ -154,6 +161,16 @@ pub enum MudCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum StenographerCommand {
+    Status,
+    List { limit: Option<u64> },
+    Inspect { record_ref: String },
+    Verify,
+    Summary,
+    Export,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputCommand {
     Noop,
     Help,
@@ -164,6 +181,7 @@ pub enum InputCommand {
     Game(GameCommand),
     Mud(MudCommand),
     Trap(String),
+    Stenographer(StenographerCommand),
     Me(String),
     Msg { target: String, text: String },
     Nick(String),
@@ -213,6 +231,7 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/game" => parse_game(rest).map(InputCommand::Game),
         "/mud" => parse_mud(rest).map(InputCommand::Mud),
         "/trap" => require(rest, "/trap <closed trap command>").map(InputCommand::Trap),
+        "/steno" => parse_stenographer(rest).map(InputCommand::Stenographer),
         "/me" => require(rest, "/me <action>").map(InputCommand::Me),
         "/nick" => require(rest, "/nick <name>").map(InputCommand::Nick),
         "/ref" => require(rest, "/ref <object:sha256>").map(InputCommand::Ref),
@@ -285,6 +304,33 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/unset" => require(rest, "/unset %name").map(InputCommand::Unset),
         "/dcc" => parse_dcc(rest).map(InputCommand::Dcc),
         other => Err(format!("unknown command: {other}; try /help")),
+    }
+}
+
+fn parse_stenographer(rest: &str) -> Result<StenographerCommand, String> {
+    let usage = "usage: /steno <status|list [limit]|inspect steno:...|verify|summary|export>";
+    let (subcommand, tail) = split_first(rest).ok_or_else(|| usage.to_string())?;
+    match subcommand.to_ascii_lowercase().as_str() {
+        "status" if tail.is_empty() => Ok(StenographerCommand::Status),
+        "list" if tail.is_empty() => Ok(StenographerCommand::List { limit: None }),
+        "list" if !tail.contains(char::is_whitespace) => {
+            let limit = tail
+                .parse::<u64>()
+                .map_err(|_| "usage: /steno list [1..1000]".to_string())?;
+            if !(1..=1000).contains(&limit) {
+                return Err("usage: /steno list [1..1000]".to_string());
+            }
+            Ok(StenographerCommand::List { limit: Some(limit) })
+        }
+        "inspect" if !tail.is_empty() && !tail.contains(char::is_whitespace) => {
+            Ok(StenographerCommand::Inspect {
+                record_ref: tail.to_string(),
+            })
+        }
+        "verify" if tail.is_empty() => Ok(StenographerCommand::Verify),
+        "summary" if tail.is_empty() => Ok(StenographerCommand::Summary),
+        "export" if tail.is_empty() => Ok(StenographerCommand::Export),
+        _ => Err(usage.to_string()),
     }
 }
 
@@ -487,6 +533,12 @@ pub fn room_from_name(value: &str) -> Option<RoomSpec> {
             || room.mode_id == needle
             || room.region_id == needle
     })
+}
+
+pub fn is_watch_only_room(room: RoomSpec) -> bool {
+    room.channel == "#stenographer"
+        && room.mode_id == "stenographer"
+        && room.region_id == "courtroom"
 }
 
 pub fn command_completions(prefix: &str) -> Vec<&'static str> {
@@ -854,6 +906,10 @@ mod tests {
             "trap_control"
         );
         assert_eq!(room_from_name("trap-base").unwrap().channel, "#trap-base");
+        assert_eq!(
+            room_from_name("courtroom").unwrap().channel,
+            "#stenographer"
+        );
     }
 
     #[test]
@@ -863,6 +919,21 @@ mod tests {
             InputCommand::Trap("status".to_string())
         );
         assert!(parse_input("/trap").is_err());
+    }
+
+    #[test]
+    fn parses_read_only_stenographer_namespace() {
+        assert_eq!(
+            parse_input("/steno summary").unwrap(),
+            InputCommand::Stenographer(StenographerCommand::Summary)
+        );
+        assert!(parse_input("/steno").is_err());
+        assert!(parse_input("/steno delete steno:deadbeef").is_err());
+        assert!(parse_input("/steno list 0").is_err());
+        assert_eq!(
+            parse_input("/steno list 50").unwrap(),
+            InputCommand::Stenographer(StenographerCommand::List { limit: Some(50) })
+        );
     }
 
     #[test]

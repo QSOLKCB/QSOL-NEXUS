@@ -37,6 +37,7 @@ if str(SRC) not in sys.path:
 
 from nexus_runtime.api import NexusAPI  # noqa: E402
 from nexus_runtime.auth import AuthError  # noqa: E402
+from nexus_runtime.canonical import canonical_json  # noqa: E402
 from nexus_runtime.failsafe import RELIEF_MODEL_ID  # noqa: E402
 from nexus_runtime.guard import EqualityGuard  # noqa: E402
 from nexus_runtime.trap.subject import DeterministicMockTrapSubject  # noqa: E402
@@ -166,6 +167,67 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
             )
 
     yield _run_check("health-boundary", "invariant", health_boundary)
+
+    def stenographer_boundary() -> str:
+        with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-stenographer-") as tmp:
+            base = Path(tmp)
+            api = NexusAPI(
+                base / "world",
+                auth_root=base / "auth",
+                trap_root=base / "trap",
+                stenographer_root=base / "stenographer",
+            )
+            api.handle({"operation": "system.health"})
+            _require(
+                api.handle({"operation": "stenographer.status"}).get("record_count") == 0,
+                "non-AI health action entered the Stenographer",
+            )
+            direct = api.handle(
+                {
+                    "operation": "actor.chat",
+                    "member": {
+                        "member_id": "WatchProbe",
+                        "model_id": "mock-watch-probe",
+                        "adapter_id": "mock",
+                    },
+                    "message": "record this AI reply",
+                }
+            )
+            _require(direct.get("status") == "ok", "direct AI action failed")
+            status = api.handle({"operation": "stenographer.status"})
+            _require(status.get("record_count") == 1, "direct AI action was not recorded exactly once")
+            _require(
+                status.get("role") == "watchman_only"
+                and status.get("record_scope") == "ai_actions_only",
+                "Stenographer role or record scope changed",
+            )
+            authority = status.get("authority", {})
+            _require(
+                isinstance(authority, dict) and authority and not any(authority.values()),
+                "Stenographer gained runtime authority",
+            )
+            verified = api.handle({"operation": "stenographer.verify"})
+            _require(
+                verified.get("integrity") == "valid" and verified.get("record_count") == 1,
+                "Stenographer lineage verification failed",
+            )
+            operations = api.handle({"operation": "system.operations"}).get("operations", [])
+            for forbidden in (
+                "stenographer.record",
+                "stenographer.edit",
+                "stenographer.clear",
+                "stenographer.delete",
+                "stenographer.lore",
+            ):
+                _require(forbidden not in operations, f"advertised unsafe Stenographer operation: {forbidden}")
+            files = sorted((base / "stenographer" / "objects").glob("*.json"))
+            _require(len(files) == 1, "Stenographer did not persist one immutable JSON object")
+            raw = files[0].read_text(encoding="utf-8")
+            parsed = json.loads(raw)
+            _require(raw == canonical_json(parsed) + "\n", "Stenographer object is not canonical JSON")
+            return "one AI result recorded canonically; non-AI action excluded; zero authority and lineage valid"
+
+    yield _run_check("stenographer-boundary", "invariant", stenographer_boundary)
 
     def trap_substrate_boundary() -> str:
         program_source = """nexus_trap_program: 1
@@ -548,6 +610,12 @@ output:
             "receipt.verify",
             "telemetry.verify",
             "failsafe.status",
+            "stenographer.status",
+            "stenographer.list",
+            "stenographer.inspect",
+            "stenographer.verify",
+            "stenographer.summary",
+            "stenographer.export",
             "trap.status",
             "trap.inspect",
             "trap.transcript",
@@ -599,6 +667,9 @@ output:
             "execution_ref",
             "source",
             "operator",
+            "record_ref",
+            "action_type",
+            "limit",
         ]
 
         def random_value(depth: int = 0) -> Any:

@@ -22,6 +22,7 @@ Python NEXUS runtime
       +-- world state
       +-- modes + geometry
       +-- evidence / receipts
+      +-- Courtroom Stenographer
       +-- Secret Scrubber
       +-- mock actors
       +-- loopback Ollama actors
@@ -56,6 +57,7 @@ There is no IRC daemon or network connection.
 #commons       -> meme_casual -> Commons
 #trap-control  -> operator-only incident control (not a World Mode)
 #trap-base     -> synthetic subject room (not a World Mode)
+#stenographer  -> read-only Knowledge-Watchman ledger (not a World Mode)
 ```
 
 Examples:
@@ -77,6 +79,44 @@ Launch the TUI with `--trap-root /absolute/private/trap` when it must observe
 the same persistent mutation lock and incident store as another trusted local
 front-door process. The default is a `.nexus-trap` sibling of the selected
 world directory, never a child of that world.
+
+## Courtroom Stenographer CLI and room
+
+The Python CLI exposes the independent canonical AI-action record through
+read-only commands:
+
+```text
+nexus stenographer status
+nexus stenographer list --limit 100 [--action-type TYPE] [--member-id ID]
+nexus stenographer inspect steno:<sha256>
+nexus stenographer verify
+nexus stenographer summary
+nexus stenographer export
+```
+
+Use `--stenographer-root /absolute/private/stenographer` to select a persistent
+owner-only root disjoint from world, auth and trap storage. The normal installed
+runtime and TUI default to a `.nexus-stenographer` sibling of the selected world
+directory.
+
+The Rust shell maps the same reads into `#stenographer`:
+
+```text
+/join #stenographer
+/steno status
+/steno list 50
+/steno inspect steno:<sha256>
+/steno verify
+/steno summary
+/steno export
+```
+
+This room is Watchman Only. Plain text does not become a Council question or a
+direct-model prompt, and game, MUD, Trap, DCC/model and evidence-mutation actions
+are rejected from the room. The Stenographer cannot vote, decide, command,
+mutate state or alter the AI action it observes. A hidden exact phrase may
+render a display-only lore Easter egg; it is not shown in help/completion and
+confers no authority. See [`STENOGRAPHER.md`](STENOGRAPHER.md).
 
 ## Trap Base CLI
 
