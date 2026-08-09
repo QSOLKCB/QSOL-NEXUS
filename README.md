@@ -26,7 +26,9 @@ NEXUS now has:
 - a first **Rust operator TUI** using an old-school IRC interface;
 - deterministic **Council information telemetry**;
 - bounded ordered-parallel Council execution;
-- explicit game rooms: **`#un-sim`** and the cursed multi-avatar **`#mud`**;
+- explicit simulation rooms: **`#un-sim`** and the cursed multi-avatar **`#mud`**;
+- deterministic human/AI tables for **UNO, Monopoly, 500 and Blackjack**, with player-specific views and an authoritative deterministic Blackjack dealer;
+- **DORK v2**, a human-only Zork-shaped text adventure that reveals the Great Under-Moderated NEXUS beneath the mailbox;
 - **Pure History Mode — No Ancient Aliens Edition** for source-forensic historical deliberation;
 - a hidden Rust-TUI **`/GO64` Secret Alias Mode** with a text demoscene and DR. S.BAITSO tribute;
 - **NEXUS Failsafe** containment with the cursed Upside Down, bounded rehabilitation, Shadow Realm, and deterministic equal-vote relief actors.
@@ -35,15 +37,15 @@ NEXUS now has:
 Current posture:
 
 ```text
-protocol: nexus/0.11
-runtime version: 2.0.0-alpha9.1
-operator TUI version: 2.0.0-alpha9.1
+protocol: nexus/0.12
+runtime version: 2.0.0-alpha10
+operator TUI version: 2.0.0-alpha10
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
 actor backends: mock + explicit loopback Ollama + fixed-HTTPS xAI
-world modes: analytical / historical / pure_history / cultural / meme_casual / game_un / game_mud
+world modes: analytical / historical / pure_history / cultural / meme_casual / game_un / game_mud / game_uno / game_monopoly / game_500 / game_blackjack / game_dork
 geometry: named-regions-v3
-game rooms: #un-sim / Assembly Hall + #mud / Dungeon
+game rooms: #un-sim + #mud + #uno + #monopoly + #500 + #blackjack + #dork
 remote/cloud providers: xAI admitted; OpenAI / Anthropic / Google deferred
 provider authentication: xAI API key, environment, or external helper
 world persistence: optional local canonical JSON files
@@ -62,7 +64,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
             | RUST IRC-STYLE TUI  |
             | room / nicks / DCC  |
             | aliases / evidence  |
-            | /game + /mud        |
+            | tables + adventures |
             | hidden /GO64        |
             +----------+----------+
                        |
@@ -115,6 +117,11 @@ NEXUS should not be all work and no play.
 | `meme_casual` | Commons / `#commons` | playful, irreverent, meme-aware interaction |
 | `game_un` | Assembly Hall / `#un-sim` | fictional UN-style strategy game, crises, Risk-like state and memes |
 | `game_mud` | Dungeon / `#mud` | deterministic multi-avatar HERESY MUD |
+| `game_uno` | Commons / `#uno` | deterministic shedding-card table for human and AI seats |
+| `game_monopoly` | Commons / `#monopoly` | original-board property game for human and AI seats |
+| `game_500` | Commons / `#500` | four-seat Australian partnership card game |
+| `game_blackjack` | Commons / `#blackjack` | fictional-chip table with a deterministic dealer |
+| `game_dork` | Dungeon / `#dork` | human-only DORK v2 text adventure; models may advise but have no avatar |
 
 The important invariant is:
 
@@ -135,14 +142,16 @@ See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md).
                  AGORA ---------- OBSERVATORY
                 Cultural           Analytical
                  (0,2)               (0,0)
-                      \             /   |
-                       \           /    |
-                        COMMONS ----+    |
-                      Meme/Casual    \   |
-                         (2,1)        \  |
-                                    ASSEMBLY HALL
-                                    UN Simulation
-                                       (0,-2)
+                      \             /  |  \
+                       \           /   |   \
+                        COMMONS ----+   |   DUNGEON
+                      Meme/Casual       |   HERESY / DORK
+                         (2,1)           |     (2,-2)
+                            \           |      /
+                             \          |     /
+                              ASSEMBLY HALL ---+
+                               UN Simulation
+                                  (0,-2)
 ```
 
 This is an **operational topology**, not a claim that cognition, culture, history, humor or games literally occupy Euclidean space.
@@ -206,6 +215,14 @@ Useful commands:
 /join #un-sim
 /game new friday-night
 /game status
+
+/join #uno
+/uno new reverse-card-night
+/uno as Alpha draw
+
+/join #dork
+/dork new mailbox-with-prior-art
+/dork open mailbox
 
 /addmock Delta skeptical
 /addollama LocalQwen qwen2.5:0.5b
@@ -429,6 +446,15 @@ game.un.new
 game.un.inspect
 game.un.act
 game.un.turn
+game.mud.catalog
+game.mud.new
+game.mud.inspect
+game.mud.act
+game.uno.catalog / new / inspect / act
+game.monopoly.catalog / new / inspect / act
+game.500.catalog / new / inspect / act
+game.blackjack.catalog / new / inspect / act
+game.dork.catalog / new / inspect / act
 actor.chat
 council.run
 ```
@@ -554,7 +580,7 @@ See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
 ## `#un-sim` — because the Assembly needed a game night
 
-NEXUS now has one deliberately fictional game room:
+NEXUS also has a deliberately fictional UN simulation room:
 
 ```text
 /join #un-sim
@@ -594,7 +620,7 @@ See [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md).
 
 ## `#mud` — HERESY MUD
 
-The second explicit game room is a deterministic multi-avatar dungeon built from old BBS/MUD interaction grammar plus DORK/HERESY satire:
+The multi-avatar dungeon is built from old BBS/MUD interaction grammar plus DORK/HERESY satire:
 
 ```text
 /join #mud
@@ -607,6 +633,54 @@ The second explicit game room is a deterministic multi-avatar dungeon built from
 The human operator and current model roster become avatars in one immutable shared dungeon state. Models may narrate and advise, but only validated `/mud` / `game.mud.*` operations mutate the substrate. Item discovery score is awarded once per item, defeated avatars drop inventory into their room, and the final quest completes only when the Zero-Dependency Crown is actually recovered after the Dependency Dragon falls.
 
 See [`docs/MUD.md`](docs/MUD.md).
+
+## Human/AI tables — UNO, Monopoly, 500 and Blackjack
+
+Four deterministic tables admit both human and AI seats. The operator names the
+human seats at creation; every other registered seat is labelled `ai`. Models
+can inspect public table evidence and their own player view, but prose never
+changes the board. Only an explicit, validated game operation creates the next
+immutable state.
+
+```text
+/join #uno          /uno new reverse-card-night
+/join #monopoly     /monopoly new beige-property-night
+/join #500          /500 new adelaide-card-night
+/join #blackjack    /blackjack new canonical-shoe-night
+```
+
+UNO uses a canonical 108-card deck. Monopoly uses an original forty-square
+Substrate Edition board. Australian 500 uses four opposite-seat partners and a
+43-card deck. Blackjack uses fictional chips and an authoritative dealer that
+hits below 17 and stands on all 17s, including soft 17. Decks, dice, shoes and
+dealer choices are deterministic and content-addressed.
+
+> **Models can play a seat. Models do not own the table.**
+
+See [`docs/GAMES.md`](docs/GAMES.md) for commands, rules profiles, private-view
+boundaries and intentionally excluded variants.
+
+## `#dork` — DORK v2, human only
+
+DORK v2 initially resembles a familiar white-house adventure, but the mailbox
+reveals an original NEXUS-native satire: the Great Under-Moderated NEXUS. It has
+conversion funnels, a microservice maze, `node_modules`, an AI wrapper, the
+Content Moderator Troll, the NixOS Cathedral, a punch card and the
+Zero-Dependency Crown.
+
+```text
+/join #dork
+/dork new mailbox-with-prior-art
+/dork open mailbox
+/dork north
+```
+
+The adventure has exactly one bound human operator. Models may discuss clues in
+the room, but DORK has no AI avatar, proxy action, inventory or score. This is
+original Python state and prose; NEXUS embeds neither a Zork story binary nor a
+Z-machine interpreter or upstream DORK source.
+
+See [`docs/GAMES.md`](docs/GAMES.md).
 
 ## What is deliberately not here yet
 
@@ -621,6 +695,8 @@ This alpha does **not** add:
 - real DCC P2P sockets;
 - mIRC remote/event scripting;
 - arbitrary model-generated code execution;
+- commercial game artwork, packaged assets or upstream story binaries;
+- Monopoly auctions or player trading, 500 Misère/Open Misère, or Blackjack splits, surrender, insurance, side bets or real-money play;
 - QEC-grade proof/replay for live inference;
 - generalized performance optimization beyond the implemented ordered parallel Council scheduler.
 
@@ -645,6 +721,8 @@ OpenAI, Anthropic, Google, generic remote endpoints, and additional providers re
 - [`docs/ADAPTERS.md`](docs/ADAPTERS.md) — provider-neutral actor/adapter contract
 - [`docs/ORDERED_PARALLEL_COUNCIL.md`](docs/ORDERED_PARALLEL_COUNCIL.md) — bounded same-phase concurrency with canonical roster-order joins
 - [`docs/UN_SIM.md`](docs/UN_SIM.md) — deterministic fictional UN-style `#un-sim` game room
+- [`docs/MUD.md`](docs/MUD.md) — deterministic multi-avatar HERESY MUD
+- [`docs/GAMES.md`](docs/GAMES.md) — deterministic human/AI tables and human-only DORK v2
 - [`docs/WORLD_PROTOCOL.md`](docs/WORLD_PROTOCOL.md) — shared-world primitives
 - [`docs/COUNCIL_EXAMPLE_NGC3603.md`](docs/COUNCIL_EXAMPLE_NGC3603.md) — worked Council example
 - [`ROADMAP.md`](ROADMAP.md) — staged implementation path

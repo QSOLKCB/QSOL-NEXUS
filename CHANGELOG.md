@@ -2,6 +2,18 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.0.0-alpha10 — Human/AI game tables and DORK v2
+
+- add deterministic UNO, Monopoly: Substrate Edition, four-player Australian 500, and fictional-chip Blackjack tables for mixed human/AI rosters;
+- add player-specific private views while keeping bounded Council evidence public, with narration unable to mutate authoritative game state;
+- add a six-deck Blackjack shoe and authoritative deterministic dealer that stands on soft 17;
+- add human-only DORK v2, an original NEXUS-native Zork-shaped satire with no model avatar, Z-machine interpreter, story binary, or upstream source bundle;
+- preserve every initial and successor game state as canonical content-addressed world lineage with deterministic SHA-256-derived decks, dice and shoes;
+- block all new game mutations while Trap Base owns the Council mutation gate, reject credential-shaped player identifiers and scrub seeds before persistence;
+- add `game.uno.*`, `game.monopoly.*`, `game.500.*`, `game.blackjack.*`, and `game.dork.*` JSONL operations plus `#uno`, `#monopoly`, `#500`, `#blackjack`, and `#dork` Rust-TUI rooms;
+- document compact rules profiles and deliberately excluded commercial assets, Monopoly auctions/trading, 500 Misère variants, and Blackjack split/insurance/real-money play;
+- bump the control protocol to `nexus/0.12` and runtime/TUI to `2.0.0-alpha10` (Python package version `2.0.0a10`) while reusing `named-regions-v3`.
+
 ## 2.0.0-alpha9.1 — Decoy Gate and Trap Base
 
 - add an explicit synthetic Decoy Gate that can never be reached by ordinary authentication failure and never admits its subject to real NEXUS;

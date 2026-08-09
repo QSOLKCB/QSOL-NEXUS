@@ -20,7 +20,7 @@ pub struct RoomSpec {
     pub label: &'static str,
 }
 
-pub const ROOMS: [RoomSpec; 9] = [
+pub const ROOMS: [RoomSpec; 14] = [
     RoomSpec {
         channel: "#observatory",
         mode_id: "analytical",
@@ -64,6 +64,36 @@ pub const ROOMS: [RoomSpec; 9] = [
         label: "Dungeon / HERESY MUD",
     },
     RoomSpec {
+        channel: "#uno",
+        mode_id: "game_uno",
+        region_id: "commons",
+        label: "Commons / NEXUS UNO",
+    },
+    RoomSpec {
+        channel: "#monopoly",
+        mode_id: "game_monopoly",
+        region_id: "commons",
+        label: "Commons / NEXUS MONOPOLY",
+    },
+    RoomSpec {
+        channel: "#500",
+        mode_id: "game_500",
+        region_id: "commons",
+        label: "Commons / NEXUS 500",
+    },
+    RoomSpec {
+        channel: "#blackjack",
+        mode_id: "game_blackjack",
+        region_id: "commons",
+        label: "Commons / Deterministic Blackjack",
+    },
+    RoomSpec {
+        channel: "#dork",
+        mode_id: "game_dork",
+        region_id: "dungeon",
+        label: "Dungeon / DORK v2 — Human Only",
+    },
+    RoomSpec {
         channel: "#trap-control",
         mode_id: "trap_control",
         region_id: "trap_base",
@@ -77,7 +107,7 @@ pub const ROOMS: [RoomSpec; 9] = [
     },
 ];
 
-pub const COMMANDS: [&str; 31] = [
+pub const COMMANDS: [&str; 36] = [
     "/help",
     "/join",
     "/mode",
@@ -86,6 +116,11 @@ pub const COMMANDS: [&str; 31] = [
     "/council",
     "/game",
     "/mud",
+    "/uno",
+    "/monopoly",
+    "/500",
+    "/blackjack",
+    "/dork",
     "/trap",
     "/me",
     "/msg",
@@ -154,6 +189,27 @@ pub enum MudCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TableCommand {
+    Help {
+        game_id: String,
+    },
+    New {
+        game_id: String,
+        seed: String,
+    },
+    Status {
+        game_id: String,
+        player: Option<String>,
+    },
+    Act {
+        game_id: String,
+        player: Option<String>,
+        action: String,
+        args: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputCommand {
     Noop,
     Help,
@@ -163,6 +219,7 @@ pub enum InputCommand {
     Ask(String),
     Game(GameCommand),
     Mud(MudCommand),
+    Table(TableCommand),
     Trap(String),
     Me(String),
     Msg { target: String, text: String },
@@ -212,6 +269,11 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/ask" | "/council" => Ok(InputCommand::Ask(rest.to_string())),
         "/game" => parse_game(rest).map(InputCommand::Game),
         "/mud" => parse_mud(rest).map(InputCommand::Mud),
+        "/uno" => parse_table("uno", rest, false).map(InputCommand::Table),
+        "/monopoly" => parse_table("monopoly", rest, false).map(InputCommand::Table),
+        "/500" => parse_table("500", rest, false).map(InputCommand::Table),
+        "/blackjack" => parse_table("blackjack", rest, false).map(InputCommand::Table),
+        "/dork" => parse_table("dork", rest, true).map(InputCommand::Table),
         "/trap" => require(rest, "/trap <closed trap command>").map(InputCommand::Trap),
         "/me" => require(rest, "/me <action>").map(InputCommand::Me),
         "/nick" => require(rest, "/nick <name>").map(InputCommand::Nick),
@@ -398,6 +460,53 @@ fn parse_mud(rest: &str) -> Result<MudCommand, String> {
             player: None,
             action: normalize_mud_action(&sub),
             args: mud_action_args(&sub, tail),
+        }),
+    }
+}
+
+fn parse_table(game_id: &str, rest: &str, human_only: bool) -> Result<TableCommand, String> {
+    let trimmed = rest.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("help") {
+        return Ok(TableCommand::Help {
+            game_id: game_id.to_string(),
+        });
+    }
+    let (sub, tail) = split_first(trimmed).expect("non-empty table command");
+    let sub = sub.to_ascii_lowercase();
+    match sub.as_str() {
+        "new" => Ok(TableCommand::New {
+            game_id: game_id.to_string(),
+            seed: unquote(tail),
+        }),
+        "status" | "look" if human_only && !tail.is_empty() => {
+            Err("DORK v2 is human-only and has no alternate-player view".to_string())
+        }
+        "status" | "look" => Ok(TableCommand::Status {
+            game_id: game_id.to_string(),
+            player: if tail.is_empty() {
+                None
+            } else {
+                Some(tail.to_string())
+            },
+        }),
+        "as" if !human_only => {
+            let (player, action_tail) = split_first(tail)
+                .ok_or_else(|| format!("usage: /{game_id} as <player> <action> [args...]"))?;
+            let (action, args) = split_first(action_tail)
+                .ok_or_else(|| format!("usage: /{game_id} as <player> <action> [args...]"))?;
+            Ok(TableCommand::Act {
+                game_id: game_id.to_string(),
+                player: Some(player.to_string()),
+                action: action.to_ascii_lowercase(),
+                args: args.split_whitespace().map(str::to_string).collect(),
+            })
+        }
+        "as" => Err("DORK v2 is human-only and has no proxy-player command".to_string()),
+        _ => Ok(TableCommand::Act {
+            game_id: game_id.to_string(),
+            player: None,
+            action: sub,
+            args: tail.split_whitespace().map(str::to_string).collect(),
         }),
     }
 }

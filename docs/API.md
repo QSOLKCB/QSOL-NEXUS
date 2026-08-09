@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.11
+nexus/0.12
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha9.1
+2.0.0-alpha10
 ```
 
 Current posture:
@@ -25,6 +25,8 @@ Ollama actors     -> supported only through loopback-local configuration
 xAI actors        -> supported through a configured profile and fixed api.x.ai HTTPS transport
 UN simulation     -> supported as a deterministic fictional local game
 HERESY MUD        -> supported as a deterministic fictional multi-avatar local game
+human/AI tables   -> UNO, Monopoly, Australian 500 and fictional-chip Blackjack
+DORK v2           -> supported as an original human-only local text adventure
 Failsafe          -> bounded repeated-guard containment + deterministic relief actor
 Trap Base         -> explicit synthetic fixture, isolated store and incident controls
 remote providers  -> xAI admitted; other providers not implemented
@@ -71,8 +73,8 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.11",
-  "runtime_version": "2.0.0-alpha9.1",
+  "protocol": "nexus/0.12",
+  "runtime_version": "2.0.0-alpha10",
   "control_transport": "jsonl_stdio",
   "network": "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_or_registered_auth_operations",
   "adapters": ["mock", "ollama_loopback", "xai_https"],
@@ -111,6 +113,37 @@ Current response fields include:
       "schema": "nexus-cursed-mud/1",
       "room": "#mud",
       "fictional_only": true
+    },
+    {
+      "game_id": "uno",
+      "schema": "nexus-uno/1",
+      "room": "#uno",
+      "human_and_ai": true
+    },
+    {
+      "game_id": "monopoly",
+      "schema": "nexus-monopoly/1",
+      "room": "#monopoly",
+      "human_and_ai": true
+    },
+    {
+      "game_id": "500",
+      "schema": "nexus-five-hundred/1",
+      "room": "#500",
+      "human_and_ai": true
+    },
+    {
+      "game_id": "blackjack",
+      "schema": "nexus-blackjack/1",
+      "room": "#blackjack",
+      "human_and_ai": true,
+      "deterministic_dealer": true
+    },
+    {
+      "game_id": "dork",
+      "schema": "nexus-dork-v2/1",
+      "room": "#dork",
+      "human_only": true
     }
   ]
 }
@@ -154,6 +187,26 @@ game.mud.catalog
 game.mud.new
 game.mud.inspect
 game.mud.act
+game.uno.catalog
+game.uno.new
+game.uno.inspect
+game.uno.act
+game.monopoly.catalog
+game.monopoly.new
+game.monopoly.inspect
+game.monopoly.act
+game.500.catalog
+game.500.new
+game.500.inspect
+game.500.act
+game.blackjack.catalog
+game.blackjack.new
+game.blackjack.inspect
+game.blackjack.act
+game.dork.catalog
+game.dork.new
+game.dork.inspect
+game.dork.act
 actor.chat
 council.run
 ```
@@ -361,6 +414,43 @@ Movement, loot, combat, `shitpost`, and `ratio` transitions are deterministic an
 
 See [`MUD.md`](MUD.md).
 
+## Human/AI tables and human-only DORK v2
+
+UNO, Monopoly, 500 and Blackjack share the following operation family:
+
+```text
+game.<id>.catalog
+game.<id>.new
+game.<id>.inspect
+game.<id>.act
+```
+
+where `<id>` is `uno`, `monopoly`, `500` or `blackjack`. Creation accepts a
+bounded `players` roster and a `human_players` subset; every remaining seat is
+labelled `ai`. Action requests require a `player_id`; inspect requests may add
+one to select that seat's private view. The local stdio process is a
+trusted operator boundary rather than a multi-tenant card-server ACL.
+
+```json
+{"operation":"game.uno.new","seed":"reverse-card-night","players":["Trent","Alpha"],"human_players":["Trent"]}
+```
+
+```json
+{"operation":"game.uno.act","game_ref":"object:<sha256>","player_id":"Alpha","action":"draw","args":[]}
+```
+
+The returned authoritative state is content-addressed. Its bounded `content`
+field is public Council evidence; hidden hands and the Blackjack dealer hole
+card appear only in the appropriate player/operator view. Blackjack's dealer is
+runtime-controlled and deterministically stands on soft 17.
+
+DORK v2 uses `game.dork.catalog|new|inspect|act`. Creation binds one
+`human_player_id`, and every inspect/action must use the same identifier. It has
+no AI seat or proxy-action path.
+
+See [`GAMES.md`](GAMES.md) for exact rules profiles, commands and claim
+boundaries.
+
 ## World modes
 
 ```json
@@ -377,6 +467,11 @@ cultural    -> Agora
 meme_casual -> Commons
 game_un     -> Assembly Hall / #un-sim
 game_mud    -> Dungeon / #mud
+game_uno    -> Commons / #uno
+game_monopoly -> Commons / #monopoly
+game_500    -> Commons / #500
+game_blackjack -> Commons / #blackjack
+game_dork   -> Dungeon / #dork
 ```
 
 A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds. `pure_history` additionally applies a narrow retry guard only to chatbot-autobiography/media-habit evasions; it does not adjudicate historical truth.
@@ -389,7 +484,7 @@ See [`PURE_HISTORY.md`](PURE_HISTORY.md) for the source-discipline contract.
 {"operation":"world.geometry"}
 ```
 
-The current built-in geometry is `named-regions-v3`, an operational named-region topology rather than a physical claim. It includes the Assembly Hall used by `game_un` and the Dungeon region used by `game_mud`.
+The current built-in geometry is `named-regions-v3`, an operational named-region topology rather than a physical claim. New table modes reuse Commons and DORK v2 reuses Dungeon, so no geometry-version bump is needed.
 
 Distance example:
 
@@ -437,7 +532,7 @@ EvidenceSnapshot
   -> included_object_refs[]
 ```
 
-Alpha5 additionally derives a bounded, labelled model-readable view from those refs so actors can actually read attached document material. Alpha6.3 reuses that same generic mechanism for the compact current `#un-sim` board and `#mud` dungeon views.
+Alpha5 additionally derives a bounded, labelled model-readable view from those refs so actors can actually read attached document material. Game rooms reuse that mechanism for compact public board/adventure views; hidden card information is deliberately absent from Council evidence.
 
 ```text
 content-addressed object ref

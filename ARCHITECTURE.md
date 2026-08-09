@@ -124,7 +124,7 @@ GEOMETRY
   region · coordinate · adjacency · presence
 ```
 
-Initial map:
+Current map:
 
 ```text
                          ARCHIVE
@@ -135,11 +135,16 @@ Initial map:
                  AGORA ---------- OBSERVATORY
                 Cultural           Analytical
                  (0,2)               (0,0)
-                      \             /
-                       \           /
-                        COMMONS
-                      Meme/Casual
-                         (2,1)
+                      \             /   |   \
+                       \           /    |    \
+                        COMMONS ----+    |   DUNGEON
+                      Meme/Casual        |   HERESY / DORK
+                         (2,1)            |   (2,-2)
+                            \             |   /
+                             \            |  /
+                              ASSEMBLY HALL--+
+                              UN Simulation
+                                  (0,-2)
 ```
 
 Built-in modes:
@@ -147,8 +152,13 @@ Built-in modes:
 ```text
 analytical  -> Observatory
 historical  -> Archive
+pure_history -> Archive
 cultural    -> Agora
 meme_casual -> Commons
+game_un     -> Assembly Hall
+game_mud    -> Dungeon
+game_uno / game_monopoly / game_500 / game_blackjack -> Commons
+game_dork   -> Dungeon
 ```
 
 The geometry is deliberately an **operational topology**, not a claim that cognition, history, culture, or humor literally occupy Euclidean coordinates.
@@ -302,6 +312,21 @@ WorldObject
 No representation is automatically privileged as the ontology of the world. Golay, Leech lattice, E8, ternary systems, embeddings, graphs, spectral representations, and other structures may be useful views or instruments without becoming mandatory metaphysics.
 
 The alpha4 named-region map is therefore a minimal navigational substrate rather than a scientific claim.
+
+### Deterministic game objects
+
+UN simulation, HERESY MUD, UNO, Monopoly, 500, Blackjack and DORK v2 use the
+same WorldStore identity contract. A validated action reads one immutable state
+and creates one canonical successor with a `previous_state_ref` and typed
+transition. Public `content` is a derived bounded representation for Council
+evidence; private hands remain in player-specific operator views.
+
+Decks, dice and shoes are deterministic substrate operations, never model
+choices. Table AI receives a seat under the same rules as a human but no direct
+WorldStore authority. DORK v2 is structurally different: its sole actor is the
+bound human operator and models have no avatar.
+
+See [`docs/GAMES.md`](docs/GAMES.md).
 
 ## Geometry-inspired telemetry
 

@@ -427,7 +427,21 @@ Production decoy deployment, remote attack traffic, credential classification,
 IP collection/banning, retaliation, and automatic production-code promotion are
 explicitly deferred to separately reviewed milestones.
 
-## 2.0-alpha10 — Three minds, one world demo
+## 2.0-alpha10 — Human/AI game tables and DORK v2
+
+Implemented for PR #22:
+
+- [x] deterministic UNO for two to eight human/AI seats;
+- [x] original-board Monopoly profile for two to eight human/AI seats;
+- [x] four-player Australian 500 with opposite-seat partnerships;
+- [x] fictional-chip Blackjack with a runtime-owned deterministic dealer;
+- [x] public Council board views separated from player-specific card views;
+- [x] immutable content-addressed successor lineage and canonical state checks;
+- [x] Rust IRC rooms and command families for all four tables;
+- [x] human-only DORK v2 with no AI avatar or proxy action;
+- [x] explicit rules-profile, asset, affiliation and real-money claim boundaries.
+
+## 2.0-alpha11 — Three minds, one world demo
 
 Reference demonstration:
 

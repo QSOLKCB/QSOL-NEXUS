@@ -173,7 +173,7 @@ class CursedMUDAPITests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             api = NexusAPI(root)
             health = api.handle({"operation": "system.health"})
-            self.assertEqual(health["protocol"], "nexus/0.11")
+            self.assertEqual(health["protocol"], "nexus/0.12")
             games = {game["game_id"]: game for game in health["games"]}
             self.assertEqual(games["mud"]["room"], "#mud")
             self.assertEqual(games["mud"]["schema"], MUD_SCHEMA)

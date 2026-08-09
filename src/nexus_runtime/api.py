@@ -9,6 +9,38 @@ from .adapters import AdapterError, OllamaActor, OllamaTransport, XAIActor, XAIT
 from .auth import AuthBroker, AuthError, ensure_disjoint_auth_world_roots
 from .council import MAX_COUNCIL_MEMBERS, CouncilCoordinator
 from .failsafe import FAILSAFE_SCHEMA_VERSION
+from .game_blackjack import (
+    BLACKJACK_SCHEMA,
+    action_catalog as blackjack_action_catalog,
+    apply_action as apply_blackjack_action,
+    inspect_blackjack,
+    new_blackjack,
+    player_view as blackjack_player_view,
+)
+from .game_dork import (
+    DORK_SCHEMA,
+    action_catalog as dork_action_catalog,
+    apply_action as apply_dork_action,
+    inspect_dork,
+    new_dork,
+    player_view as dork_player_view,
+)
+from .game_five_hundred import (
+    FIVE_HUNDRED_SCHEMA,
+    action_catalog as five_hundred_action_catalog,
+    apply_action as apply_five_hundred_action,
+    inspect_five_hundred,
+    new_five_hundred,
+    player_view as five_hundred_player_view,
+)
+from .game_monopoly import (
+    MONOPOLY_SCHEMA,
+    action_catalog as monopoly_action_catalog,
+    apply_action as apply_monopoly_action,
+    inspect_monopoly,
+    new_monopoly,
+    player_view as monopoly_player_view,
+)
 from .game_un import GAME_SCHEMA, action_catalog, advance_turn, apply_action, inspect_game, new_game
 from .game_mud import (
     MUD_SCHEMA,
@@ -17,6 +49,14 @@ from .game_mud import (
     inspect_mud,
     new_mud,
     player_view,
+)
+from .game_uno import (
+    UNO_SCHEMA,
+    action_catalog as uno_action_catalog,
+    apply_action as apply_uno_action,
+    inspect_uno,
+    new_uno,
+    player_view as uno_player_view,
 )
 from .geometry import DEFAULT_WORLD_GEOMETRY
 from .mock import DeterministicMockActor
@@ -33,8 +73,8 @@ from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.11"
-RUNTIME_VERSION = "2.0.0-alpha9.1"
+PROTOCOL_VERSION = "nexus/0.12"
+RUNTIME_VERSION = "2.0.0-alpha10"
 MAX_REMOTE_COUNCIL_SEATS = 4
 
 _TRAP_BLOCKED_MUTATIONS = frozenset(
@@ -45,9 +85,66 @@ _TRAP_BLOCKED_MUTATIONS = frozenset(
         "game.un.turn",
         "game.mud.new",
         "game.mud.act",
+        "game.uno.new",
+        "game.uno.act",
+        "game.monopoly.new",
+        "game.monopoly.act",
+        "game.500.new",
+        "game.500.act",
+        "game.blackjack.new",
+        "game.blackjack.act",
+        "game.dork.new",
+        "game.dork.act",
         "council.run",
     }
 )
+
+_PLAYER_GAME_ENGINES: dict[str, dict[str, Any]] = {
+    "uno": {
+        "schema": UNO_SCHEMA,
+        "room": "#uno",
+        "catalog": uno_action_catalog,
+        "new": new_uno,
+        "inspect": inspect_uno,
+        "act": apply_uno_action,
+        "view": uno_player_view,
+        "default_seed": "reverse-card-night",
+        "default_players": ["operator", "Alpha"],
+    },
+    "monopoly": {
+        "schema": MONOPOLY_SCHEMA,
+        "room": "#monopoly",
+        "catalog": monopoly_action_catalog,
+        "new": new_monopoly,
+        "inspect": inspect_monopoly,
+        "act": apply_monopoly_action,
+        "view": monopoly_player_view,
+        "default_seed": "beige-property-night",
+        "default_players": ["operator", "Alpha"],
+    },
+    "500": {
+        "schema": FIVE_HUNDRED_SCHEMA,
+        "room": "#500",
+        "catalog": five_hundred_action_catalog,
+        "new": new_five_hundred,
+        "inspect": inspect_five_hundred,
+        "act": apply_five_hundred_action,
+        "view": five_hundred_player_view,
+        "default_seed": "adelaide-card-night",
+        "default_players": ["operator", "Alpha", "Beta", "Gamma"],
+    },
+    "blackjack": {
+        "schema": BLACKJACK_SCHEMA,
+        "room": "#blackjack",
+        "catalog": blackjack_action_catalog,
+        "new": new_blackjack,
+        "inspect": inspect_blackjack,
+        "act": apply_blackjack_action,
+        "view": blackjack_player_view,
+        "default_seed": "canonical-shoe-night",
+        "default_players": ["operator", "Alpha", "Beta", "Gamma"],
+    },
+}
 
 
 class NexusAPI:
@@ -135,6 +232,37 @@ class NexusAPI:
                     "games": [
                         {"game_id": "un_sim", "schema": GAME_SCHEMA, "room": "#un-sim", "fictional_only": True},
                         {"game_id": "mud", "schema": MUD_SCHEMA, "room": "#mud", "fictional_only": True},
+                        {
+                            "game_id": "uno",
+                            "schema": UNO_SCHEMA,
+                            "room": "#uno",
+                            "human_and_ai": True,
+                        },
+                        {
+                            "game_id": "monopoly",
+                            "schema": MONOPOLY_SCHEMA,
+                            "room": "#monopoly",
+                            "human_and_ai": True,
+                        },
+                        {
+                            "game_id": "500",
+                            "schema": FIVE_HUNDRED_SCHEMA,
+                            "room": "#500",
+                            "human_and_ai": True,
+                        },
+                        {
+                            "game_id": "blackjack",
+                            "schema": BLACKJACK_SCHEMA,
+                            "room": "#blackjack",
+                            "human_and_ai": True,
+                            "deterministic_dealer": True,
+                        },
+                        {
+                            "game_id": "dork",
+                            "schema": DORK_SCHEMA,
+                            "room": "#dork",
+                            "human_only": True,
+                        },
                     ],
                 }
             elif operation == "system.operations":
@@ -176,6 +304,26 @@ class NexusAPI:
                         "game.mud.new",
                         "game.mud.inspect",
                         "game.mud.act",
+                        "game.uno.catalog",
+                        "game.uno.new",
+                        "game.uno.inspect",
+                        "game.uno.act",
+                        "game.monopoly.catalog",
+                        "game.monopoly.new",
+                        "game.monopoly.inspect",
+                        "game.monopoly.act",
+                        "game.500.catalog",
+                        "game.500.new",
+                        "game.500.inspect",
+                        "game.500.act",
+                        "game.blackjack.catalog",
+                        "game.blackjack.new",
+                        "game.blackjack.inspect",
+                        "game.blackjack.act",
+                        "game.dork.catalog",
+                        "game.dork.new",
+                        "game.dork.inspect",
+                        "game.dork.act",
                         "actor.chat",
                         "council.run",
                     ],
@@ -531,6 +679,20 @@ class NexusAPI:
                     "player_id": player_id,
                     "view": player_view(mud.payload, player_id),
                 }
+            elif operation in {
+                f"game.{game_id}.{verb}"
+                for game_id in _PLAYER_GAME_ENGINES
+                for verb in ("catalog", "new", "inspect", "act")
+            }:
+                _, game_id, verb = operation.split(".")
+                response = self._handle_player_game(game_id, verb, request)
+            elif operation in {
+                "game.dork.catalog",
+                "game.dork.new",
+                "game.dork.inspect",
+                "game.dork.act",
+            }:
+                response = self._handle_dork(operation.rsplit(".", 1)[1], request)
             elif operation == "actor.chat":
                 member_item = request.get("member")
                 actor = self._actor(member_item)
@@ -606,6 +768,165 @@ class NexusAPI:
         if request_id is not None:
             response = {"request_id": request_id, **response}
         return response
+
+    def _handle_player_game(
+        self,
+        game_id: str,
+        verb: str,
+        request: dict[str, Any],
+    ) -> dict[str, Any]:
+        engine = _PLAYER_GAME_ENGINES[game_id]
+        operation = f"game.{game_id}.{verb}"
+        if verb == "catalog":
+            self._require_exact_fields(request, operation, set())
+            return {
+                "status": "ok",
+                "game_id": game_id,
+                "schema": engine["schema"],
+                "human_and_ai": True,
+                "room": engine["room"],
+                "actions": engine["catalog"](),
+            }
+
+        if verb == "new":
+            self._require_exact_fields(request, operation, {"seed", "players", "human_players"})
+            raw_seed = request.get("seed", engine["default_seed"])
+            if not isinstance(raw_seed, str) or not raw_seed.strip():
+                raise ValueError("seed must be non-empty text")
+            players = request.get("players", engine["default_players"])
+            human_players = request.get("human_players", [])
+            if not isinstance(players, list) or not players or not all(isinstance(player, str) for player in players):
+                raise ValueError("players must be a non-empty list of player ids")
+            if not isinstance(human_players, list) or not all(isinstance(player, str) for player in human_players):
+                raise ValueError("human_players must be a list of registered player ids")
+            for player in [*players, *human_players]:
+                if self.scrubber.scrub(player).changed:
+                    raise ValueError("game player ids must not contain credential-shaped text")
+            scrubbed = self.scrubber.scrub(raw_seed)
+            game = engine["new"](self.world, scrubbed.text, list(players), list(human_players))
+            first_player = game.payload["players"][0]
+            return {
+                "status": "ok",
+                "game_id": game_id,
+                "game_ref": game.object_id,
+                "game": game.payload,
+                "player_id": first_player,
+                "view": engine["view"](game.payload, first_player),
+                "secret_scrub": {
+                    "changed": scrubbed.changed,
+                    "events": [asdict(event) for event in scrubbed.events],
+                },
+            }
+
+        game_ref = self._require_str(request, "game_ref")
+        if verb == "inspect":
+            self._require_exact_fields(request, operation, {"game_ref", "player_id"})
+            game = engine["inspect"](self.world, game_ref)
+            player_id = request.get("player_id")
+            response = {
+                "status": "ok",
+                "game_id": game_id,
+                "game_ref": game.object_id,
+                "game": game.payload,
+            }
+            if player_id is not None:
+                if not isinstance(player_id, str) or not player_id:
+                    raise ValueError("player_id must be a non-empty string")
+                response.update(
+                    {
+                        "player_id": player_id,
+                        "view": engine["view"](game.payload, player_id),
+                    }
+                )
+            return response
+
+        if verb == "act":
+            self._require_exact_fields(request, operation, {"game_ref", "player_id", "action", "args"})
+            player_id = self._require_str(request, "player_id")
+            action = self._require_str(request, "action")
+            args = request.get("args", [])
+            if not isinstance(args, list) or not all(isinstance(arg, str) and arg for arg in args):
+                raise ValueError("args must be a list of non-empty strings")
+            game = engine["act"](self.world, game_ref, player_id, action, list(args))
+            return {
+                "status": "ok",
+                "game_id": game_id,
+                "game_ref": game.object_id,
+                "game": game.payload,
+                "player_id": player_id,
+                "view": engine["view"](game.payload, player_id),
+            }
+        raise ValueError("unsupported player game operation")
+
+    def _handle_dork(self, verb: str, request: dict[str, Any]) -> dict[str, Any]:
+        operation = f"game.dork.{verb}"
+        if verb == "catalog":
+            self._require_exact_fields(request, operation, set())
+            return {
+                "status": "ok",
+                "game_id": "dork",
+                "schema": DORK_SCHEMA,
+                "human_only": True,
+                "room": "#dork",
+                "actions": dork_action_catalog(),
+            }
+        if verb == "new":
+            self._require_exact_fields(request, operation, {"seed", "human_player_id"})
+            raw_seed = request.get("seed", "mailbox-with-prior-art")
+            human_player_id = request.get("human_player_id", "operator")
+            if not isinstance(raw_seed, str) or not raw_seed.strip():
+                raise ValueError("seed must be non-empty text")
+            if not isinstance(human_player_id, str) or not human_player_id:
+                raise ValueError("human_player_id must be a non-empty string")
+            if self.scrubber.scrub(human_player_id).changed:
+                raise ValueError("human_player_id must not contain credential-shaped text")
+            scrubbed = self.scrubber.scrub(raw_seed)
+            game = new_dork(self.world, scrubbed.text, human_player_id)
+            return {
+                "status": "ok",
+                "game_id": "dork",
+                "game_ref": game.object_id,
+                "game": game.payload,
+                "player_id": human_player_id,
+                "view": dork_player_view(game.payload, human_player_id),
+                "secret_scrub": {
+                    "changed": scrubbed.changed,
+                    "events": [asdict(event) for event in scrubbed.events],
+                },
+            }
+
+        game_ref = self._require_str(request, "game_ref")
+        if verb == "inspect":
+            self._require_exact_fields(request, operation, {"game_ref", "player_id"})
+            game = inspect_dork(self.world, game_ref)
+            player_id = request.get("player_id", game.payload["human_operator_id"])
+            if not isinstance(player_id, str) or not player_id:
+                raise ValueError("player_id must be a non-empty string")
+            return {
+                "status": "ok",
+                "game_id": "dork",
+                "game_ref": game.object_id,
+                "game": game.payload,
+                "player_id": player_id,
+                "view": dork_player_view(game.payload, player_id),
+            }
+        if verb == "act":
+            self._require_exact_fields(request, operation, {"game_ref", "player_id", "action", "args"})
+            player_id = self._require_str(request, "player_id")
+            action = self._require_str(request, "action")
+            args = request.get("args", [])
+            if not isinstance(args, list) or not all(isinstance(arg, str) and arg for arg in args):
+                raise ValueError("args must be a list of non-empty strings")
+            game = apply_dork_action(self.world, game_ref, player_id, action, list(args))
+            return {
+                "status": "ok",
+                "game_id": "dork",
+                "game_ref": game.object_id,
+                "game": game.payload,
+                "player_id": player_id,
+                "view": dork_player_view(game.payload, player_id),
+            }
+        raise ValueError("unsupported DORK operation")
 
     @staticmethod
     def _ensure_disjoint_storage_roots(

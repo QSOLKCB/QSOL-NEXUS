@@ -276,6 +276,23 @@ The Ollama ballot path requests a closed JSON schema and validates the returned 
 
 NEXUS should not directly execute arbitrary model-generated code in the control plane. Experiments requiring code execution need an explicit bounded instrument/sandbox contract.
 
+### Game action and hidden-information boundary
+
+Model narration is also untrusted game input. A sentence that claims a card was
+played, property bought, bid made, dealer action taken or DORK room entered has
+no mutation effect. Only an exact `game.*.act` request with a registered player,
+valid phase and legal action can produce a canonical successor.
+
+UNO/500 hands and the unrevealed Blackjack dealer card are excluded from the
+derived public `content` supplied as Council evidence. Player views expose only
+the requesting seat's hand and omit deck/shoe internals. The local JSONL runtime
+can inspect the full authoritative object and is therefore a trusted operator
+boundary, not a multi-tenant game server.
+
+Blackjack uses fictional chips only. Its dealer has no model, endpoint or
+discretion and deterministically stands on soft 17. DORK v2 binds one human
+operator and rejects every AI/alternate view or action.
+
 ## Replay boundary
 
 A seeded model is not automatically replay-verifiable.
