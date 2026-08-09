@@ -1,0 +1,71 @@
+name: NEXUS security regression
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'src/nexus_runtime/**'
+      - 'tests/**'
+      - 'tui/**'
+  push:
+    branches:
+      - main
+      - agent/security-audit-remediation
+
+permissions:
+  contents: read
+
+jobs:
+  security-regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+
+      - name: Reject tracked build artifacts
+        shell: bash
+        run: test -z "$(git ls-files tui/target)"
+
+      - name: Require immutable GitHub Action pins
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+          failures = []
+          for path in sorted(Path('.github/workflows').glob('*.y*ml')):
+              for number, line in enumerate(path.read_text(encoding='utf-8').splitlines(), 1):
+                  match = re.search(r'\buses:\s*[^\s@]+@([^\s#]+)', line)
+                  if match and re.fullmatch(r'[0-9a-f]{40}', match.group(1)) is None:
+                      failures.append(f'{path}:{number}: {line.strip()}')
+          if failures:
+              raise SystemExit('mutable GitHub Action refs:\n' + '\n'.join(failures))
+          PY
+
+      - name: Python version
+        run: python3 --version
+
+      - name: Full Python regression suite
+        env:
+          PYTHONPATH: src
+        run: python3 -m unittest discover -s tests -p 'test_*.py' -v
+
+      - name: Rust TUI tests and format
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path tui/Cargo.toml --all-targets
+          cargo check --manifest-path tui/Cargo.toml --all-targets
+          cargo fmt --manifest-path tui/Cargo.toml -- --check
+
+      - name: Adversarial quick profile
+        env:
+          PYTHONPATH: src
+        run: |
+          python3 tools/nexus_adversary.py \
+            --profile quick \
+            --seed 0x4E45585553 \
+            --iterations 64 \
+            --json-out /tmp/nexus-security-regression.json
