@@ -247,8 +247,9 @@ class TrapController(_TrapControllerImpl):
 
         with self._lock:
             # A timeout may have terminated and detached the incident while the
-            # backend was blocked. Never persist a late reply after closure.
+            # backend was blocked. Never persist or observe a late reply after closure.
             self._require_same_open_incident(active)
+            self._observe_subject_reply(active, text, reply)
             subject_message = self._record_subject_reply(active, reply)
             public_reply = reply.as_dict()
             public_reply["text"] = subject_message.payload["text"]
@@ -303,6 +304,7 @@ class TrapController(_TrapControllerImpl):
 
         with self._lock:
             self._require_same_open_incident(active)
+            self._observe_subject_reply(active, probe_text, reply)
             subject_message = self._record_subject_reply(active, reply)
             public_reply = reply.as_dict()
             public_reply["text"] = subject_message.payload["text"]
