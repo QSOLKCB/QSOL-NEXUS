@@ -128,12 +128,13 @@ class LocalRoleBackendConfig:
             raise ValueError("LM Studio mcp.json plugins require credential_env for API authentication")
 
         timeout_seconds = value.get("timeout_seconds", 180)
-        if (
-            isinstance(timeout_seconds, bool)
-            or not isinstance(timeout_seconds, (int, float))
-            or not math.isfinite(float(timeout_seconds))
-            or not 0 < float(timeout_seconds) <= 1800
-        ):
+        if isinstance(timeout_seconds, bool) or not isinstance(timeout_seconds, (int, float)):
+            raise ValueError("local role timeout_seconds must be between 0 and 1800")
+        try:
+            normalized_timeout_seconds = float(timeout_seconds)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("local role timeout_seconds must be between 0 and 1800") from exc
+        if not math.isfinite(normalized_timeout_seconds) or not 0 < normalized_timeout_seconds <= 1800:
             raise ValueError("local role timeout_seconds must be between 0 and 1800")
         max_output_tokens = value.get("max_output_tokens", 768)
         if (
@@ -151,7 +152,7 @@ class LocalRoleBackendConfig:
             workspace=workspace,
             credential_env=credential_env,
             mcp_plugins=tuple(plugins),
-            timeout_seconds=float(timeout_seconds),
+            timeout_seconds=normalized_timeout_seconds,
             max_output_tokens=max_output_tokens,
         )
 
