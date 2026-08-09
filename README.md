@@ -30,13 +30,14 @@ NEXUS now has:
 - **Pure History Mode — No Ancient Aliens Edition** for source-forensic historical deliberation;
 - a hidden Rust-TUI **`/GO64` Secret Alias Mode** with a text demoscene and DR. S.BAITSO tribute;
 - **NEXUS Failsafe** containment with the cursed Upside Down, bounded rehabilitation, Shadow Realm, and deterministic equal-vote relief actors.
+- an isolated **Decoy Gate / Trap Base** for explicit synthetic hostile fixtures, with a separate `trap:<sha256>` store, owner-checked Council mutation lock, equal-vote defender session, restricted Trap YAML, and inert candidate quarantine.
 
 Current posture:
 
 ```text
-protocol: nexus/0.10
-runtime version: 2.0.0-alpha9.0
-operator TUI version: 2.0.0-alpha6.6
+protocol: nexus/0.11
+runtime version: 2.0.0-alpha9.1
+operator TUI version: 2.0.0-alpha9.1
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
 actor backends: mock + explicit loopback Ollama + fixed-HTTPS xAI
@@ -46,6 +47,7 @@ game rooms: #un-sim / Assembly Hall + #mud / Dungeon
 remote/cloud providers: xAI admitted; OpenAI / Anthropic / Google deferred
 provider authentication: xAI API key, environment, or external helper
 world persistence: optional local canonical JSON files
+trap simulation: explicit synthetic triggers only; local Ollama or deterministic test subject
 ```
 
 The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`archives/v1.0.0/`](archives/v1.0.0/) as referential prior work.
@@ -635,6 +637,7 @@ OpenAI, Anthropic, Google, generic remote endpoints, and additional providers re
 - [`docs/API.md`](docs/API.md) — JSONL control API
 - [`docs/AUTH.md`](docs/AUTH.md) — provider-neutral auth broker, storage, PKCE/device flows, and admission boundary
 - [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md) — xAI setup, fixed transport, discovery, and Council configuration
+- [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md) — synthetic Decoy Gate, isolated Trap Base, restricted YAML, recovery, and claim boundary
 - [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) — World Modes and named-region geometry
 - [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md) — source-forensic `#pure-history` mode and discipline guard
 - [`docs/IRC_TUI.md`](docs/IRC_TUI.md) — implemented Rust IRC-style operator interface

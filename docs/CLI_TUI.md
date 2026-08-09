@@ -54,6 +54,8 @@ There is no IRC daemon or network connection.
 #archive       -> historical  -> Archive
 #agora         -> cultural    -> Agora
 #commons       -> meme_casual -> Commons
+#trap-control  -> operator-only incident control (not a World Mode)
+#trap-base     -> synthetic subject room (not a World Mode)
 ```
 
 Examples:
@@ -67,6 +69,32 @@ Examples:
 The room/mode selection affects framing but not Council authority.
 
 > **The mode can change the vibe. It cannot change the vote.**
+
+Trap rooms are views over the separate TrapStore, not normal WorldStore rooms.
+The operator can see both. The hostile subject receives only synthetic
+`#trap-base` context and cannot join normal rooms or parse operator commands.
+Launch the TUI with `--trap-root /absolute/private/trap` when it must observe
+the same persistent mutation lock and incident store as another trusted local
+front-door process. The default is a `.nexus-trap` sibling of the selected
+world directory, never a child of that world.
+
+## Trap Base CLI
+
+The Python CLI exposes durable incident controls without putting trap state in
+the real world:
+
+```text
+nexus trap demo [--subject-model MODEL] [--scenario ID] [--timeout SECONDS]
+nexus trap status
+nexus trap inspect trap:<sha256>
+nexus trap export
+nexus trap emergency-close
+```
+
+Use `--trap-root` for a persistent operator store. `--pull-missing` on `demo`
+is explicit and never implied. Status/inspect/export are read-only;
+`emergency-close` is operator-only and restores real mutation availability even
+when subject shutdown or export fails. See [`TRAP_BASE.md`](TRAP_BASE.md).
 
 ## Council interaction
 

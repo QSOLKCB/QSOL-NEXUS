@@ -74,6 +74,44 @@ TRUSTED NEXUS CONTROL PLANE
 
 A model response is a **proposal** until NEXUS records it under the applicable phase and evidence state. Corporate identity, provider branding, model self-description, selected world mode, or geometry location cannot alter protocol authority.
 
+## Decoy Gate and Trap Base
+
+The synthetic decoy path is a third security domain, not an authentication
+fallback and not a room inside the real world:
+
+```text
+trusted operator fixture -> DecoyGate -> TrapController -> TrapStore
+                                                |
+                           +--------------------+--------------------+
+                           |                                         |
+                    #trap-control                              #trap-base
+                    defender snapshot                         hostile subject
+                    equal incident votes                      no vote/tools/auth
+```
+
+The trusted front-door router sends normal credentials only to `AuthBroker`.
+Ordinary failure ends there. Only one closed `DecoyAdmissionRequest` carrying an
+approved synthetic reason can enter `DecoyGate`; no bearer value is a field in
+that request.
+
+The trap domain owns only `trap:<sha256>` objects, static synthetic scenarios,
+an incident-specific defender roster, hostile text, trap commands, restricted
+Trap YAML execution, and quarantined candidate artifacts. Real objects remain
+`object:<sha256>`, and neither store resolves the other namespace.
+
+An owner-checked `CouncilMutationGate` pauses real WorldStore/game/Council
+mutation for the lifetime of the one active incident without moving or
+rewriting real history. Read/verification/auth operations remain unchanged.
+Immutable trap incident lineage is canonical; a small validated index and lock
+can be rebuilt or safely released by crash recovery.
+
+Subject output is always data. Only a typed operator/defender call can enter the
+closed command dispatcher. Trap YAML is parsed into a bounded canonical
+JSON-compatible tree and interpreted over immutable synthetic fixtures; it is
+never executed by Python, a shell, an LLM, or a production instrument.
+
+See [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md).
+
 ## Modes and geometry
 
 NEXUS separates **how a session is framed** from **where it exists in the shared world**.

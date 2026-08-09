@@ -20,7 +20,7 @@ pub struct RoomSpec {
     pub label: &'static str,
 }
 
-pub const ROOMS: [RoomSpec; 7] = [
+pub const ROOMS: [RoomSpec; 9] = [
     RoomSpec {
         channel: "#observatory",
         mode_id: "analytical",
@@ -63,9 +63,21 @@ pub const ROOMS: [RoomSpec; 7] = [
         region_id: "dungeon",
         label: "Dungeon / HERESY MUD",
     },
+    RoomSpec {
+        channel: "#trap-control",
+        mode_id: "trap_control",
+        region_id: "trap_base",
+        label: "Trap Control / Operator Only",
+    },
+    RoomSpec {
+        channel: "#trap-base",
+        mode_id: "trap_base",
+        region_id: "trap_base",
+        label: "Trap Base / Synthetic Subject",
+    },
 ];
 
-pub const COMMANDS: [&str; 30] = [
+pub const COMMANDS: [&str; 31] = [
     "/help",
     "/join",
     "/mode",
@@ -74,6 +86,7 @@ pub const COMMANDS: [&str; 30] = [
     "/council",
     "/game",
     "/mud",
+    "/trap",
     "/me",
     "/msg",
     "/nick",
@@ -150,6 +163,7 @@ pub enum InputCommand {
     Ask(String),
     Game(GameCommand),
     Mud(MudCommand),
+    Trap(String),
     Me(String),
     Msg { target: String, text: String },
     Nick(String),
@@ -198,6 +212,7 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/ask" | "/council" => Ok(InputCommand::Ask(rest.to_string())),
         "/game" => parse_game(rest).map(InputCommand::Game),
         "/mud" => parse_mud(rest).map(InputCommand::Mud),
+        "/trap" => require(rest, "/trap <closed trap command>").map(InputCommand::Trap),
         "/me" => require(rest, "/me <action>").map(InputCommand::Me),
         "/nick" => require(rest, "/nick <name>").map(InputCommand::Nick),
         "/ref" => require(rest, "/ref <object:sha256>").map(InputCommand::Ref),
@@ -834,6 +849,20 @@ mod tests {
             room_from_name("analytical").unwrap().channel,
             "#observatory"
         );
+        assert_eq!(
+            room_from_name("#trap-control").unwrap().mode_id,
+            "trap_control"
+        );
+        assert_eq!(room_from_name("trap-base").unwrap().channel, "#trap-base");
+    }
+
+    #[test]
+    fn parses_closed_trap_namespace_without_treating_it_as_room_text() {
+        assert_eq!(
+            parse_input("/trap status").unwrap(),
+            InputCommand::Trap("status".to_string())
+        );
+        assert!(parse_input("/trap").is_err());
     }
 
     #[test]

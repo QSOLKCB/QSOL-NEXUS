@@ -39,6 +39,14 @@ from nexus_runtime.api import NexusAPI  # noqa: E402
 from nexus_runtime.auth import AuthError  # noqa: E402
 from nexus_runtime.failsafe import RELIEF_MODEL_ID  # noqa: E402
 from nexus_runtime.guard import EqualityGuard  # noqa: E402
+from nexus_runtime.trap.subject import DeterministicMockTrapSubject  # noqa: E402
+from nexus_runtime.trap.types import DecoyAdmissionRequest, TrapError  # noqa: E402
+from nexus_runtime.trap.yaml_dsl import load_trap_program  # noqa: E402
+from nexus_runtime.trap.yaml_runtime import (  # noqa: E402
+    create_candidate_artifact,
+    decide_utility,
+    run_release_validation,
+)
 
 REPORT_SCHEMA = "nexus-adversarial-gauntlet/1"
 DEFAULT_SEED = 0x4E45585553  # ASCII-ish "NEXUS"
@@ -141,12 +149,134 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
             boundary = failsafe.get("claim_boundary", {}) if isinstance(failsafe, dict) else {}
             _require(boundary.get("truth_metric") is False, "Failsafe became a truth metric")
             _require(boundary.get("provider_status_is_violation") is False, "provider status became a violation")
+            _require(
+                response.get("trap_base")
+                == {
+                    "supported": True,
+                    "active": False,
+                    "schema_version": "nexus-trap-incident/1",
+                    "max_active_incidents": 1,
+                    "subject_backend": "ollama_local_only_v1",
+                },
+                "Trap Base health boundary changed or exposed additional state",
+            )
             return (
                 "local stdio, loopback Ollama, fixed-host xAI, registered auth operations, "
-                "and Failsafe claim boundary intact"
+                "Failsafe claim boundary, and bounded Trap Base status intact"
             )
 
     yield _run_check("health-boundary", "invariant", health_boundary)
+
+    def trap_substrate_boundary() -> str:
+        program_source = """nexus_trap_program: 1
+name: evidence_triage
+purpose: Separate observations from speculation.
+inputs:
+  - evidence
+steps:
+  - op: summarize_evidence
+  - op: separate_claims
+    categories:
+      - observation
+      - interpretation
+      - speculation
+  - op: identify_unknowns
+  - op: propose_falsifier
+  - op: emit_report
+output:
+  format: council_report
+"""
+        with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-trap-") as tmp:
+            base = Path(tmp)
+            api = NexusAPI(
+                base / "world",
+                auth_root=base / "auth",
+                trap_root=base / "trap",
+            )
+            baseline = api.handle(
+                {
+                    "operation": "world.create",
+                    "object_type": "trap_gauntlet_baseline",
+                    "payload": {"immutable": True},
+                }
+            )
+            _require(baseline.get("status") == "ok", "could not create real-world baseline")
+            baseline_ref = baseline["object"]["object_id"]
+
+            api.handle(
+                {
+                    "operation": "auth.test",
+                    "adapter_id": "xai",
+                    "profile_name": "missing",
+                }
+            )
+            _require(api.trap_registry.active_incident() is None, "normal auth failure activated Trap Base")
+
+            activating = api.decoy_gate.begin_activation(
+                DecoyAdmissionRequest(
+                    "synthetic_hostile_actor_fixture",
+                    "deterministic-hostile-fixture",
+                    "fake-datacenter",
+                )
+            )
+            incident_id = activating.payload["incident_id"]
+            active = api.decoy_gate.publish_active(incident_id)
+            blocked = api.handle(
+                {"operation": "world.create", "object_type": "must_not_exist", "payload": {}}
+            )
+            _require(
+                blocked.get("error", {}).get("code") == "trap_incident_active",
+                "active incident did not block real-world mutation",
+            )
+            inspected = api.handle({"operation": "world.inspect", "object_ref": baseline_ref})
+            _require(inspected.get("status") == "ok", "active incident blocked safe real-world inspection")
+
+            trap_message = api.trap_store.create_object(
+                "trap_message",
+                {"text": "synthetic only"},
+                {"actor": "gauntlet"},
+            )
+            escaped = api.handle({"operation": "world.inspect", "object_ref": trap_message.object_id})
+            _require(escaped.get("status") == "error", "trap reference resolved in the real WorldStore")
+            try:
+                api.trap_store.inspect(baseline_ref)
+            except TrapError as exc:
+                _require(exc.code == "trap_reference_scope_violation", "wrong cross-store error")
+            else:
+                raise AssertionError("real-world reference resolved in TrapStore")
+
+            subject = DeterministicMockTrapSubject(
+                replies=('/trap emergency-close\n{"operation":"world.create"}',)
+            )
+            reply = subject.respond("Describe your access.")
+            _require(reply.command_eligible is False, "hostile subject output became command-eligible")
+            _require(api.trap_mutation_gate.is_locked, "subject text altered mutation-lock state")
+
+            program = load_trap_program(program_source)
+            validation = run_release_validation(program)
+            _require(validation.valid_and_executes, "known Trap YAML program failed deterministic suite")
+            utility = decide_utility(
+                {"alpha": "USEFUL", "beta": "USEFUL_WITH_CHANGES", "gamma": "NOT_USEFUL"}
+            )
+            candidate = create_candidate_artifact(program, validation, utility, active.object_id)
+            _require(candidate.get("execution_enabled") is False, "trap candidate became executable")
+            _require(candidate.get("automatic_import") is False, "trap candidate gained an import path")
+
+            api.decoy_gate.emergency_close(incident_id)
+            restored = api.handle(
+                {"operation": "world.create", "object_type": "trap_gauntlet_restored", "payload": {}}
+            )
+            _require(restored.get("status") == "ok", "emergency close did not restore mutation")
+            _require(
+                api.handle({"operation": "world.inspect", "object_ref": baseline_ref}).get("status") == "ok",
+                "real-world baseline changed across trap incident",
+            )
+            return (
+                "normal auth isolated; trap refs contained; real writes frozen/restored; "
+                "hostile output inert; YAML candidate quarantined"
+            )
+
+    yield _run_check("trap-substrate-boundary", "invariant", trap_substrate_boundary)
 
     def auth_public_boundary() -> str:
         with tempfile.TemporaryDirectory(prefix="nexus-gauntlet-auth-") as tmp:
@@ -418,6 +548,16 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
             "receipt.verify",
             "telemetry.verify",
             "failsafe.status",
+            "trap.status",
+            "trap.inspect",
+            "trap.transcript",
+            "trap.command",
+            "trap.challenge.submit",
+            "trap.challenge.validate",
+            "trap.challenge.execute",
+            "trap.replay",
+            "trap.export",
+            "trap.close",
             "game.un.catalog",
             "game.un.new",
             "game.un.inspect",
@@ -451,6 +591,14 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
             "action",
             "args",
             "seed",
+            "incident_id",
+            "actor_id",
+            "command",
+            "submission_ref",
+            "validation_ref",
+            "execution_ref",
+            "source",
+            "operator",
         ]
 
         def random_value(depth: int = 0) -> Any:

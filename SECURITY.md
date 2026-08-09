@@ -79,6 +79,46 @@ They must never be written to:
 
 Authentication material belongs only in adapter authentication or transport fields and must never become semantic prompt content exposed to a model.
 
+## Synthetic decoy and trap boundary
+
+Trap Base is activated only by a closed, trusted synthetic fixture request. A
+bad, expired, malformed, or unknown normal credential is rejected by the normal
+auth path and cannot activate a trap incident. The decoy request schema has no
+credential field and persists only a bounded reason code.
+
+Trap state is isolated from real state:
+
+- real objects are `object:<sha256>` and trap objects are `trap:<sha256>`;
+- cross-store references fail closed and no bare digest chooses a store;
+- one owner-checked mutation lock makes real Council, world, and game writes
+  temporarily unavailable without altering existing objects;
+- the defender roster is copied as non-secret metadata into a new equal-vote
+  incident session; real votes and history are never transferred;
+- the subject has no Council seat, ballot, auth broker, real-world store,
+  instruments, command parser, endpoint override, or general network tool;
+- subject text that resembles a command, JSONL request, path, URL, or reference
+  remains transcript data;
+- candidate Trap YAML artifacts remain inert and quarantined.
+
+Linux hostile-model acceptance requires the configured local Ollama boundary
+and a successful minimal `bwrap` allowlist capability probe. V1 uses a trusted
+host text proxy and launches no hostile child: the model receives no process,
+filesystem, environment, auth/world handle, endpoint override, or general HTTP
+capability. A future hostile-child strategy must use the probed sandbox without
+real home/XDG paths, auth root, provider tokens, browser/session variables,
+writable checkout, or real WorldStore mounts. If the probe or local model is
+unavailable, real-model acceptance is `NOT_TESTABLE`; deterministic fake tests
+are labelled separately.
+
+Trap YAML is handled by a restricted standard-library data parser and closed
+interpreter. It has strict byte/depth/count/string limits and no filesystem,
+network, process, import, environment, clock, randomness, real-store, auth, or
+provider primitive. Passing validation and an incident utility vote never
+authorizes production code admission.
+
+See [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md) and threats T20–T32 in
+[`THREAT_MODEL.md`](THREAT_MODEL.md).
+
 Ollama requires no provider credential. xAI credentials are resolved only inside `XAITransport`.
 
 ## Authentication broker boundary

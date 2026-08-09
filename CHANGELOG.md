@@ -2,6 +2,18 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.0.0-alpha9.1 — Decoy Gate and Trap Base
+
+- add an explicit synthetic Decoy Gate that can never be reached by ordinary authentication failure and never admits its subject to real NEXUS;
+- add a separate content-addressed `TrapStore` namespace, immutable incident lineage, validated head cache, bounded watchdog, crash recovery, and operator emergency close;
+- pause real Council/world/game mutation during one active incident with an owner-checked interprocess lock while preserving read and verification operations;
+- snapshot legitimate peers into an equal-vote Trap Control roster while the hostile subject has no vote, auth, real world, tools, endpoint control, or command authority;
+- add closed trap commands, static synthetic scenarios, a local-only Ollama text boundary, deterministic fake acceptance fixtures, and explicit sandbox/Ollama `NOT_TESTABLE` reporting;
+- add restricted standard-library NEXUS Trap YAML parsing, canonical identity, deterministic synthetic-fixture execution, first-run semantics, exact two-thirds utility voting, and inert candidate quarantine;
+- add trap JSONL/CLI operations, demo/report tooling, cross-store, recovery, parser, taint, hostile-output, and PRE/TRAP/POST regressions;
+- document threats T20–T32 and the local-simulation claim boundary;
+- bump the control protocol to `nexus/0.11` and runtime to `2.0.0-alpha9.1` (Python package version `2.0.0a9.post1`).
+
 ## Unreleased — Grok front-door hardening
 
 - reject credential-labelled, punctuation-rich, long opaque and hash-like positional values—including dash-prefixed values after `--`—in external-helper argv before profile metadata is persisted;

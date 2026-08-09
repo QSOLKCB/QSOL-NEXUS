@@ -73,7 +73,7 @@ struct NexusProcess {
 }
 
 impl NexusProcess {
-    fn spawn(world: &Path) -> Result<Self, String> {
+    fn spawn(world: &Path, trap_root: &Path) -> Result<Self, String> {
         let python = env::var("NEXUS_PYTHON").unwrap_or_else(|_| "python3".to_string());
         let mut command = Command::new(&python);
         command
@@ -81,6 +81,8 @@ impl NexusProcess {
             .arg("nexus_runtime")
             .arg("--world")
             .arg(world)
+            .arg("--trap-root")
+            .arg(trap_root)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit());
@@ -248,7 +250,7 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS TUI 2.0 alpha6.6 — local room, no IRC server");
+        app.append("*** NEXUS TUI 2.0 alpha9.1 — local room, no IRC server");
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );
@@ -503,6 +505,12 @@ impl App {
                 self.append(&format!("*** {} changed the topic to: {topic}", self.nick));
             }
             InputCommand::Ask(question) => {
+                if self.is_trap_room() {
+                    return Err(
+                        "Council questions are disabled in trap rooms; use the closed /trap namespace"
+                            .to_string(),
+                    );
+                }
                 let question = if question.trim().is_empty() {
                     self.current_topic().to_string()
                 } else {
@@ -515,8 +523,11 @@ impl App {
             }
             InputCommand::Game(command) => self.execute_game(nexus, command)?,
             InputCommand::Mud(command) => self.execute_mud(nexus, command)?,
+            InputCommand::Trap(command) => self.execute_trap(nexus, &command)?,
             InputCommand::Say(text) => {
-                if let Some(target) = self.private_target.clone() {
+                if self.is_trap_room() {
+                    self.execute_trap(nexus, &format!("say {text}"))?;
+                } else if let Some(target) = self.private_target.clone() {
                     self.direct_message(nexus, &target, &text)?;
                 } else {
                     self.run_council(nexus, &text)?;
@@ -1144,6 +1155,9 @@ impl App {
     }
 
     fn run_council(&mut self, nexus: &mut NexusProcess, question: &str) -> Result<(), String> {
+        if self.is_trap_room() {
+            return Err("real Council execution is disabled in trap rooms".to_string());
+        }
         if self.members.len() < 3 {
             return Err(
                 "Council requires at least three model members; use /addmock or /addollama"
@@ -1179,6 +1193,45 @@ impl App {
         let session =
             nexus.request(json!({"operation": "world.inspect", "object_ref": session_ref}))?;
         self.render_session_to_scrollback(&session)?;
+        Ok(())
+    }
+
+    fn is_trap_room(&self) -> bool {
+        matches!(self.room.channel, "#trap-control" | "#trap-base")
+    }
+
+    fn execute_trap(&mut self, nexus: &mut NexusProcess, command: &str) -> Result<(), String> {
+        let command = command.trim();
+        let response = if command == "status" {
+            nexus.request(json!({"operation": "trap.status"}))?
+        } else if command == "export" {
+            nexus.request(json!({"operation": "trap.export"}))?
+        } else if command == "emergency-close" {
+            nexus.request(json!({
+                "operation": "trap.close",
+                "actor_id": self.nick,
+                "operator": true,
+                "emergency": true,
+                "reason": "tui_operator_emergency_close"
+            }))?
+        } else if let Some(object_ref) = command.strip_prefix("inspect ") {
+            nexus.request(json!({
+                "operation": "trap.inspect",
+                "object_ref": object_ref.trim()
+            }))?
+        } else {
+            nexus.request(json!({
+                "operation": "trap.command",
+                "command": format!("/trap {command}"),
+                "actor_id": self.nick,
+                "operator": true
+            }))?
+        };
+        let rendered = serde_json::to_string_pretty(&response)
+            .map_err(|error| format!("cannot render Trap Base response: {error}"))?;
+        for line in rendered.lines() {
+            self.append(&format!("*** TRAP {line}"));
+        }
         Ok(())
     }
 
@@ -1559,6 +1612,7 @@ impl App {
             "*** Core: /join #room | /mode mode | /topic text | /ask text | plain text = Council question",
             "*** Game: /join #un-sim | /game new [seed] | /game status | /game act ... | /game turn",
             "*** MUD: /join #mud | /mud new [seed] | /mud look | /mud n|s|e|w | /mud attack ... | /mud help",
+            "*** Trap: /join #trap-control | /join #trap-base | /trap <closed command>",
             "*** IRC: /me action | /msg nick text | /nick name | /who | /search text | /save file | /clear | /quit",
             "*** Models: /addmock nick [profile] | /addollama nick model | /kick nick",
             "*** Evidence: /upload file | /ref object:... | /unref object:... | /evidence",
@@ -1864,9 +1918,10 @@ fn fit(text: &str, width: usize) -> String {
     output
 }
 
-fn parse_args() -> (PathBuf, PathBuf, String) {
+fn parse_args() -> (PathBuf, PathBuf, PathBuf, String) {
     let mut world = PathBuf::from(".nexus-world");
     let mut state: Option<PathBuf> = None;
+    let mut trap_root: Option<PathBuf> = None;
     let mut nick = env::var("USER").unwrap_or_else(|_| "operator".to_string());
     let args: Vec<String> = env::args().skip(1).collect();
     let mut index = 0usize;
@@ -1880,6 +1935,10 @@ fn parse_args() -> (PathBuf, PathBuf, String) {
                 state = Some(PathBuf::from(&args[index + 1]));
                 index += 2;
             }
+            "--trap-root" if index + 1 < args.len() => {
+                trap_root = Some(PathBuf::from(&args[index + 1]));
+                index += 2;
+            }
             "--nick" if index + 1 < args.len() => {
                 nick = args[index + 1].clone();
                 index += 2;
@@ -1888,12 +1947,17 @@ fn parse_args() -> (PathBuf, PathBuf, String) {
         }
     }
     let state = state.unwrap_or_else(|| world.join("tui-state.json"));
-    (world, state, nick)
+    let trap_root = trap_root.unwrap_or_else(|| {
+        let mut sibling = world.clone();
+        sibling.set_file_name(".nexus-trap");
+        sibling
+    });
+    (world, state, trap_root, nick)
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let (world, state, nick) = parse_args();
-    let mut nexus = NexusProcess::spawn(&world).map_err(io::Error::other)?;
+    let (world, state, trap_root, nick) = parse_args();
+    let mut nexus = NexusProcess::spawn(&world, &trap_root).map_err(io::Error::other)?;
     let _guard = TerminalGuard::enter()?;
     let mut app = App::new(nick, state);
     app.scrub_loaded_script_state(&mut nexus)

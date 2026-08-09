@@ -5,6 +5,7 @@ from .council import CouncilCoordinator
 from .guard import EqualityGuard
 from .scrub import SecretScrubber
 from .types import Ballot, CouncilMember, CouncilPolicy, Phase
+from .trap import DecoyAdmissionRequest, DecoyGate, TrapController, TrapStore
 from .world import WorldStore
 
 __all__ = [
@@ -12,11 +13,15 @@ __all__ = [
     "CouncilCoordinator",
     "CouncilMember",
     "CouncilPolicy",
+    "DecoyAdmissionRequest",
+    "DecoyGate",
     "EqualityGuard",
     "NexusAPI",
     "PROTOCOL_VERSION",
     "Phase",
     "RUNTIME_VERSION",
     "SecretScrubber",
+    "TrapController",
+    "TrapStore",
     "WorldStore",
 ]

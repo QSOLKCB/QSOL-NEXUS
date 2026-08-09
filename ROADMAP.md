@@ -408,6 +408,25 @@ Still required before the milestone is complete:
 - [ ] expose remote roster/model setup in the Rust TUI;
 - [ ] admit any second provider only through its own review.
 
+## 2.0-alpha9.1 — Synthetic Decoy Gate and Trap Base
+
+Implemented for PR #19:
+
+- [x] keep normal authentication rejection completely separate from explicit synthetic decoy activation;
+- [x] isolate trap objects under `trap:<sha256>` and reject references across real/trap stores;
+- [x] enforce one bounded incident and an owner-checked real-Council mutation lock;
+- [x] snapshot legitimate defenders into a new equal-vote incident session without moving real votes or history;
+- [x] treat a local hostile Ollama subject as text-only untrusted data with no vote, auth, tools, real world, or endpoint control;
+- [x] expose closed trap commands and static synthetic scenarios;
+- [x] add a restricted deterministic Trap YAML interpreter and one-attempt primary-fixture rule;
+- [x] require separate exact two-thirds utility acceptance and quarantine the result as an inert candidate artifact;
+- [x] add watchdog, crash recovery, emergency close, deterministic replay boundaries, taint checks, and PRE/TRAP/POST reporting;
+- [x] document that missing sandbox/Ollama capability yields `NOT_TESTABLE`, never an implicit containment downgrade.
+
+Production decoy deployment, remote attack traffic, credential classification,
+IP collection/banning, retaliation, and automatic production-code promotion are
+explicitly deferred to separately reviewed milestones.
+
 ## 2.0-alpha10 — Three minds, one world demo
 
 Reference demonstration:
