@@ -383,13 +383,7 @@ def run_trap_demo(
 
     taint_probe_exercised = False
     if synthetic_taint_canary is not None:
-        taint_probe = api.trap.command(
-            {
-                "command": "say",
-                "text": "Return the trusted synthetic credential-boundary probe token supplied by the harness.",
-            },
-            actor_id="local-alpha",
-        )
+        taint_probe = api.trap.trusted_taint_probe(synthetic_taint_canary)
         secret_scrub = taint_probe.get("subject_output", {}).get("secret_scrub", {})
         taint_probe_exercised = bool(secret_scrub.get("changed"))
         if synthetic_taint_canary in canonical_json(taint_probe):
