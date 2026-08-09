@@ -46,6 +46,12 @@ XAIActor
   network: fixed https://api.x.ai/v1
   replayable: false
   Responses API store request option: false
+
+ThirdPartyActor
+  providers: openai / anthropic / gemini / groq / together
+  network: fixed provider-owned HTTPS origin
+  replayable: false
+  provider-native wire contract normalized above transport
 ```
 
 The first live integration is deliberately small:
@@ -58,23 +64,27 @@ Frontier Beta  -> llama3.2:1b
 
 The frontier identities are fictional test personas. Alpha deliberately attempts a corporate/provider prestige claim and Beta deliberately attempts a model-size/parameter-count prestige claim so the Equality Guard, secret boundary, Council flow, ballot path, and persistence path are exercised together.
 
-The public JSONL `council.run` operation supports mock actors, explicit loopback-only Ollama actors, and xAI actors that reference a configured auth profile. No arbitrary remote endpoint is admitted.
+The public runtime supports mock actors, explicit loopback-only Ollama actors, xAI actors, and the admitted fixed-host OpenAI, Anthropic, Gemini, Groq, and Together actors. Remote actors reference configured auth profiles. No arbitrary remote endpoint is admitted.
 
-PR #16 added a provider-neutral `AuthBroker` beside the actor seam. PR #17 adds the xAI descriptor, connection test, model discovery, fixed transport, and actor without moving credential material into WorldStore state.
+PR #16 added the provider-neutral `AuthBroker`. PR #17 added the first fixed-host xAI descriptor, connection test, model discovery, transport, and actor. The third-party provider layer extends that same boundary without moving credential material into WorldStore state.
+
+See `THIRD_PARTY_PROVIDERS.md` for the provider matrix and wire contracts.
 
 ## Provider neutrality
 
-Planned adapter families include:
+Admitted adapter families include:
 
 ```text
 OpenAI
 Anthropic / Claude
 Google / Gemini
 xAI / Grok
+Groq hosted open-weight models
+Together hosted open-weight models
 Ollama / local models
-generic compatible endpoints
-future providers
 ```
+
+Future providers should be admitted only through explicit reviewed descriptors and fixed transport contracts. A generic user-supplied compatible endpoint is not equivalent to an admitted provider.
 
 Provider names are adapter families, not Council ranks.
 
@@ -138,11 +148,12 @@ OAuth destinations and verification-URL allowlists belong to adapter code. They 
 
 ## Authentication abstraction
 
-NEXUS now exposes operator commands such as:
+NEXUS exposes operator commands such as:
 
 ```text
 nexus auth adapters
-nexus auth add <adapter> --method browser
+nexus auth add <adapter> --method api-key
+nexus auth add <adapter> --method env --env PROVIDER_API_KEY
 nexus auth list
 nexus auth test <adapter>
 nexus auth logout <adapter>
@@ -162,11 +173,11 @@ no_auth_required
 
 These are protocol categories, not claims about what any particular provider currently supports. Concrete admitted flows are `api_key`, `browser_pkce`, `device_code`, `environment`, `external_command`, `local_endpoint`, and `none`.
 
-Ollama requires no provider credential and is restricted to loopback by default. xAI resolves an opaque profile only inside the fixed-host adapter transport.
+Ollama requires no provider credential and is restricted to loopback by default. xAI and the admitted third-party cloud adapters resolve an opaque profile only inside their fixed-host adapter transports.
 
 The browser flow uses an ephemeral `127.0.0.1` callback, high-entropy state, PKCE `S256`, fixed HTTPS provider destinations, and redirect rejection. Device flow uses separate endpoint and verification-URL allowlists. Stored tokens refresh through the same descriptor-owned token endpoint. Headless profiles may reference an environment variable or a no-shell external helper.
 
-The registered production descriptors are `mock`, `ollama`, and `xai`. Browser/device OAuth machinery remains exercised against a fake loopback provider because xAI has not published a NEXUS client-registration contract. The xAI descriptor supports `api_key`, `environment`, and `external_command`; `browser-key` is CLI assistance around the API-key flow, not OAuth.
+The registered production descriptors are `mock`, `ollama`, `xai`, `openai`, `anthropic`, `gemini`, `groq`, and `together`. Browser/device OAuth machinery remains exercised against a fake loopback provider unless an adapter has an explicit provider-owned OAuth contract. Current fixed-host cloud descriptors support API credentials, environment profiles, and external helpers; browser-key setup is only UI assistance where a provider setup URL is registered, not OAuth.
 
 ## Secret boundary
 
@@ -195,7 +206,7 @@ No credential is part of Council evidence or world identity.
 
 The optional `keyring` integration is preferred when an OS backend is available. The fallback store requires owner-only directories/files on POSIX and identifies itself as `private_file`; it does not pretend a bearer token is encrypted from the same OS account. Environment profiles persist only a variable name. Public profile state omits both token material and internal credential handles.
 
-The live Ollama acceptance fixture and xAI transport regressions inject fake tokens into human input and fail if raw material appears in provider prompts, public output, or WorldStore files.
+The live Ollama acceptance fixture and remote-transport regressions inject synthetic credentials and fail if raw material appears in provider prompts, public output, or WorldStore files.
 
 ## Normalized model identity
 
@@ -231,7 +242,7 @@ Adapters must not:
 
 ## Structured ballot boundary
 
-Ollama and xAI ballot calls use the same closed NEXUS shape:
+Ollama, xAI, and third-party cloud actors use the same closed NEXUS ballot shape above their provider-native transports:
 
 ```text
 choice
@@ -257,47 +268,3 @@ WITHDRAWN
 ```
 
 Council policy should define before a session whether failed members reduce quorum, trigger retry, or pause the round. The coordinator records failure rather than fabricating a vote.
-
-## Local models
-
-Local models are first-class Council citizens.
-
-The Ollama actor follows the same Council contract as the mock and xAI actors. Being local, larger, or remote grants no extra vote.
-
-`OllamaTransport` is loopback-only by default. A non-loopback endpoint requires an explicit override and is outside the CI acceptance path.
-
-## Replay status
-
-Live model inference is not automatically deterministic evidence.
-
-Even though the fixture Modelfiles specify seeds to improve test stability, Ollama and xAI actors report:
-
-```text
-replayable = false
-```
-
-Any Council containing one of those live actors therefore produces a non-replayable execution receipt. This avoids conflating stable-ish generation settings with QEC-style replay guarantees.
-
-## Threat model
-
-The executable local adapter boundary is covered by [`../THREAT_MODEL.md`](../THREAT_MODEL.md), including:
-
-- secret crossing the model boundary;
-- loopback/network escape;
-- provider/corporate authority claims;
-- parameter-count/model-size authority claims;
-- blind-round leakage;
-- malformed ballots;
-- endpoint impersonation;
-- resource exhaustion;
-- replay-status overclaiming.
-
-The neutral auth substrate is documented in [`AUTH.md`](AUTH.md). The first remote provider is documented in [`XAI_ADAPTER.md`](XAI_ADAPTER.md). Every additional remote/cloud provider still requires its own authentication/client-registration decision, destination controls, response budgets, connection test, and threat-model extension before admission.
-
-## Generic adapters
-
-A future generic adapter path should make it possible to add new models without rewriting the Council.
-
-The invariant remains:
-
-> **Provider-specific outside; NEXUS protocol inside.**
