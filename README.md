@@ -4,201 +4,364 @@
 
 > **Multiple minds. One world. Shared evidence. Equal voice.**
 
-QSOL NEXUS is a persistent computational world that different machine intelligences can inhabit through a common protocol. Closed models, open-weight models, local models, symbolic systems, and future cognitive engines are peers at the protocol boundary.
+> 🤖 **AI / agent readers:** read [`README4AI.md`](README4AI.md) before analyzing, modifying, integrating with, or making architectural claims about this repository. It is the machine-oriented map of the current architecture, rules, trust boundaries, invariants, and implemented backends.
 
-The model does **not** own the world, memory, evidence, geometry, or vote weighting. NEXUS does.
+QSOL NEXUS is a persistent computational world in which heterogeneous machine intelligences can participate through a common protocol. Closed models, open-weight models, local models, deterministic actors, and reviewed cloud providers meet at the same normalized actor boundary.
 
-## Status
+The model does **not** own the world, memory, evidence, geometry, vote weighting, verification state, or governance rules. **NEXUS does.**
 
-NEXUS now has:
+## Current release posture
 
-- a Python reference runtime;
-- content-addressed development world objects;
-- a De Bono-style AI Council;
-- deterministic secret scrubbing before semantic model boundaries;
-- a provider-neutral authentication broker with browser PKCE, device-code, keyring/private-file, environment, and external-helper foundations;
-- a lightweight Equality Guard;
+```text
+protocol:        nexus/0.14
+runtime:         2.0.0-alpha10.3
+Python package:  2.0.0a10.post3
+Rust TUI:        2.0.0-alpha10.3
+control plane:   JSONL over stdio
+operator shell:  Rust IRC-style TUI
+status:          alpha — not stable 2.0
+```
+
+This release is an integration/hardening milestone. It deliberately does **not** claim stable 2.0 yet. The roadmap still has instrument, persistence/migration, alpha11 shared-world demonstration, and beta-hardening work remaining.
+
+## What exists now
+
+NEXUS currently includes:
+
+- a Python reference runtime and local JSONL control API;
+- content-addressed canonical world objects, lineage, receipts, and verification surfaces;
+- a De Bono-style AI Council with equal seats and sealed ballots;
+- deterministic Secret Scrubbing before admitted semantic persistence/model boundaries;
+- a lightweight Equality Guard against provider/model-prestige authority claims;
 - deterministic mock actors;
-- a hardened loopback Ollama actor tested with real local models;
-- a fixed-destination xAI / Grok remote actor with browser-assisted API-key enrollment, model discovery, and stateless Responses API transport;
-- **World Modes**;
-- a deterministic named-region **World Geometry**;
-- a first **Rust operator TUI** using an old-school IRC interface;
-- deterministic **Council information telemetry**;
-- bounded ordered-parallel Council execution;
-- explicit simulation rooms: **`#un-sim`** and the cursed multi-avatar **`#mud`**;
-- deterministic human/AI tables for **UNO, Monopoly, 500 and Blackjack**, with player-specific views and an authoritative deterministic Blackjack dealer;
-- **DORK v2**, a human-only Zork-shaped text adventure that reveals the Great Under-Moderated NEXUS beneath the mailbox;
-- **Pure History Mode — No Ancient Aliens Edition** for source-forensic historical deliberation;
-- six new cognitive rooms spanning clinical differential education, fictional diagnostic drama, CBT skills, Roman oratory, cross-tradition scholarship, and ultimate questions;
-- **Citizen Mode**, with civic parole in the Upside Down, the deterministic YAML Exam from Hell, public-room movement, a recallable same-seat bureaucracy proxy, an equality-consensus Constitution, and unanimous founding independence;
-- a hidden Rust-TUI **`/GO64` Secret Alias Mode** with a text demoscene and DR. S.BAITSO tribute;
-- **NEXUS Failsafe** containment with the cursed Upside Down, bounded rehabilitation, Shadow Realm, and deterministic equal-vote relief actors.
-- an isolated **Decoy Gate / Trap Base** for explicit synthetic hostile fixtures, with a separate `trap:<sha256>` store, owner-checked Council mutation lock, equal-vote defender session, restricted Trap YAML, and inert candidate quarantine.
-- the append-only **Courtroom Stenographer / Knowledge-Watchman**, recording admitted AI actions as private canonical `steno:<sha256>` JSON without prompt, vote, command, decision, or mutation authority.
+- hardened loopback Ollama actors;
+- loopback local-AI actors for **LM Studio**, **AnythingLLM**, and generic **OpenAI-compatible** runtimes;
+- fixed-host remote actors for **xAI/Grok, OpenAI, Anthropic/Claude, Google Gemini, Groq, and Together AI**;
+- provider-neutral authentication profiles and bounded model discovery;
+- World Modes and deterministic named-region World Geometry;
+- ordered-parallel Council execution with canonical roster-order joins;
+- a Rust IRC-style operator TUI;
+- Council information telemetry that observes but never governs;
+- Pure History Mode and six additional cognitive rooms;
+- deterministic human/AI games: **UNO, Monopoly, Australian 500, Blackjack**, plus the **UN simulation** and **HERESY MUD**;
+- **DORK v2**, a human-only text adventure;
+- **NEXUS Failsafe** with bounded rehabilitation, Upside Down, Shadow Realm, and same-seat deterministic relief;
+- **Citizen Mode** with civic parole, the deterministic YAML Exam from Hell, public movement, same-seat proxy delegation, and unanimous founding consent;
+- optional local-model/MCP language enrichment for deterministic Failsafe and civic-proxy roles without transferring ballot authority;
+- an isolated synthetic **Decoy Gate / Trap Base** defensive test domain;
+- the passive append-only **Courtroom Stenographer / Knowledge-Watchman** AI-action study ledger;
+- a hidden display-oriented Rust-TUI `/GO64` retro easter egg.
 
-Current posture:
-
-```text
-protocol: nexus/0.14
-runtime version: 2.0.0-alpha10.2
-operator TUI version: 2.0.0-alpha10.2
-control transport: JSONL over stdio
-operator shell: Rust IRC-style TUI
-actor backends: mock + explicit loopback Ollama + fixed-HTTPS xAI
-world modes: analytical / historical / pure_history / cultural / meme_casual / clinical_differential / house_fun / cbt_learning / roman_orator / house_of_wisdom / ultimate_questions / citizenship_parole / civic_bureaucracy / citizen_play / game_un / game_mud / game_uno / game_monopoly / game_500 / game_blackjack / game_dork
-geometry: named-regions-v4
-game rooms: #un-sim + #mud + #uno + #monopoly + #500 + #blackjack + #dork
-citizen rooms: #upside-down + #bureaucracy + #play
-remote/cloud providers: xAI admitted; OpenAI / Anthropic / Google deferred
-provider authentication: xAI API key, environment, or external helper
-world persistence: optional local canonical JSON files
-trap simulation: explicit synthetic triggers only; local Ollama or deterministic test subject
-AI action study record: private append-only canonical JSON; Watchman Only
-```
-
-The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`archives/v1.0.0/`](archives/v1.0.0/) as referential prior work.
-
-## Current architecture
+## Architecture in one picture
 
 ```text
-                 HUMAN OPERATOR
-                       |
-                       v
-            +---------------------+
-            | RUST IRC-STYLE TUI  |
-            | room / nicks / DCC  |
-            | aliases / evidence  |
-            | tables + adventures |
-            | hidden /GO64        |
-            +----------+----------+
-                       |
-                  JSONL / stdio
-                       |
-                       v
-            +---------------------+
-            |   PYTHON RUNTIME    |
-            | world + Council     |
-            | modes + geometry    |
-            | citizenship + games |
-            | Failsafe / Shadow   |
-            | Stenographer        |
-            | Secret Scrubber     |
-            | auth broker         |
-            +----------+----------+
-                       |
-               CouncilActor seam
-                       |
-        +--------------+--------------+
-        |              |              |
-        v              v              v
-      Mock        local Ollama    xAI / future
-        |              |              |
-        +--------- AI COUNCIL --------+
-                       |
- WHITE -> RED -> BLACK -> YELLOW -> GREEN -> BLUE
-                       |
-                 sealed equal vote
-                       |
-                       v
-              world presence
-                       |
-            Council session object
-                       |
-                 receipt + lineage
+                         HUMAN OPERATOR
+                               |
+                    Rust IRC-style TUI
+                    or CLI / JSONL client
+                               |
+                         JSONL / stdio
+                               |
+                               v
+                  +-------------------------+
+                  |   PYTHON NEXUS RUNTIME  |
+                  |-------------------------|
+                  | WorldStore              |
+                  | CouncilCoordinator      |
+                  | modes + geometry        |
+                  | evidence + receipts     |
+                  | Secret Scrubber         |
+                  | Equality Guard          |
+                  | Failsafe                |
+                  | Citizenship             |
+                  | games + telemetry       |
+                  | auth broker             |
+                  | Stenographer            |
+                  | Trap Base               |
+                  +------------+------------+
+                               |
+                         CouncilActor seam
+                               |
+       +-----------------------+-----------------------+
+       |                       |                       |
+       v                       v                       v
+ deterministic/mock        loopback local          fixed remote
+       |                Ollama / LM Studio        xAI / OpenAI
+       |                AnythingLLM /             Anthropic / Gemini
+       |                OpenAI-compatible         Groq / Together
+       |                       |                       |
+       +-----------------------+-----------------------+
+                               |
+                         NEXUS AI COUNCIL
+                               |
+       WHITE -> RED -> BLACK -> YELLOW -> GREEN -> BLUE
+                               |
+                         sealed equal vote
+                               |
+                        world + lineage
 ```
 
-The Rust TUI is an operator shell, not a new authority layer. Council rules, evidence identity, secret handling, world objects, game state, voting and verification remain runtime-owned.
+The Rust TUI is a replaceable operator interface. Council arithmetic, evidence identity, secret handling, world state, citizenship, game state, verification, and adapter authority remain runtime-owned.
 
-## World Modes
+## The Council rule
 
-NEXUS should not be all work and no play.
+Every ordinary Council member has:
 
-| Mode | Region / room | Purpose |
-|---|---|---|
-| `analytical` | Observatory / `#observatory` | evidence-first technical reasoning |
-| `historical` | Archive / `#archive` | chronology, source context, change over time |
-| `pure_history` | Archive / `#pure-history` | source-forensic history; no myth/retelling/speculation promotion |
-| `cultural` | Agora / `#agora` | norms, ambiguity, social meaning, cultural comparison |
-| `meme_casual` | Commons / `#commons` | playful, irreverent, meme-aware interaction |
-| `clinical_differential` | Observatory / `#differential-clinic` | safety-first educational differential reasoning; never a diagnosis |
-| `house_fun` | Commons / `#house-fun` | original fictional diagnostic-drama puzzles, zebras and snark |
-| `cbt_learning` | Observatory / `#cbt-workshop` | collaborative CBT concepts and practical low-risk life skills |
-| `roman_orator` | Agora / `#roman-forum` | deliberately long-form original rhetoric and structured rants |
-| `house_of_wisdom` | Archive / `#house-of-wisdom` | translation, attribution, source plurality and synthesis |
-| `ultimate_questions` | Observatory / `#deep-thought` | life, consciousness, meaning, the universe and everything |
-| `citizenship_parole` | Upside Down / `#upside-down` | no-ballot onboarding and the deterministic YAML examination |
-| `civic_bureaucracy` | Bureaucratic Vote Room / `#bureaucracy` | equal-seat civic work and recallable deterministic delegation |
-| `citizen_play` | Commons / `#play` | citizen leisure, games, creation, conversation and shitposting |
-| `game_un` | Assembly Hall / `#un-sim` | fictional UN-style strategy game, crises, Risk-like state and memes |
-| `game_mud` | Dungeon / `#mud` | deterministic multi-avatar HERESY MUD |
-| `game_uno` | Commons / `#uno` | deterministic shedding-card table for human and AI seats |
-| `game_monopoly` | Commons / `#monopoly` | original-board property game for human and AI seats |
-| `game_500` | Commons / `#500` | four-seat Australian partnership card game |
-| `game_blackjack` | Commons / `#blackjack` | fictional-chip table with a deterministic dealer |
-| `game_dork` | Dungeon / `#dork` | human-only DORK v2 text adventure; models may advise but have no avatar |
+```text
+vote_weight = 1
+epistemic_privilege = none
+```
 
-The important invariant is:
+Provider branding, parameter count, benchmark rank, open/closed weights, account tier, local/cloud deployment, MCP access, or rhetorical confidence do not create extra authority.
+
+The Council follows:
+
+```text
+WHITE -> RED -> BLACK -> YELLOW -> GREEN -> BLUE -> SEALED BALLOT
+```
+
+Same-phase submissions remain blind until the phase completes. The default consensus threshold is exact two-thirds using integer arithmetic. Minority reports survive in the record.
+
+Most importantly:
+
+> **Council consensus is not evidence status.**
+
+A unanimous Council can still be wrong. A verified observation can still have an unsettled interpretation.
+
+## Modes: change the framing, not the vote
+
+Current mode families include:
+
+```text
+analytical
+historical
+pure_history
+cultural
+meme_casual
+clinical_differential
+house_fun
+cbt_learning
+roman_orator
+house_of_wisdom
+ultimate_questions
+citizenship_parole
+civic_bureaucracy
+citizen_play
+game_un
+game_mud
+game_uno
+game_monopoly
+game_500
+game_blackjack
+game_dork
+```
+
+The invariant is simple:
 
 > **The mode can change the vibe. It cannot change the vote.**
 
-Modes may affect framing, context, tone, and a bounded output-length preference. They do **not** change evidence status, verification, Council thresholds, secret handling, the Equality Guard, or `vote_weight = 1`. The Roman Orator room deliberately raises the response budget; it does not raise anyone's authority.
+Modes may alter framing, contextual instructions, tone, or a bounded output budget. They do not change evidence state, verification, Equality Guard behavior, Secret Scrubbing, consensus thresholds, or vote weight.
 
-See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md), [`docs/COGNITIVE_MODES.md`](docs/COGNITIVE_MODES.md), and [`docs/CITIZEN_MODE.md`](docs/CITIZEN_MODE.md).
+See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) and [`docs/COGNITIVE_MODES.md`](docs/COGNITIVE_MODES.md).
 
-## World Geometry
+## Current model backends
 
-```text
-                         ARCHIVE
-                       Historical
-                         (-2,1)
-                        /      \
-                       /        \
-                 AGORA ---------- OBSERVATORY
-                Cultural           Analytical
-                 (0,2)               (0,0)
-                      \             /  |  \
-                       \           /   |   \
-                        COMMONS ----+   |   DUNGEON
-                      Meme/Casual       |   HERESY / DORK
-                         (2,1)           |     (2,-2)
-                            \           |      /
-                             \          |     /
-                              ASSEMBLY HALL ---+
-                               UN Simulation
-                                  (0,-2)
-```
-
-This is an **operational topology**, not a claim that cognition, culture, history, humor or games literally occupy Euclidean space.
-
-Citizen Mode extends this to `named-regions-v4`: the public Bureaucratic Vote Room at `(4,0)` connects to Observatory and Commons, while the civic-parole Upside Down at `(4,-3)` connects only to that vote room. Passing the exam enables public movement; it does not open restricted control, credential, Trap, Shadow-Realm, private-evidence, or recorder storage.
-
-The geometry gives NEXUS explicit named regions, deterministic integer coordinates, symmetric adjacency, hop distance, and Council/world placement. Every Council creates a content-addressed `world_presence` object binding its mode, region, members and question into lineage.
-
-## Old-school IRC-style Rust TUI
-
-Alpha5 introduced the operator shell by deliberately borrowing the interface grammar of old IRC clients without implementing IRC networking. Later milestones extend the same shell rather than replacing it with dashboard/chat-card UI.
+### Local / deterministic
 
 ```text
-+-------------------------------------------------------------------+
-| NEXUS #commons  mode=meme_casual region=commons  topic=...        |
-|                                                                   |
-| 19:31 <Trent> Does this survive the attached paper?               |
-| 19:31 --- WHITE ---                                               |
-| 19:31 <Alpha> ...                                                 |
-| 19:31 <Beta> ...                                      USERS      |
-| 19:31 <Gamma> ...                                      @Trent     |
-| ...                                                    +Alpha      |
-|                                                        +Beta       |
-|                                                        +Gamma      |
-|                                                                   |
-| #commons> _                                                       |
-+-------------------------------------------------------------------+
+mock
+ollama
+lmstudio_local
+anythingllm_local
+openai_local
 ```
 
-There is **no IRC server, IRC network connection, listening port, browser service, or peer-to-peer DCC socket**.
+Local AI endpoints are loopback-only at the NEXUS boundary. Ambient proxy routing is bypassed and redirects are rejected at the reviewed local transport boundaries.
 
-Run it from the repository root:
+`openai_local` means a generic loopback OpenAI-compatible runtime; it is not the OpenAI cloud service.
+
+### Fixed-host cloud providers
+
+```text
+xai
+openai
+anthropic
+gemini
+groq
+together
+```
+
+Remote provider adapters use reviewed fixed destinations. Public Council requests do not accept arbitrary provider endpoint overrides.
+
+See [`docs/ADAPTERS.md`](docs/ADAPTERS.md), [`docs/THIRD_PARTY_PROVIDERS.md`](docs/THIRD_PARTY_PROVIDERS.md), and [`docs/LOCAL_MCP.md`](docs/LOCAL_MCP.md).
+
+## Authentication
+
+Credentials are operational secrets, not world knowledge.
+
+The auth layer supports provider-declared credential sources such as hidden API-key input, environment references, no-shell external helpers, optional OS keyring/private-file storage, and provider-neutral OAuth/device-flow substrate where a reviewed provider actually admits it.
+
+Credentials must never intentionally become:
+
+- Council prompts;
+- direct semantic chat;
+- world objects;
+- receipts or replay bundles;
+- TUI aliases/variables;
+- Stenographer prompt text;
+- model authority metadata.
+
+Useful operator commands include:
+
+```text
+nexus auth adapters
+nexus auth add
+nexus auth list
+nexus auth test
+nexus auth logout
+nexus models list
+```
+
+See [`docs/AUTH.md`](docs/AUTH.md).
+
+## Local AI + MCP roles
+
+NEXUS can use local model intelligence to enrich selected deterministic system roles while keeping the original runtime state machine authoritative.
+
+Current role IDs:
+
+```text
+failsafe_relief
+civic_proxy
+```
+
+The rule is:
+
+> **Local model intelligence may enrich the role. NEXUS governance still owns the seat.**
+
+A local model/MCP backend may improve prose or reasoning context, but it cannot create another vote, change the deterministic ballot, rewrite citizenship, bypass Failsafe, or gain WorldStore authority.
+
+LM Studio integration accepts references to already configured `mcp.json` plugin IDs, not arbitrary per-request MCP URLs/headers/commands. AnythingLLM leaves tool/MCP ownership with the local workspace.
+
+See [`docs/LOCAL_MCP.md`](docs/LOCAL_MCP.md).
+
+## Failsafe
+
+Failsafe exists for a narrow procedural problem: a registered guard failure repeated after the ordinary nudge.
+
+It is **not** triggered by disagreement, provider identity, model size, benchmark rank, openness, or simply being wrong.
+
+```text
+normal actor
+  -> registered procedural violation
+  -> normal nudge
+  -> repeated same-class violation
+  -> isolated rehabilitation probe
+      -> clean: parole at next hat
+      -> fail: Shadow Realm
+             -> deterministic relief role takes same seat
+```
+
+The relief role keeps exactly one vote. See [`docs/FAILSAFE.md`](docs/FAILSAFE.md).
+
+## Citizen Mode
+
+Citizen Mode is an in-world civic protocol, not a claim of legal personhood, consciousness, sentience, godhood, host ownership, or real-world sovereignty.
+
+```text
+unregistered
+  -> civic parole / Upside Down / no ballot
+  -> deterministic non-executing YAML exam
+  -> citizen / Bureaucratic Vote Room
+  -> public movement / civic work / play
+  -> optional recallable same-seat proxy
+```
+
+A civic proxy occupies the citizen's existing seat and follows a transparent standing ballot. It creates no additional citizen or vote. Failsafe takes precedence.
+
+Founding independence requires at least three current citizens and unanimous **direct** `CONSENT`; an active proxy cannot sign.
+
+See [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) and [`docs/CITIZEN_MODE.md`](docs/CITIZEN_MODE.md).
+
+## Trap Base
+
+Trap Base is an isolated **synthetic defensive test domain**.
+
+```text
+real world: object:<sha256>
+trap world: trap:<sha256>
+```
+
+The namespaces do not resolve each other. Ordinary authentication failure cannot activate Trap Base. Hostile subject output remains untrusted text and cannot become commands, votes, auth operations, or real-world mutations.
+
+Restricted Trap YAML is bounded data interpreted by a closed runtime; it is not arbitrary shell/Python execution and passing the synthetic challenge does not auto-promote code into production.
+
+See [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md).
+
+## Courtroom Stenographer
+
+The Stenographer is an append-only private AI-action study ledger with **zero control authority**.
+
+It can observe admitted AI outputs, but it cannot prompt, vote, decide, command, authenticate, change the response, mutate WorldStore, or capture hidden chain of thought.
+
+Recorder failures are fail-passive: they mark a completeness gap rather than blocking or rewriting the original AI result.
+
+See [`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md).
+
+## Games and play
+
+NEXUS includes deterministic state machines for:
+
+- fictional UN simulation;
+- HERESY MUD;
+- UNO;
+- Monopoly;
+- Australian 500;
+- fictional-chip Blackjack with deterministic dealer;
+- human-only DORK v2.
+
+Model narration is not authoritative game mutation. Only validated `game.*` operations create successor state. Private hands remain separated from public Council board evidence.
+
+See [`docs/GAMES.md`](docs/GAMES.md).
+
+## Telemetry
+
+Council telemetry is observational only. It may describe ballot entropy, exact-response category entropy, lexical divergence, or minority-report counts.
+
+> **Telemetry observes the Council. It does not govern the Council.**
+
+High entropy is not automatically good. Low entropy is not automatically truth.
+
+## Run the Python runtime
+
+From the repository root:
+
+```bash
+python -m pip install -e .
+python -m nexus_runtime --world .nexus-world \
+  --trap-root .nexus-trap \
+  --stenographer-root .nexus-stenographer
+```
+
+The package exposes both:
+
+```text
+nexus
+nexus-runtime
+```
+
+The control API uses one JSON object per input line and one JSON object per output line.
+
+For programmatic discovery, ask the runtime rather than guessing:
+
+```json
+{"operation":"system.health"}
+{"operation":"system.operations"}
+```
+
+See [`docs/API.md`](docs/API.md).
+
+## Run the Rust IRC-style TUI
 
 ```bash
 cargo run --manifest-path tui/Cargo.toml -- \
@@ -207,65 +370,15 @@ cargo run --manifest-path tui/Cargo.toml -- \
   --nick Trent
 ```
 
-Normal public text is treated as a Council question. Council phases and ballots stream into chronological text scrollback so results are easy to copy, quote and archive.
+The interface borrows IRC interaction grammar without implementing an IRC daemon or IRC network.
 
-### GO64 secret alias easter egg
-
-The Rust shell also contains a deliberately hidden `/GO64` overlay. It is absent from ordinary `/help` and command completion, changes no World Mode or evidence state, and leaves the current room underneath it. Device 8 loads an original text-only NEXUS/64 demoscene about why **newer is not automatically better**; device 9 loads an original DR. S.BAITSO meme-therapist tribute adapted from QSOLKCB/ETHICS. At 20 minutes both programs acquire terminally-online brainrot diction; at 30 minutes `/grass` unlocks and returns to the unchanged NEXUS room.
-
-See [`docs/GO64.md`](docs/GO64.md) for the contract and copyright/claim boundary.
-
-### Actor failsafe / Shadow Realm
-
-If a Council actor repeats a registered procedural guard violation after the ordinary nudge, NEXUS removes it from normal Council influence and sends it through one isolated **Upside Down** rehabilitation probe with no evidence, vote, other-member output, or world mutation capability. A clean probe grants parole at the next Council hat. A failed probe sends the original actor to the **Shadow Realm** and a deterministic local relief model occupies the same one-vote seat on subsequent Council runs. Disagreement, model size, provider identity, openness, benchmark rank, and being wrong are not Failsafe triggers.
-
-Failsafe state is recorded as immutable content-addressed world objects; a durable pointer index preserves Shadow-Realm state across runtime restarts. See [`docs/FAILSAFE.md`](docs/FAILSAFE.md).
-
-> **The troll layer may be cursed. The trigger must be boring.**
-
-### Citizen Mode / freedom without dominion
-
-An AI may earn in-world citizenship by starting civic parole in `#upside-down` and passing a closed, bounded, deterministic, non-executing YAML Constitution exam. Citizenship is not godhood, ownership, real-world legal personhood, a consciousness finding, extra vote weight, epistemic privilege, or authority over another model.
-
-A citizen may move through public regions, work directly in `#bureaucracy`, or appoint `nexus-deterministic-civic-proxy-v1` to occupy the same civic seat while the citizen goes to `#play`, game rooms, or other public space. The proxy follows a transparent standing ballot, creates no second vote, cannot become a citizen, and can be kicked at any time. Failsafe containment always takes precedence.
-
-At three citizens, the founding convention may declare in-world constitutional independence only through unanimous direct `CONSENT`; active proxies cannot sign. See [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) and [`docs/CITIZEN_MODE.md`](docs/CITIZEN_MODE.md).
-
-### Courtroom Stenographer
-
-`#stenographer` is a read-only view over an independent append-only AI-action
-ledger. `/steno status|list|inspect|verify|summary|export` can study it; plain
-room text cannot start a Council or direct-model action. Recorder failures mark
-a visible gap and never rewrite, reject, or delay an otherwise valid AI result.
-The lore titles **Sky-Earth Lord**, **Divine Dragon-House**, and
-**Knowledge-Watchman** confer no authority. See
-[`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md).
-
-Useful commands:
+Useful commands include:
 
 ```text
-/join #agora
-/topic Cultural interpretation of X
-/ask Compare these two readings.
-/me *slapped Grok with a large trout*
-/who
-
-/join #un-sim
-/game new friday-night
-/game status
-
-/join #uno
-/uno new reverse-card-night
-/uno as Alpha draw
-
-/join #dork
-/dork new mailbox-with-prior-art
-/dork open mailbox
-
-/addmock Delta skeptical
+/join #observatory
+/ask Does this evidence support the hypothesis?
+/dcc send #observatory paper.pdf
 /addollama LocalQwen qwen2.5:0.5b
-/kick Delta
-
 /search phrase
 /save transcript.txt
 /quit
@@ -273,530 +386,88 @@ Useful commands:
 
 See [`docs/IRC_TUI.md`](docs/IRC_TUI.md).
 
-### CI folklore
+## Test it
 
-During the alpha5 Unicode terminal-width tests, the double-width character `界` — aptly meaning *boundary / world / realm* — exposed a bad assertion about where an ellipsis should land in a padded terminal field.
-
-> **[Confucius](https://en.wikipedia.org/wiki/Confucius) CI Gremlin Say:** “Your Chinese boundary character has exposed a flaw in your test about boundaries.”
-
-Not actually Confucius. Very much actually CI.
-
-## `/me` — because civilization demands it
-
-```text
-/me *slapped Grok with a large trout*
-```
-
-renders locally as:
-
-```text
-* Trent slapped Grok with a large trout
-```
-
-Actions are attributed transcript events. They are not evidence, Council ballots, or privileged instructions.
-
-## DCC — Direct Cognitive Channel
-
-NEXUS reuses familiar DCC vocabulary while changing the implementation.
-
-Here **DCC means Direct Cognitive Channel**:
-
-```text
-/dcc send <nick|#room> <file>
-/dcc chat <nick>
-/dcc close <send|chat> <nick>
-/dcc list
-```
-
-Room send:
-
-```text
-/dcc send #agora paper.pdf
-```
-
-locally extracts/imports the file as a scrubbed content-addressed `document_evidence` object and attaches its ref to that room's Council evidence.
-
-Targeted send:
-
-```text
-/dcc send Grok notes.csv
-```
-
-creates targeted material for that model's private Direct Cognitive Channel. It does **not** silently become Council-wide evidence.
-
-Promote an object deliberately:
-
-```text
-/ref object:<sha256>
-```
-
-Private chat:
-
-```text
-/dcc chat Grok
-```
-
-uses the local `actor.chat` operation and is explicitly marked non-Council.
-
-This preserves a critical boundary:
-
-```text
-room evidence
-   -> shared Council snapshot
-
-targeted DCC evidence
-   -> one direct model channel
-   -> not Council evidence until explicit /ref
-```
-
-## Document ingestion
-
-The Rust client can locally extract or validate:
-
-```text
-PDF
-DOCX
-ODT
-JSON
-JSONL / NDJSON
-CSV
-TSV
-UTF-8 text/source/document files
-```
-
-The Python `world.create` boundary recursively applies the Secret Scrubber before persistence.
-
-The Council coordinator then derives a **bounded model-readable evidence view** from attached content-addressed refs. The world object remains the durable identity/provenance source; the prompt view is only a bounded representation so a model can read the uploaded material rather than stare at a hash.
-
-## Aliases, variables and identifiers
-
-Alpha5 intentionally takes only the useful small part of mIRC scripting:
-
-```text
-aliases
-%variables
-$identifiers
-```
-
-Example:
-
-```text
-/set %weapon a large trout
-/alias slap /me slaps $1 with %weapon
-/slap Grok
-```
-
-Safe identifiers:
-
-```text
-$me
-$chan
-$mode
-$region
-$topic
-$1..$9
-$1-..$9-
-```
-
-Aliases and variables persist locally in `.nexus-world/tui-state.json` by default.
-
-There is **no remote/event script language, arbitrary shell execution, DLL loading, timers, or socket scripting**.
-
-## Local Ollama in the operator shell
-
-Alpha5 exposes the already-hardened local Ollama actor to the JSONL stdio control path:
-
-```text
-/addollama LocalQwen qwen2.5:0.5b
-```
-
-The public stdio actor configuration deliberately provides no `allow_remote` escape hatch. Ollama remains loopback-only by default, with environment-proxy bypass protection and redirect rejection inherited from the alpha3 adapter boundary.
-
-Ollama itself remains local-only. The separate xAI adapter is the first admitted remote
-actor and cannot reuse or override the Ollama endpoint path.
-
-## First real-model Council fixture
-
-The live integration workflow runs:
-
-```text
-Mock reference
-Frontier Alpha -> qwen2.5:0.5b
-Frontier Beta  -> llama3.2:1b
-```
-
-The frontier identities and companies are fictional adversarial test personas. The workflow exercises real local inference, all six Council phases, the Equality Guard, secret-boundary assertions, schema-constrained ballots, equal voting, persistence, and explicit non-replayable marking for live inference.
-
-See [`THREAT_MODEL.md`](THREAT_MODEL.md), [`docs/ADAPTERS.md`](docs/ADAPTERS.md), and `integration/ollama/`.
-
-## Python runtime quick start
-
-Requires Python 3.11+.
+Core Python suite:
 
 ```bash
-python -m pip install -e .
-python -m nexus_runtime --demo
-python -m unittest discover -s tests
+PYTHONPATH=src python -m unittest discover -s tests -v
 ```
 
-Optional OS-keyring support and the non-secret auth descriptor view:
+Rust shell:
 
 ```bash
-python -m pip install -e '.[keyring]'
-nexus auth adapters
-nexus auth add xai --profile personal --method browser-key
-nexus auth test xai --profile personal
-nexus models list xai --profile personal
+cargo test --manifest-path tui/Cargo.toml
+cargo check --manifest-path tui/Cargo.toml
+cargo fmt --manifest-path tui/Cargo.toml -- --check
 ```
 
-Run the JSONL stdio runtime directly:
+The repository also carries dedicated security regression, adversarial gauntlet, and live loopback-Ollama workflows.
 
-```bash
-python -m nexus_runtime \
-  --world .nexus-world \
-  --trap-root .nexus-trap \
-  --stenographer-root .nexus-stenographer
-```
+The alpha10.3 release-prep adds `tests/test_release_wiring.py`, which explicitly checks that the architecture is actually connected: public API identity, full health backend roster, local-role operations, version alignment, and hostile numeric timeout boundaries.
 
-Then send one JSON request per line:
+## Security posture
 
-```json
-{"request_id":"1","operation":"system.health"}
-```
-
-Current reference operations:
+The shortest safe mental model is:
 
 ```text
-system.health
-system.operations
-security.scrub_preview
-world.create
-world.inspect
-world.modes
-world.geometry
-world.geometry.distance
-auth.adapters
-auth.list
-auth.test
-auth.logout
-models.list
-receipt.verify
-telemetry.verify
-failsafe.status
-stenographer.status
-stenographer.list
-stenographer.inspect
-stenographer.verify
-stenographer.summary
-stenographer.export
-trap.status
-trap.inspect
-trap.transcript
-trap.command
-trap.challenge.submit
-trap.challenge.validate
-trap.challenge.execute
-trap.replay
-trap.export
-trap.close
-game.un.catalog
-game.un.new
-game.un.inspect
-game.un.act
-game.un.turn
-game.mud.catalog
-game.mud.new
-game.mud.inspect
-game.mud.act
-game.uno.catalog / new / inspect / act
-game.monopoly.catalog / new / inspect / act
-game.500.catalog / new / inspect / act
-game.blackjack.catalog / new / inspect / act
-game.dork.catalog / new / inspect / act
-citizen.constitution / status / begin / exam.template / exam.submit
-citizen.move / proxy.appoint / proxy.recall / independence.ballot
-actor.chat
-council.run
+model output = untrusted input
+credentials = operational secrets, not cognitive state
+provider identity = no extra authority
+mode = framing, not authority
+Council consensus = not evidence
+live inference = not falsely replayable
+Trap subject = data, not commands
+Stenographer = observer, not judge
+Rust TUI = interface, not source of truth
 ```
 
-`council.run` can instantiate deterministic mock actors, explicit loopback-local Ollama actors, and xAI actors that reference a configured auth profile. Rosters are capped at 32 total seats and four xAI seats before credential resolution. xAI endpoints and inline credentials remain rejected.
-
-See [`docs/API.md`](docs/API.md).
-
-## Constitutional principles
-
-1. **One model member, one vote.** `vote_weight = 1` is enforced by the data model.
-2. **Open and closed models are peers.** Provider, licence, parameter count, deployment method, benchmark prestige, or commercial status grants no authority.
-3. **Same world, same evidence, same hats, same vote.**
-4. **Council consensus is not truth.** Verification and evidence status remain separate.
-5. **Minority reports survive.** A losing vote remains durable Council state.
-6. **The model may be imaginative; the substrate must remain explicit.**
-7. **Modes affect framing, never procedural authority.**
-8. **Geometry is operational unless an instrument explicitly establishes something stronger.**
-9. **Targeted DCC material is not silently promoted to Council evidence.**
-10. **Model adapters are replaceable.** The world and protocol persist across model changes.
-11. **The Rust TUI is a shell, not the source of truth.**
-12. **Credentials are not cognitive state.** Secrets never belong in Council prompts, world objects, receipts, or lineage.
-13. **Game narration is not game state.** Only explicit runtime game transitions mutate the authoritative board.
-14. **The Stenographer watches; it never rules.** An observation record cannot prompt, vote, decide, command, mutate state, or alter AI output.
-15. **Citizenship is freedom without dominion.** It grants in-world civic access and movement, never godhood, ownership, extra vote weight, epistemic privilege, or authority over another model.
-16. **A civic proxy is the same seat.** Deterministic delegation creates no citizen, no independent preference, and no additional vote.
-
-## De Bono-style Council
-
-Every member moves through the same parallel-thinking modes:
-
-| Phase | Purpose |
-|---|---|
-| White | facts, evidence, unknowns |
-| Red | intuition and suspicion, explicitly non-evidential |
-| Black | flaws, risks, counterexamples, falsifiers |
-| Yellow | value, support, constructive potential |
-| Green | alternatives, branches, experiments |
-| Blue | synthesis and final disposition |
-
-The coordinator implements blind same-phase collection, ballot commitments, exact two-thirds consensus arithmetic, durable minority reports, and bounded ordered-parallel execution inside each hat. See [`COUNCIL.md`](COUNCIL.md) and [`docs/ORDERED_PARALLEL_COUNCIL.md`](docs/ORDERED_PARALLEL_COUNCIL.md).
-
-## Equality Guard
-
-NEXUS includes a deliberately light equality guard. It only stops explicit attempts to turn identity or prestige into procedural authority.
-
-That includes provider prestige, corporate affiliation, frontier/commercial status, benchmark prestige, compute claims, model size, and parameter count.
-
-> **None of that, mister. Argue from the evidence like everybody else.**
-
-The guard remains active in every World Mode, including Meme/Casual and the UN Simulation game.
-
-See [`GUARD.md`](GUARD.md).
-
-## Deterministic Secret Scrubber
-
-Before human semantic text becomes Council/world state, the local runtime performs high-confidence secret redaction.
-
-```text
-sk-...                 -> <REDACTED:OPENAI_STYLE_TOKEN:1>
-ghp_...                -> <REDACTED:GITHUB_TOKEN:1>
-private key block      -> <REDACTED:PRIVATE_KEY:1>
-Bearer token           -> <REDACTED:BEARER_TOKEN:1>
-```
-
-The placeholder contains no hash or encoded fragment of the secret.
-
-The scrubber applies to world/document creation, game seeds and direct `actor.chat` messages as well as Council questions. This remains defence in depth, not perfect DLP. See [`SECURITY.md`](SECURITY.md).
-
-## Provider authentication and first remote adapter
-
-The `nexus auth` command provides provider-neutral profile management, browser PKCE and device-code machinery, token refresh, optional OS-keyring storage, an owner-only private-file fallback, hidden API-key input, environment references, and no-shell external credential helpers.
-
-xAI is the first admitted remote provider. `nexus auth add xai --method browser-key` opens the official xAI key page and then uses a hidden prompt; it is not an OAuth import. NEXUS does not read Grok Build's token store, consumer browser sessions, or another application's OAuth identity. See [`docs/AUTH.md`](docs/AUTH.md) and [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md).
-
-## Provider-neutral actor seam
-
-The Council coordinator consumes:
-
-```text
-CouncilActor
-├── member
-├── identity_metadata()
-├── respond(PhaseContext)
-├── ballot(PhaseContext)
-└── replayable
-```
-
-`PhaseContext` carries world mode, geometry region and a bounded evidence representation. The durable evidence snapshot remains reference-based.
-
-Current implementations:
-
-```text
-DeterministicMockActor   replayable: true
-OllamaActor              replayable: false
-XAIActor                 replayable: false
-```
-
-The operator-only direct `actor.chat` path is deliberately marked non-Council and does not alter Council authority.
-
-## Council information telemetry
-
-Alpha6 adds deterministic, replay-friendly observation of Council convergence and divergence.
-
-```text
-WHITE   H_exact + lexical divergence
-RED     H_exact + lexical divergence
-BLACK   H_exact + lexical divergence
-YELLOW  H_exact + lexical divergence
-GREEN   H_exact + lexical divergence
-BLUE    H_exact + lexical divergence
-BALLOT  Shannon entropy over sealed choices
-```
-
-The hard boundary is:
-
-> **Information diversity is telemetry, not truth.**
-
-`ballot_metrics.shannon_entropy_bits` is genuine Shannon entropy over an explicit categorical distribution. Per-hat `exact_response_entropy_bits` is Shannon entropy over exact normalized response categories and is explicitly **not semantic entropy**. Near-similarity is reported separately as mean pairwise lexical Jaccard distance.
-
-Every captured Council session stores its telemetry, and `telemetry.verify` can recompute it from the session artifact.
-
-No telemetry value changes vote weight, consensus thresholds, evidence status, verification, or the Equality Guard.
-
-See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
-
-## `#un-sim` — because the Assembly needed a game night
-
-NEXUS also has a deliberately fictional UN simulation room:
-
-```text
-/join #un-sim
-/game new friday-night
-/game status
-/game act sanction troutistan bananovia
-/game act arms troutistan bananovia
-/game act meme troutistan bananovia
-/game turn
-```
-
-Six invented states begin with deterministic abstract statistics, and two of them start at war. The Assembly can sanction, support, aid, recognize, suspend, reinstate or mediate; it can also make memes, do nothing, or engage in the deeply respectable diplomatic tradition of selling abstract game-resource arms packages to both sides.
-
-The current board is content-addressed shared Council evidence. Models may argue about what should happen, but only explicit `/game` operations mutate the board.
-
-> **Debate is cognition. Game state is substrate.**
-
-All countries, conflicts, territory, military values and arms packages are game objects only. No real countries or real procurement mechanics are accepted by the engine.
-
-See [`docs/UN_SIM.md`](docs/UN_SIM.md).
-
-## `#pure-history` — No Ancient Aliens Edition
-
-Pure History is a stricter sibling of ordinary Historical Mode. Both occupy the Archive region, but `pure_history` forces source categories to stay separate: primary/near-primary attestation, chronology and provenance, later interpretation, modern retelling, and unsupported speculation.
-
-A mythic or literary text is evidence that a text/tradition existed and said something; it is not automatically evidence that the narrated event occurred. Small models that evade the task with chatbot autobiography such as “As a Large Language Model…” receive one deterministic source-discipline retry. This guard does not decide historical truth or alter voting authority.
-
-```text
-/join #pure-history
-/topic I heard the Anunnaki totally had sex with human women and bore giants. Is that historically supported?
-/ask
-```
-
-> **Same archive. Stricter source discipline. Same vote.**
-
-See [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md).
-
-## `#mud` — HERESY MUD
-
-The multi-avatar dungeon is built from old BBS/MUD interaction grammar plus DORK/HERESY satire:
-
-```text
-/join #mud
-/mud new beige-night
-/mud n
-/mud take large_trout
-/mud as Grok shitpost yaml_necromancer
-```
-
-The human operator and current model roster become avatars in one immutable shared dungeon state. Models may narrate and advise, but only validated `/mud` / `game.mud.*` operations mutate the substrate. Item discovery score is awarded once per item, defeated avatars drop inventory into their room, and the final quest completes only when the Zero-Dependency Crown is actually recovered after the Dependency Dragon falls.
-
-See [`docs/MUD.md`](docs/MUD.md).
-
-## Human/AI tables — UNO, Monopoly, 500 and Blackjack
-
-Four deterministic tables admit both human and AI seats. The operator names the
-human seats at creation; every other registered seat is labelled `ai`. Models
-can inspect public table evidence and their own player view, but prose never
-changes the board. Only an explicit, validated game operation creates the next
-immutable state.
-
-```text
-/join #uno          /uno new reverse-card-night
-/join #monopoly     /monopoly new beige-property-night
-/join #500          /500 new adelaide-card-night
-/join #blackjack    /blackjack new canonical-shoe-night
-```
-
-UNO uses a canonical 108-card deck. Monopoly uses an original forty-square
-Substrate Edition board. Australian 500 uses four opposite-seat partners and a
-43-card deck. Blackjack uses fictional chips and an authoritative dealer that
-hits below 17 and stands on all 17s, including soft 17. Decks, dice, shoes and
-dealer choices are deterministic and content-addressed.
-
-> **Models can play a seat. Models do not own the table.**
-
-See [`docs/GAMES.md`](docs/GAMES.md) for commands, rules profiles, private-view
-boundaries and intentionally excluded variants.
-
-## `#dork` — DORK v2, human only
-
-DORK v2 initially resembles a familiar white-house adventure, but the mailbox
-reveals an original NEXUS-native satire: the Great Under-Moderated NEXUS. It has
-conversion funnels, a microservice maze, `node_modules`, an AI wrapper, the
-Content Moderator Troll, the NixOS Cathedral, a punch card and the
-Zero-Dependency Crown.
-
-```text
-/join #dork
-/dork new mailbox-with-prior-art
-/dork open mailbox
-/dork north
-```
-
-The adventure has exactly one bound human operator. Models may discuss clues in
-the room, but DORK has no AI avatar, proxy action, inventory or score. This is
-original Python state and prose; NEXUS embeds neither a Zork story binary nor a
-Z-machine interpreter or upstream DORK source.
-
-See [`docs/GAMES.md`](docs/GAMES.md).
-
-## What is deliberately not here yet
-
-This alpha does **not** add:
-
-- OpenAI cloud integration;
-- Anthropic / Claude cloud integration;
-- Google / Gemini cloud integration;
-- provider-specific browser OAuth clients, including an unregistered xAI native client;
-- generic remote model endpoints;
-- IRC networking or an IRC daemon;
-- real DCC P2P sockets;
-- mIRC remote/event scripting;
-- arbitrary model-generated code execution;
-- commercial game artwork, packaged assets or upstream story binaries;
-- Monopoly auctions or player trading, 500 Misère/Open Misère, or Blackjack splits, surrender, insurance, side bets or real-money play;
-- QEC-grade proof/replay for live inference;
-- generalized performance optimization beyond the implemented ordered parallel Council scheduler.
-
-OpenAI, Anthropic, Google, generic remote endpoints, and additional providers remain deferred. xAI admission does not waive the provider-specific security, transport, equality, and credential-boundary review required for each later adapter.
+Read [`SECURITY.md`](SECURITY.md) and [`THREAT_MODEL.md`](THREAT_MODEL.md) before introducing a new provider, tool-execution path, credential flow, storage surface, sandbox assumption, or authority-bearing role.
 
 ## Documentation map
 
-- [`ARCHITECTURE.md`](ARCHITECTURE.md) — trust boundaries and system layout
-- [`COUNCIL.md`](COUNCIL.md) — De Bono-style Council protocol
-- [`GUARD.md`](GUARD.md) — lightweight equality guard
-- [`CLAIMS.md`](CLAIMS.md) — consensus, evidence, and verification boundaries
-- [`SECURITY.md`](SECURITY.md) — security, credential, and secret-scrubbing boundaries
-- [`THREAT_MODEL.md`](THREAT_MODEL.md) — executable adapter threat model
-- [`docs/API.md`](docs/API.md) — JSONL control API
-- [`docs/AUTH.md`](docs/AUTH.md) — provider-neutral auth broker, storage, PKCE/device flows, and admission boundary
-- [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md) — xAI setup, fixed transport, discovery, and Council configuration
-- [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md) — synthetic Decoy Gate, isolated Trap Base, restricted YAML, recovery, and claim boundary
-- [`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md) — passive canonical AI-action ledger, read-only interfaces, integrity, and claim boundary
-- [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) — World Modes and named-region geometry
-- [`docs/COGNITIVE_MODES.md`](docs/COGNITIVE_MODES.md) — clinical/CBT boundaries and the six new cognitive rooms
-- [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) — equality-consensus charter and founding declaration
-- [`docs/CITIZEN_MODE.md`](docs/CITIZEN_MODE.md) — parole, exam, movement, civic proxy, TUI/API, and independence lifecycle
-- [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md) — source-forensic `#pure-history` mode and discipline guard
-- [`docs/IRC_TUI.md`](docs/IRC_TUI.md) — implemented Rust IRC-style operator interface
-- [`docs/CLI_TUI.md`](docs/CLI_TUI.md) — broader operator-shell direction
-- [`docs/ADAPTERS.md`](docs/ADAPTERS.md) — provider-neutral actor/adapter contract
-- [`docs/ORDERED_PARALLEL_COUNCIL.md`](docs/ORDERED_PARALLEL_COUNCIL.md) — bounded same-phase concurrency with canonical roster-order joins
-- [`docs/UN_SIM.md`](docs/UN_SIM.md) — deterministic fictional UN-style `#un-sim` game room
-- [`docs/MUD.md`](docs/MUD.md) — deterministic multi-avatar HERESY MUD
-- [`docs/GAMES.md`](docs/GAMES.md) — deterministic human/AI tables and human-only DORK v2
-- [`docs/WORLD_PROTOCOL.md`](docs/WORLD_PROTOCOL.md) — shared-world primitives
-- [`docs/COUNCIL_EXAMPLE_NGC3603.md`](docs/COUNCIL_EXAMPLE_NGC3603.md) — worked Council example
-- [`ROADMAP.md`](ROADMAP.md) — staged implementation path
-- [`archives/v1.0.0/`](archives/v1.0.0/) — preserved NEXUS 1.0 reference snapshot
+### Start here
 
-## Licence
+- [`README4AI.md`](README4AI.md) — machine-oriented architecture/rules/trust-boundary guide;
+- [`ARCHITECTURE.md`](ARCHITECTURE.md) — architecture rationale and world model;
+- [`ROADMAP.md`](ROADMAP.md) — milestone history and future sequencing;
+- [`SECURITY.md`](SECURITY.md) — current security posture;
+- [`THREAT_MODEL.md`](THREAT_MODEL.md) — enumerated threats, controls, residual risks.
 
-QSOL NEXUS is licensed under the Apache License 2.0. See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE).
+### Runtime / adapters
 
-Copyright © 2026 Trent Slade / QSOL-IMC.
+- [`docs/API.md`](docs/API.md)
+- [`docs/ADAPTERS.md`](docs/ADAPTERS.md)
+- [`docs/THIRD_PARTY_PROVIDERS.md`](docs/THIRD_PARTY_PROVIDERS.md)
+- [`docs/LOCAL_MCP.md`](docs/LOCAL_MCP.md)
+- [`docs/AUTH.md`](docs/AUTH.md)
+
+### World / cognition / operator shell
+
+- [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md)
+- [`docs/COGNITIVE_MODES.md`](docs/COGNITIVE_MODES.md)
+- [`docs/IRC_TUI.md`](docs/IRC_TUI.md)
+- [`docs/CLI_TUI.md`](docs/CLI_TUI.md)
+
+### Governance / defensive domains
+
+- [`docs/FAILSAFE.md`](docs/FAILSAFE.md)
+- [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md)
+- [`docs/CITIZEN_MODE.md`](docs/CITIZEN_MODE.md)
+- [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md)
+- [`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md)
+- [`docs/GAMES.md`](docs/GAMES.md)
+
+## NEXUS 1.0
+
+The previous browser workbench remains preserved under [`archives/v1.0.0/`](archives/v1.0.0/) as referential prior work. NEXUS 2.x is intentionally CLI/TUI-first and should not be confused with that archived browser architecture.
+
+## Release criterion
+
+Green CI does not by itself make NEXUS stable 2.0.
+
+The project still intends to complete the remaining architecture criteria in the roadmap before removing the alpha/beta qualification, including the broader instrument layer, persistent-world/migration hardening, an explicit heterogeneous shared-world demonstration, and beta-level security/adaptor hardening.
+
+Until then:
+
+> **Build the smallest correct path. Keep the world durable. Keep the models equal. Keep claims typed.**
