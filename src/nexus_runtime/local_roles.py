@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 import hashlib
 import math
+import os
 import re
 from typing import Any, Mapping
 
@@ -14,12 +15,12 @@ from .adapters.local_ai import (
     default_local_ai_endpoint,
     validate_local_ai_endpoint,
 )
+from .auth.types import SecretMaterial, validate_environment_name
 from .types import Ballot, CouncilMember, PhaseContext
 
 
 LOCAL_MODEL_ROLE_IDS = frozenset({"failsafe_relief", "civic_proxy"})
 _ROLE_ID = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
-_PROFILE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
 
 _ROLE_INSTRUCTIONS = {
     "failsafe_relief": (
@@ -44,7 +45,7 @@ class LocalRoleBackendConfig:
     endpoint: str
     model: str | None = None
     workspace: str | None = None
-    auth_profile: str | None = None
+    credential_env: str | None = None
     mcp_plugins: tuple[LocalMCPPlugin, ...] = ()
     timeout_seconds: float = 180.0
     max_output_tokens: int = 768
@@ -60,7 +61,7 @@ class LocalRoleBackendConfig:
             "endpoint",
             "model",
             "workspace",
-            "auth_profile",
+            "credential_env",
             "mcp_plugins",
             "timeout_seconds",
             "max_output_tokens",
@@ -73,8 +74,9 @@ class LocalRoleBackendConfig:
         adapter_id = value.get("adapter_id")
         if adapter_id not in LOCAL_AI_ADAPTER_IDS:
             raise ValueError("local role adapter_id is not admitted")
-        endpoint = value.get("endpoint", default_local_ai_endpoint(adapter_id))
-        endpoint = validate_local_ai_endpoint(endpoint)
+        endpoint = validate_local_ai_endpoint(
+            value.get("endpoint", default_local_ai_endpoint(adapter_id))
+        )
 
         model = value.get("model")
         workspace = value.get("workspace")
@@ -85,15 +87,14 @@ class LocalRoleBackendConfig:
         if adapter_id == "anythingllm_local":
             if workspace is None or model is not None:
                 raise ValueError("AnythingLLM local roles require workspace and do not accept model")
-        else:
-            if model is None or workspace is not None:
-                raise ValueError("LM Studio/OpenAI local roles require model and do not accept workspace")
+        elif model is None or workspace is not None:
+            raise ValueError("LM Studio/OpenAI local roles require model and do not accept workspace")
 
-        auth_profile = value.get("auth_profile")
-        if auth_profile is not None and (
-            not isinstance(auth_profile, str) or _PROFILE.fullmatch(auth_profile) is None
-        ):
-            raise ValueError("local role auth_profile must be a bounded profile name")
+        credential_env = value.get("credential_env")
+        if credential_env is not None:
+            if not isinstance(credential_env, str):
+                raise ValueError("credential_env must be an environment variable name")
+            validate_environment_name(credential_env)
 
         raw_plugins = value.get("mcp_plugins", [])
         if not isinstance(raw_plugins, list) or len(raw_plugins) > 16:
@@ -123,6 +124,8 @@ class LocalRoleBackendConfig:
             plugins.append(plugin)
         if plugins and adapter_id != "lmstudio_local":
             raise ValueError("NEXUS MCP plugin selection is supported only through LM Studio local roles")
+        if plugins and credential_env is None:
+            raise ValueError("LM Studio mcp.json plugins require credential_env for API authentication")
 
         timeout_seconds = value.get("timeout_seconds", 180)
         if (
@@ -146,7 +149,7 @@ class LocalRoleBackendConfig:
             endpoint=endpoint,
             model=model,
             workspace=workspace,
-            auth_profile=auth_profile,
+            credential_env=credential_env,
             mcp_plugins=tuple(plugins),
             timeout_seconds=float(timeout_seconds),
             max_output_tokens=max_output_tokens,
@@ -159,12 +162,9 @@ class LocalRoleBackendConfig:
             "endpoint": self.endpoint,
             "model": self.model,
             "workspace": self.workspace,
-            "auth_profile": self.auth_profile,
+            "credential_env": self.credential_env,
             "mcp_plugins": [
-                {
-                    "id": plugin.plugin_id,
-                    "allowed_tools": list(plugin.allowed_tools),
-                }
+                {"id": plugin.plugin_id, "allowed_tools": list(plugin.allowed_tools)}
                 for plugin in self.mcp_plugins
             ],
             "timeout_seconds": self.timeout_seconds,
@@ -178,12 +178,7 @@ class LocalRoleBackendConfig:
 
 @dataclass
 class LocalRoleActor:
-    """Local model language backend wrapped around an authoritative deterministic role.
-
-    The wrapped role remains authoritative for seat identity and ballots. The
-    local model supplies phase/direct language only and therefore cannot create
-    a second seat, choose a civic standing ballot, or override Failsafe policy.
-    """
+    """Local model language backend wrapped around an authoritative deterministic role."""
 
     role_id: str
     wrapped: CouncilActor
@@ -200,9 +195,8 @@ class LocalRoleActor:
         return False
 
     def identity_metadata(self) -> dict[str, Any]:
-        wrapped_metadata = self.wrapped.identity_metadata()
         return {
-            **wrapped_metadata,
+            **self.wrapped.identity_metadata(),
             "local_role_backend": self.backend.public_dict(),
             "local_role_id": self.role_id,
             "local_model_language_only": True,
@@ -210,7 +204,6 @@ class LocalRoleActor:
             "local_model_can_change_ballot": False,
             "local_model_can_create_extra_vote": False,
             "local_backend_replayable": False,
-            "fallback_count": self.fallback_count,
         }
 
     def _session_key(self, context: str) -> str:
@@ -228,8 +221,8 @@ class LocalRoleActor:
                 max_output_tokens=self.backend.max_output_tokens,
             )
         except (AdapterError, OSError, TypeError, ValueError):
-            # Optional local enrichment must never make a deterministic system
-            # role less available than it was before local-role configuration.
+            # Local enrichment is optional; deterministic system roles remain
+            # available when a local host/model/MCP tool is down or malformed.
             self.fallback_count += 1
             return fallback
 
@@ -242,10 +235,12 @@ class LocalRoleActor:
             f"{fallback}\n\n"
             "COUNCIL CONTEXT:\n"
             f"{build_phase_prompt(context)}\n\n"
-            "Return only the role's contribution. Do not claim that local inference changes the seat, ballot, "
+            "Return only the role contribution. Do not claim local inference changes the seat, ballot, "
             "citizenship, evidence status, verification result, or authority."
         )
-        session = self._session_key(f"{context.session_id}:{context.phase.value}:{self.member.member_id}")
+        session = self._session_key(
+            f"{context.session_id}:{context.phase.value}:{self.member.member_id}"
+        )
         return self._generate(prompt, session_key=session, fallback=fallback)
 
     def direct_message(
@@ -282,16 +277,16 @@ class LocalRoleActor:
         return self._generate(prompt, session_key=session, fallback=fallback)
 
     def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
-        # Deliberately never call the local model here. Failsafe relief keeps
-        # TEST_FURTHER and the civic proxy keeps the citizen's standing ballot.
+        # Failsafe relief remains TEST_FURTHER and civic proxy remains the
+        # citizen's standing ballot. The local model and MCP tools are not called.
         return self.wrapped.ballot(context)
 
 
 class LocalRoleRegistry:
     """Ephemeral operator-local configuration for optional system-role models."""
 
-    def __init__(self, auth_broker: Any) -> None:
-        self.auth = auth_broker
+    def __init__(self, environment: Mapping[str, str] | None = None) -> None:
+        self.environment = os.environ if environment is None else environment
         self._configs: dict[str, LocalRoleBackendConfig] = {}
 
     def configure(self, role_id: str, backend: Mapping[str, Any]) -> dict[str, Any]:
@@ -310,12 +305,7 @@ class LocalRoleRegistry:
         if role_id not in LOCAL_MODEL_ROLE_IDS:
             raise ValueError("local role id is not admitted")
         removed = self._configs.pop(role_id, None)
-        return {
-            "status": "ok",
-            "role_id": role_id,
-            "removed": removed is not None,
-            "persisted": False,
-        }
+        return {"status": "ok", "role_id": role_id, "removed": removed is not None, "persisted": False}
 
     def status(self) -> dict[str, Any]:
         return {
@@ -335,18 +325,22 @@ class LocalRoleRegistry:
                 "ballots_remain_deterministic": True,
                 "extra_votes_created": 0,
                 "world_state_configuration": False,
+                "raw_credentials_in_configuration": False,
             },
         }
+
+    def _credential(self, config: LocalRoleBackendConfig) -> SecretMaterial | None:
+        if config.credential_env is None:
+            return None
+        token = self.environment.get(config.credential_env)
+        if not isinstance(token, str) or not token:
+            raise ValueError("configured local credential environment variable is unavailable")
+        return SecretMaterial(token)
 
     def wrap(self, role_id: str, actor: CouncilActor) -> CouncilActor:
         config = self._configs.get(role_id)
         if config is None:
             return actor
-        credential = None
-        if config.auth_profile is not None:
-            credential = self.auth.resolve(config.adapter_id, config.auth_profile)
-            if credential is None:
-                raise ValueError("local role auth profile did not resolve a credential")
         return LocalRoleActor(
             role_id=role_id,
             wrapped=actor,
@@ -354,15 +348,10 @@ class LocalRoleRegistry:
             transport=LocalAITransport(
                 config.adapter_id,
                 endpoint=config.endpoint,
-                credential=credential,
+                credential=self._credential(config),
                 timeout_seconds=config.timeout_seconds,
             ),
         )
 
 
-__all__ = [
-    "LOCAL_MODEL_ROLE_IDS",
-    "LocalRoleActor",
-    "LocalRoleBackendConfig",
-    "LocalRoleRegistry",
-]
+__all__ = ["LOCAL_MODEL_ROLE_IDS", "LocalRoleActor", "LocalRoleBackendConfig", "LocalRoleRegistry"]
