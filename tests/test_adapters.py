@@ -71,7 +71,7 @@ class AdapterBoundaryTests(unittest.TestCase):
     def test_remote_ollama_requires_explicit_override(self) -> None:
         transport = OllamaTransport("https://example.com:11434", allow_remote=True)
         self.assertTrue(transport.allow_remote)
-        self.assertIsNone(transport._local_opener)
+        self.assertIsNotNone(transport._local_opener)
 
     def test_local_ollama_does_not_use_environment_proxy(self) -> None:
         class TargetHandler(BaseHTTPRequestHandler):
@@ -212,6 +212,45 @@ class AdapterBoundaryTests(unittest.TestCase):
         self.assertIn("World mode: cultural", transport.last_prompt or "")
         self.assertIn(f"Mode guidance: {guidance}", transport.last_prompt or "")
         self.assertIn("Geometry region: agora", transport.last_prompt or "")
+
+    def test_roman_orator_phase_uses_expansive_prompt_and_bounded_larger_budget(self) -> None:
+        context = PhaseContext(
+            "session",
+            Phase.YELLOW,
+            "Should the forum fund another aqueduct?",
+            "object:" + "a" * 64,
+            {},
+            mode_id="roman_orator",
+            mode_instruction="Use original Roman-orator-inspired rhetoric.",
+            geometry_region_id="agora",
+        )
+        transport = _StubTransport("Romans, councillors, maintainers...")
+        actor = OllamaActor(
+            CouncilMember("CiceroBot", "fixture", adapter_id="ollama"),
+            model="fixture",
+            transport=transport,  # type: ignore[arg-type]
+        )
+        self.assertEqual(actor.respond(context), "Romans, councillors, maintainers...")
+        self.assertEqual(transport.last_options, {"num_predict": 768})
+        self.assertIn("300 to 600 words", transport.last_prompt or "")
+        self.assertNotIn("no more than about 100 words", transport.last_prompt or "")
+
+    def test_roman_orator_direct_message_uses_expansive_prompt_and_bounded_larger_budget(self) -> None:
+        transport = _StubTransport("A long but finite peroration.")
+        actor = OllamaActor(
+            CouncilMember("CiceroBot", "fixture", adapter_id="ollama"),
+            model="fixture",
+            transport=transport,  # type: ignore[arg-type]
+        )
+        result = actor.direct_message(
+            "Rant about package managers.",
+            mode_id="roman_orator",
+            mode_instruction="Use original Roman-orator-inspired rhetoric.",
+            geometry_region_id="agora",
+        )
+        self.assertEqual(result, "A long but finite peroration.")
+        self.assertEqual(transport.last_options, {"num_predict": 1536})
+        self.assertIn("500 to 1,000 words", transport.last_prompt or "")
 
     def test_ollama_ballot_validates_local_schema_budget_and_world_context(self) -> None:
         context = PhaseContext(

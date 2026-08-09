@@ -59,6 +59,7 @@ nexus auth add <adapter> --profile personal --method browser
 nexus auth add <adapter> --profile ssh --method device
 nexus auth add <adapter> --profile ci --method env --env PROVIDER_API_KEY
 nexus auth add <adapter> --profile corp --method external-command \
+  --helper-env PROVIDER_API_KEY \
   --command /absolute/path/to/credential-helper
 nexus auth test <adapter> --profile personal
 nexus auth logout <adapter> --profile personal
@@ -73,6 +74,15 @@ nexus auth add xai --profile personal --method browser-key
 This opens `https://console.x.ai/team/default/api-keys` and reads the generated key through the same hidden prompt as `--method api-key`. It does not run browser OAuth.
 
 `--method api-key` reads from a hidden terminal prompt. There is deliberately no `--api-key VALUE` argument because command-line arguments are commonly retained in shell history and exposed through process inspection.
+
+External helpers receive only a small portability allowlist (`PATH`, locale,
+home and temporary-directory variables), plus `NEXUS_AUTH_ADAPTER` and
+`NEXUS_AUTH_PROFILE`. Provider credentials or other custom variables are not
+ambiently inherited. Each required variable must be named explicitly with a
+repeatable `--helper-env NAME` before `--command`; the profile records only the
+variable name, never its value. Re-enrol an older external-command profile with
+`--replace` and the required `--helper-env` entries if its helper previously
+depended on the ambient broker environment.
 
 The JSONL control protocol does not accept raw credentials and does not expose `auth.add`. Interactive enrollment belongs to the direct operator CLI. JSONL clients may inspect adapters/profiles, request a bounded connection test, and explicitly remove a profile.
 

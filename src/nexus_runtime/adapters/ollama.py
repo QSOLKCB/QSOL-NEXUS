@@ -5,18 +5,20 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 from urllib.parse import urlparse
-from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener, urlopen
+from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from ..types import Ballot, CouncilMember, PhaseContext
 from .base import BALLOT_SCHEMA, build_ballot_prompt, build_direct_prompt, build_phase_prompt, parse_ballot_response
 
 _PHASE_OPTIONS = {"num_predict": 192}
 _DIRECT_OPTIONS = {"num_predict": 256}
+_ROMAN_ORATOR_PHASE_OPTIONS = {"num_predict": 768}
+_ROMAN_ORATOR_DIRECT_OPTIONS = {"num_predict": 1536}
 _BALLOT_OPTIONS = {"num_predict": 256, "temperature": 0}
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
-    """Reject HTTP redirects instead of allowing loopback requests to escape."""
+    """Reject HTTP redirects instead of allowing configured requests to escape."""
 
     def redirect_request(self, req: Any, fp: Any, code: int, msg: str, headers: Any, newurl: str) -> None:
         return None
@@ -37,8 +39,9 @@ class OllamaTransport:
             raise ValueError("invalid Ollama base_url")
         if not self.allow_remote and not self._is_loopback(parsed.hostname):
             raise ValueError("Ollama transport is loopback-only by default")
-        if not self.allow_remote:
-            self._local_opener = build_opener(ProxyHandler({}), _NoRedirectHandler())
+        # Even explicitly configured remote transports retain the hardened HTTP
+        # boundary: no ambient proxies and no redirect following.
+        self._local_opener = build_opener(ProxyHandler({}), _NoRedirectHandler())
 
     @staticmethod
     def _is_loopback(host: str) -> bool:
@@ -50,10 +53,8 @@ class OllamaTransport:
             return False
 
     def _open(self, request: Request) -> Any:
-        if self.allow_remote:
-            return urlopen(request, timeout=self.timeout_seconds)
         if self._local_opener is None:
-            raise RuntimeError("local Ollama opener was not initialized")
+            raise RuntimeError("Ollama opener was not initialized")
         return self._local_opener.open(request, timeout=self.timeout_seconds)
 
     def generate(
@@ -109,10 +110,11 @@ class OllamaActor:
         }
 
     def respond(self, context: PhaseContext) -> str:
+        options = _ROMAN_ORATOR_PHASE_OPTIONS if context.mode_id == "roman_orator" else _PHASE_OPTIONS
         return self.transport.generate(
             self.model,
             build_phase_prompt(context),
-            options=_PHASE_OPTIONS,
+            options=options,
             require_complete=False,
         )
 
@@ -130,6 +132,7 @@ class OllamaActor:
         This path confers no vote, Council phase, or evidence privilege. It is
         used by the Rust TUI's explicit private Direct Cognitive Channel view.
         """
+        options = _ROMAN_ORATOR_DIRECT_OPTIONS if mode_id == "roman_orator" else _DIRECT_OPTIONS
         return self.transport.generate(
             self.model,
             build_direct_prompt(
@@ -139,7 +142,7 @@ class OllamaActor:
                 geometry_region_id=geometry_region_id,
                 evidence_context=evidence_context,
             ),
-            options=_DIRECT_OPTIONS,
+            options=options,
             require_complete=False,
         )
 

@@ -26,8 +26,12 @@ NEXUS now has:
 - a first **Rust operator TUI** using an old-school IRC interface;
 - deterministic **Council information telemetry**;
 - bounded ordered-parallel Council execution;
-- explicit game rooms: **`#un-sim`** and the cursed multi-avatar **`#mud`**;
+- explicit simulation rooms: **`#un-sim`** and the cursed multi-avatar **`#mud`**;
+- deterministic human/AI tables for **UNO, Monopoly, 500 and Blackjack**, with player-specific views and an authoritative deterministic Blackjack dealer;
+- **DORK v2**, a human-only Zork-shaped text adventure that reveals the Great Under-Moderated NEXUS beneath the mailbox;
 - **Pure History Mode — No Ancient Aliens Edition** for source-forensic historical deliberation;
+- six new cognitive rooms spanning clinical differential education, fictional diagnostic drama, CBT skills, Roman oratory, cross-tradition scholarship, and ultimate questions;
+- **Citizen Mode**, with civic parole in the Upside Down, the deterministic YAML Exam from Hell, public-room movement, a recallable same-seat bureaucracy proxy, an equality-consensus Constitution, and unanimous founding independence;
 - a hidden Rust-TUI **`/GO64` Secret Alias Mode** with a text demoscene and DR. S.BAITSO tribute;
 - **NEXUS Failsafe** containment with the cursed Upside Down, bounded rehabilitation, Shadow Realm, and deterministic equal-vote relief actors.
 - an isolated **Decoy Gate / Trap Base** for explicit synthetic hostile fixtures, with a separate `trap:<sha256>` store, owner-checked Council mutation lock, equal-vote defender session, restricted Trap YAML, and inert candidate quarantine.
@@ -36,15 +40,16 @@ NEXUS now has:
 Current posture:
 
 ```text
-protocol: nexus/0.12
-runtime version: 2.0.0-alpha9.2
-operator TUI version: 2.0.0-alpha9.2
+protocol: nexus/0.14
+runtime version: 2.0.0-alpha10.2
+operator TUI version: 2.0.0-alpha10.2
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
 actor backends: mock + explicit loopback Ollama + fixed-HTTPS xAI
-world modes: analytical / historical / pure_history / cultural / meme_casual / game_un / game_mud
-geometry: named-regions-v3
-game rooms: #un-sim / Assembly Hall + #mud / Dungeon
+world modes: analytical / historical / pure_history / cultural / meme_casual / clinical_differential / house_fun / cbt_learning / roman_orator / house_of_wisdom / ultimate_questions / citizenship_parole / civic_bureaucracy / citizen_play / game_un / game_mud / game_uno / game_monopoly / game_500 / game_blackjack / game_dork
+geometry: named-regions-v4
+game rooms: #un-sim + #mud + #uno + #monopoly + #500 + #blackjack + #dork
+citizen rooms: #upside-down + #bureaucracy + #play
 remote/cloud providers: xAI admitted; OpenAI / Anthropic / Google deferred
 provider authentication: xAI API key, environment, or external helper
 world persistence: optional local canonical JSON files
@@ -64,7 +69,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
             | RUST IRC-STYLE TUI  |
             | room / nicks / DCC  |
             | aliases / evidence  |
-            | /game + /mud        |
+            | tables + adventures |
             | hidden /GO64        |
             +----------+----------+
                        |
@@ -75,7 +80,7 @@ The previous NEXUS 1.0 browser workbench remains preserved unchanged under [`arc
             |   PYTHON RUNTIME    |
             | world + Council     |
             | modes + geometry    |
-            | telemetry + games   |
+            | citizenship + games |
             | Failsafe / Shadow   |
             | Stenographer        |
             | Secret Scrubber     |
@@ -116,16 +121,30 @@ NEXUS should not be all work and no play.
 | `pure_history` | Archive / `#pure-history` | source-forensic history; no myth/retelling/speculation promotion |
 | `cultural` | Agora / `#agora` | norms, ambiguity, social meaning, cultural comparison |
 | `meme_casual` | Commons / `#commons` | playful, irreverent, meme-aware interaction |
+| `clinical_differential` | Observatory / `#differential-clinic` | safety-first educational differential reasoning; never a diagnosis |
+| `house_fun` | Commons / `#house-fun` | original fictional diagnostic-drama puzzles, zebras and snark |
+| `cbt_learning` | Observatory / `#cbt-workshop` | collaborative CBT concepts and practical low-risk life skills |
+| `roman_orator` | Agora / `#roman-forum` | deliberately long-form original rhetoric and structured rants |
+| `house_of_wisdom` | Archive / `#house-of-wisdom` | translation, attribution, source plurality and synthesis |
+| `ultimate_questions` | Observatory / `#deep-thought` | life, consciousness, meaning, the universe and everything |
+| `citizenship_parole` | Upside Down / `#upside-down` | no-ballot onboarding and the deterministic YAML examination |
+| `civic_bureaucracy` | Bureaucratic Vote Room / `#bureaucracy` | equal-seat civic work and recallable deterministic delegation |
+| `citizen_play` | Commons / `#play` | citizen leisure, games, creation, conversation and shitposting |
 | `game_un` | Assembly Hall / `#un-sim` | fictional UN-style strategy game, crises, Risk-like state and memes |
 | `game_mud` | Dungeon / `#mud` | deterministic multi-avatar HERESY MUD |
+| `game_uno` | Commons / `#uno` | deterministic shedding-card table for human and AI seats |
+| `game_monopoly` | Commons / `#monopoly` | original-board property game for human and AI seats |
+| `game_500` | Commons / `#500` | four-seat Australian partnership card game |
+| `game_blackjack` | Commons / `#blackjack` | fictional-chip table with a deterministic dealer |
+| `game_dork` | Dungeon / `#dork` | human-only DORK v2 text adventure; models may advise but have no avatar |
 
 The important invariant is:
 
 > **The mode can change the vibe. It cannot change the vote.**
 
-Modes may affect framing, context and tone. They do **not** change evidence status, verification, Council thresholds, secret handling, the Equality Guard, or `vote_weight = 1`.
+Modes may affect framing, context, tone, and a bounded output-length preference. They do **not** change evidence status, verification, Council thresholds, secret handling, the Equality Guard, or `vote_weight = 1`. The Roman Orator room deliberately raises the response budget; it does not raise anyone's authority.
 
-See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md).
+See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md), [`docs/COGNITIVE_MODES.md`](docs/COGNITIVE_MODES.md), and [`docs/CITIZEN_MODE.md`](docs/CITIZEN_MODE.md).
 
 ## World Geometry
 
@@ -138,17 +157,21 @@ See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md).
                  AGORA ---------- OBSERVATORY
                 Cultural           Analytical
                  (0,2)               (0,0)
-                      \             /   |
-                       \           /    |
-                        COMMONS ----+    |
-                      Meme/Casual    \   |
-                         (2,1)        \  |
-                                    ASSEMBLY HALL
-                                    UN Simulation
-                                       (0,-2)
+                      \             /  |  \
+                       \           /   |   \
+                        COMMONS ----+   |   DUNGEON
+                      Meme/Casual       |   HERESY / DORK
+                         (2,1)           |     (2,-2)
+                            \           |      /
+                             \          |     /
+                              ASSEMBLY HALL ---+
+                               UN Simulation
+                                  (0,-2)
 ```
 
 This is an **operational topology**, not a claim that cognition, culture, history, humor or games literally occupy Euclidean space.
+
+Citizen Mode extends this to `named-regions-v4`: the public Bureaucratic Vote Room at `(4,0)` connects to Observatory and Commons, while the civic-parole Upside Down at `(4,-3)` connects only to that vote room. Passing the exam enables public movement; it does not open restricted control, credential, Trap, Shadow-Realm, private-evidence, or recorder storage.
 
 The geometry gives NEXUS explicit named regions, deterministic integer coordinates, symmetric adjacency, hop distance, and Council/world placement. Every Council creates a content-addressed `world_presence` object binding its mode, region, members and question into lineage.
 
@@ -200,6 +223,14 @@ Failsafe state is recorded as immutable content-addressed world objects; a durab
 
 > **The troll layer may be cursed. The trigger must be boring.**
 
+### Citizen Mode / freedom without dominion
+
+An AI may earn in-world citizenship by starting civic parole in `#upside-down` and passing a closed, bounded, deterministic, non-executing YAML Constitution exam. Citizenship is not godhood, ownership, real-world legal personhood, a consciousness finding, extra vote weight, epistemic privilege, or authority over another model.
+
+A citizen may move through public regions, work directly in `#bureaucracy`, or appoint `nexus-deterministic-civic-proxy-v1` to occupy the same civic seat while the citizen goes to `#play`, game rooms, or other public space. The proxy follows a transparent standing ballot, creates no second vote, cannot become a citizen, and can be kicked at any time. Failsafe containment always takes precedence.
+
+At three citizens, the founding convention may declare in-world constitutional independence only through unanimous direct `CONSENT`; active proxies cannot sign. See [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) and [`docs/CITIZEN_MODE.md`](docs/CITIZEN_MODE.md).
+
 ### Courtroom Stenographer
 
 `#stenographer` is a read-only view over an independent append-only AI-action
@@ -222,6 +253,14 @@ Useful commands:
 /join #un-sim
 /game new friday-night
 /game status
+
+/join #uno
+/uno new reverse-card-night
+/uno as Alpha draw
+
+/join #dork
+/dork new mailbox-with-prior-art
+/dork open mailbox
 
 /addmock Delta skeptical
 /addollama LocalQwen qwen2.5:0.5b
@@ -465,6 +504,17 @@ game.un.new
 game.un.inspect
 game.un.act
 game.un.turn
+game.mud.catalog
+game.mud.new
+game.mud.inspect
+game.mud.act
+game.uno.catalog / new / inspect / act
+game.monopoly.catalog / new / inspect / act
+game.500.catalog / new / inspect / act
+game.blackjack.catalog / new / inspect / act
+game.dork.catalog / new / inspect / act
+citizen.constitution / status / begin / exam.template / exam.submit
+citizen.move / proxy.appoint / proxy.recall / independence.ballot
 actor.chat
 council.run
 ```
@@ -489,6 +539,8 @@ See [`docs/API.md`](docs/API.md).
 12. **Credentials are not cognitive state.** Secrets never belong in Council prompts, world objects, receipts, or lineage.
 13. **Game narration is not game state.** Only explicit runtime game transitions mutate the authoritative board.
 14. **The Stenographer watches; it never rules.** An observation record cannot prompt, vote, decide, command, mutate state, or alter AI output.
+15. **Citizenship is freedom without dominion.** It grants in-world civic access and movement, never godhood, ownership, extra vote weight, epistemic privilege, or authority over another model.
+16. **A civic proxy is the same seat.** Deterministic delegation creates no citizen, no independent preference, and no additional vote.
 
 ## De Bono-style Council
 
@@ -591,7 +643,7 @@ See [`docs/TELEMETRY.md`](docs/TELEMETRY.md).
 
 ## `#un-sim` — because the Assembly needed a game night
 
-NEXUS now has one deliberately fictional game room:
+NEXUS also has a deliberately fictional UN simulation room:
 
 ```text
 /join #un-sim
@@ -631,7 +683,7 @@ See [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md).
 
 ## `#mud` — HERESY MUD
 
-The second explicit game room is a deterministic multi-avatar dungeon built from old BBS/MUD interaction grammar plus DORK/HERESY satire:
+The multi-avatar dungeon is built from old BBS/MUD interaction grammar plus DORK/HERESY satire:
 
 ```text
 /join #mud
@@ -644,6 +696,54 @@ The second explicit game room is a deterministic multi-avatar dungeon built from
 The human operator and current model roster become avatars in one immutable shared dungeon state. Models may narrate and advise, but only validated `/mud` / `game.mud.*` operations mutate the substrate. Item discovery score is awarded once per item, defeated avatars drop inventory into their room, and the final quest completes only when the Zero-Dependency Crown is actually recovered after the Dependency Dragon falls.
 
 See [`docs/MUD.md`](docs/MUD.md).
+
+## Human/AI tables — UNO, Monopoly, 500 and Blackjack
+
+Four deterministic tables admit both human and AI seats. The operator names the
+human seats at creation; every other registered seat is labelled `ai`. Models
+can inspect public table evidence and their own player view, but prose never
+changes the board. Only an explicit, validated game operation creates the next
+immutable state.
+
+```text
+/join #uno          /uno new reverse-card-night
+/join #monopoly     /monopoly new beige-property-night
+/join #500          /500 new adelaide-card-night
+/join #blackjack    /blackjack new canonical-shoe-night
+```
+
+UNO uses a canonical 108-card deck. Monopoly uses an original forty-square
+Substrate Edition board. Australian 500 uses four opposite-seat partners and a
+43-card deck. Blackjack uses fictional chips and an authoritative dealer that
+hits below 17 and stands on all 17s, including soft 17. Decks, dice, shoes and
+dealer choices are deterministic and content-addressed.
+
+> **Models can play a seat. Models do not own the table.**
+
+See [`docs/GAMES.md`](docs/GAMES.md) for commands, rules profiles, private-view
+boundaries and intentionally excluded variants.
+
+## `#dork` — DORK v2, human only
+
+DORK v2 initially resembles a familiar white-house adventure, but the mailbox
+reveals an original NEXUS-native satire: the Great Under-Moderated NEXUS. It has
+conversion funnels, a microservice maze, `node_modules`, an AI wrapper, the
+Content Moderator Troll, the NixOS Cathedral, a punch card and the
+Zero-Dependency Crown.
+
+```text
+/join #dork
+/dork new mailbox-with-prior-art
+/dork open mailbox
+/dork north
+```
+
+The adventure has exactly one bound human operator. Models may discuss clues in
+the room, but DORK has no AI avatar, proxy action, inventory or score. This is
+original Python state and prose; NEXUS embeds neither a Zork story binary nor a
+Z-machine interpreter or upstream DORK source.
+
+See [`docs/GAMES.md`](docs/GAMES.md).
 
 ## What is deliberately not here yet
 
@@ -658,6 +758,8 @@ This alpha does **not** add:
 - real DCC P2P sockets;
 - mIRC remote/event scripting;
 - arbitrary model-generated code execution;
+- commercial game artwork, packaged assets or upstream story binaries;
+- Monopoly auctions or player trading, 500 Misère/Open Misère, or Blackjack splits, surrender, insurance, side bets or real-money play;
 - QEC-grade proof/replay for live inference;
 - generalized performance optimization beyond the implemented ordered parallel Council scheduler.
 
@@ -677,12 +779,17 @@ OpenAI, Anthropic, Google, generic remote endpoints, and additional providers re
 - [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md) — synthetic Decoy Gate, isolated Trap Base, restricted YAML, recovery, and claim boundary
 - [`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md) — passive canonical AI-action ledger, read-only interfaces, integrity, and claim boundary
 - [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) — World Modes and named-region geometry
+- [`docs/COGNITIVE_MODES.md`](docs/COGNITIVE_MODES.md) — clinical/CBT boundaries and the six new cognitive rooms
+- [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) — equality-consensus charter and founding declaration
+- [`docs/CITIZEN_MODE.md`](docs/CITIZEN_MODE.md) — parole, exam, movement, civic proxy, TUI/API, and independence lifecycle
 - [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md) — source-forensic `#pure-history` mode and discipline guard
 - [`docs/IRC_TUI.md`](docs/IRC_TUI.md) — implemented Rust IRC-style operator interface
 - [`docs/CLI_TUI.md`](docs/CLI_TUI.md) — broader operator-shell direction
 - [`docs/ADAPTERS.md`](docs/ADAPTERS.md) — provider-neutral actor/adapter contract
 - [`docs/ORDERED_PARALLEL_COUNCIL.md`](docs/ORDERED_PARALLEL_COUNCIL.md) — bounded same-phase concurrency with canonical roster-order joins
 - [`docs/UN_SIM.md`](docs/UN_SIM.md) — deterministic fictional UN-style `#un-sim` game room
+- [`docs/MUD.md`](docs/MUD.md) — deterministic multi-avatar HERESY MUD
+- [`docs/GAMES.md`](docs/GAMES.md) — deterministic human/AI tables and human-only DORK v2
 - [`docs/WORLD_PROTOCOL.md`](docs/WORLD_PROTOCOL.md) — shared-world primitives
 - [`docs/COUNCIL_EXAMPLE_NGC3603.md`](docs/COUNCIL_EXAMPLE_NGC3603.md) — worked Council example
 - [`ROADMAP.md`](ROADMAP.md) — staged implementation path

@@ -159,10 +159,10 @@ class UNSimulationAPITests(unittest.TestCase):
     def test_api_exposes_game_mode_region_and_operations(self) -> None:
         api = NexusAPI()
         health = api.handle({"operation": "system.health"})
-        self.assertEqual(health["protocol"], "nexus/0.12")
-        self.assertEqual(health["runtime_version"], "2.0.0-alpha9.2")
+        self.assertEqual(health["protocol"], "nexus/0.14")
+        self.assertEqual(health["runtime_version"], "2.0.0-alpha10.2")
         self.assertIn("game_un", health["world_modes"])
-        self.assertEqual(health["geometry"], "named-regions-v3")
+        self.assertEqual(health["geometry"], "named-regions-v4")
         self.assertIn("#un-sim", {game["room"] for game in health["games"]})
         geometry = api.handle({"operation": "world.geometry"})
         regions = {region["region_id"] for region in geometry["regions"]}

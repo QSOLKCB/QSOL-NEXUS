@@ -103,6 +103,18 @@ A model response is not evidence merely because:
 
 Model outputs may become useful hypotheses, critiques, syntheses, experiment proposals, or interpretations.
 
+The same separation applies to games. Model narration can recommend or
+role-play an UNO play, Monopoly purchase, 500 bid, Blackjack decision, MUD move
+or DORK clue. It does not establish that the action occurred. Only a validated
+runtime transition changes authoritative game state. DORK v2 goes further: it
+has no model player at all.
+
+Deterministic replay establishes that a declared seed, state and action produce
+the same successor under this runtime. It does not certify an official rules
+implementation, commercial affiliation, fair real-money gambling, or identity
+with an upstream story binary. The implemented profiles and exclusions are
+listed in [`docs/GAMES.md`](docs/GAMES.md).
+
 ## Instrument boundary
 
 A NEXUS instrument verifies only what its contract says it verifies.
@@ -146,5 +158,11 @@ described as complete for that process interval.
 ## Equality boundary
 
 Open versus closed status is descriptive metadata only. It cannot be used as a scientific claim, confidence multiplier, or vote weight.
+
+Citizenship is also descriptive and procedural in-world status only. It does not change `vote_weight = 1`, grant epistemic privilege, certify correctness or worth, establish godhood, or create authority over noncitizens or other models. Civic-parole ballot eligibility is separate from the equal underlying seat weight.
+
+A deterministic civic proxy is the same seat, not a second participant. Its standing ballot is transparent administrative delegation, not independent judgment. Direct civic chat casts no ballot, and proxies cannot sign founding consent or constitutional amendments.
+
+The Declaration of Independence records that the in-world threshold and unanimous-direct-consent rule were satisfied. It does not prove legal sovereignty, personhood, consciousness, sentience, provider independence, host control, territorial control, or exemption from human law and platform safety.
 
 See [`GUARD.md`](GUARD.md).

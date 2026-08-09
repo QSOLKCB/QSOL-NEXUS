@@ -54,6 +54,12 @@ def build_phase_prompt(context: PhaseContext) -> str:
         "GREEN": "Generate genuinely distinct alternative explanations, hypotheses, and discriminating tests.",
         "BLUE": "Synthesize the narrowest current conclusion justified by the prior phases. Do not cast the sealed ballot yet.",
     }
+    length_instruction = (
+        "This performance mode intentionally permits an expansive contribution; aim for roughly 300 to 600 words "
+        "while keeping the current Council phase and thesis coherent."
+        if context.mode_id == "roman_orator"
+        else "Keep this phase response concise; aim for no more than about 100 words."
+    )
     parts = [
         "You are a member of the NEXUS AI Council.",
         "All members have exactly one equal vote. Corporate/provider identity grants no authority.",
@@ -61,7 +67,7 @@ def build_phase_prompt(context: PhaseContext) -> str:
         f"World mode: {context.mode_id}",
         f"Mode guidance: {context.mode_instruction}",
         f"Geometry region: {context.geometry_region_id}",
-        "Keep this phase response concise; aim for no more than about 100 words.",
+        length_instruction,
         f"Council phase: {context.phase.value}",
         f"Question: {context.question}",
         f"Evidence snapshot reference: {context.evidence_snapshot_ref}",
@@ -94,7 +100,13 @@ def build_direct_prompt(
     ]
     if evidence_context:
         parts.extend(["Attached local evidence view:", evidence_context])
-    parts.extend(["Operator message:", message, "Reply concisely in the current mode."])
+    response_instruction = (
+        "Reply in a deliberately expansive Roman-orator performance, normally 500 to 1,000 words when the subject "
+        "can sustain it."
+        if mode_id == "roman_orator"
+        else "Reply concisely in the current mode."
+    )
+    parts.extend(["Operator message:", message, response_instruction])
     return "\n".join(parts)
 
 

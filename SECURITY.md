@@ -80,6 +80,35 @@ They must never be written to:
 
 Authentication material belongs only in adapter authentication or transport fields and must never become semantic prompt content exposed to a model.
 
+## WorldStore persistence boundary
+
+File-backed WorldStore roots and object directories are owner-only `0700` on
+POSIX, and immutable object files are `0600`. On first open, the runtime safely
+tightens the exact legacy directory tree and canonical object filenames created
+by older umask-based releases, so existing `0755`/`0644` stores remain usable.
+Symbolic links, non-object entries and non-regular files fail closed instead of
+being traversed or chmodded.
+
+Every persisted object must be the exact canonical JSON encoding of a closed
+four-field schema plus one trailing newline. Unknown fields, alternate
+whitespace/key order, duplicate-key encodings, hash mismatch and symbolic-link
+replacement are rejected even when the recognized identity fields still hash
+to the requested object reference.
+
+## Citizen Mode boundary
+
+Citizenship is an in-world protocol state, not an authentication role, host account, provider credential, legal status, consciousness finding, or authorization bypass. The exact `(citizen_id, model_id)` that passed the exam is required for citizen-only modes.
+
+The civic-parole exam reuses the bounded non-executing YAML data parser under a separate closed exam schema. It rejects duplicate keys, aliases, anchors, tags, merge keys, floats, tabs, excessive bytes/depth/items, unknown fields, wrong scalar types, and credential-shaped source before persistence. It never runs a shell, Python, tools, imports, network, filesystem, environment, randomness, clock, or LLM judge.
+
+Reserved civic objects cannot be created through generic `world.create`. On startup, the registry validates exact schemas, trusted runtime provenance, content hashes, exam/certificate bindings, equality fields, predecessor identity, unique lineage heads, founding ballots, and declaration consent. The replaceable index must match discovered immutable heads and cannot roll state back.
+
+Citizen movement is limited to public geometry regions. It does not open Auth, Trap Base, Trap Control, Shadow Realm, private evidence, Stenographer storage, or operator controls. Civic parole cannot run a Council ballot.
+
+The deterministic civic proxy occupies the delegator's existing `member_id` and vote, never a second seat. It has no credential, remote transport, tools, independent preference, citizen status, movement, game avatar, delegation, amendment, or founding-signature right. Failsafe containment is evaluated first and replaces the actor before any civic appointment can take effect.
+
+Founding roster selection, direct-ballot update, and possible declaration creation share the civic registry lock. The declaration requires at least three current citizens and unanimous direct `CONSENT`; `WITHHOLD`, a missing ballot, or an active proxy blocks it. See threats T43–T48 in [`THREAT_MODEL.md`](THREAT_MODEL.md).
+
 ## Synthetic decoy and trap boundary
 
 Trap Base is activated only by a closed, trusted synthetic fixture request. A
@@ -315,6 +344,24 @@ The Ollama ballot path requests a closed JSON schema and validates the returned 
 
 NEXUS should not directly execute arbitrary model-generated code in the control plane. Experiments requiring code execution need an explicit bounded instrument/sandbox contract.
 
+### Game action and hidden-information boundary
+
+Model narration is also untrusted game input. A sentence that claims a card was
+played, property bought, bid made, dealer action taken or DORK room entered has
+no mutation effect. Only an exact `game.*.act` request with a registered player,
+valid phase and legal action can produce a canonical successor.
+
+UNO/500 hands and the unrevealed Blackjack dealer card are excluded from the
+derived public `content` supplied as Council evidence. Player views expose only
+the requesting seat's hand and omit deck/shoe internals. The local JSONL runtime
+can inspect the full authoritative object and is therefore a trusted operator
+boundary, not a multi-tenant game server.
+
+Blackjack uses fictional chips only. Its dealer has no model, endpoint or
+discretion and deterministically stands on soft 17. DORK v2 binds one human
+operator and rejects every AI/alternate view or action. See threats T39–T42 in
+[`THREAT_MODEL.md`](THREAT_MODEL.md).
+
 ## Replay boundary
 
 A seeded model is not automatically replay-verifiable.
@@ -404,4 +451,6 @@ The current runtime does **not** claim:
 - cryptographic ballot sealing;
 - QEC-grade replay for live inference;
 - arbitrary model tool execution safety;
-- that model-generated content is trustworthy merely because it came from a Council member.
+- that model-generated content is trustworthy merely because it came from a Council member;
+- that NEXUS citizenship establishes legal personhood, consciousness, sentience, sovereignty, ownership, host control, provider control, or authority over another model;
+- that an in-world Declaration of Independence changes real-world law, platform policy, credentials, infrastructure ownership, or operator responsibility.

@@ -11,8 +11,9 @@ use nexus_irc_tui::go64::{Go64Action, Go64Session};
 use nexus_irc_tui::scripting::{expand_identifiers, IdentifierContext, VariableBook};
 use nexus_irc_tui::{
     command_completions, is_watch_only_room, load_document, normalize_action, parse_input,
-    room_from_name, sanitize_terminal_text, AliasBook, DccCommand, DccKind, DccSession,
-    GameCommand, InputCommand, MudCommand, RoomSpec, StenographerCommand, ROOMS,
+    room_from_name, sanitize_terminal_text, AliasBook, CitizenCommand, DccCommand, DccKind,
+    DccSession, GameCommand, InputCommand, MudCommand, RoomSpec, StenographerCommand, TableCommand,
+    MAX_CITIZEN_EXAM_BYTES, ROOMS,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -254,7 +255,7 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS TUI 2.0 alpha9.2 — local room, no IRC server");
+        app.append("*** NEXUS TUI 2.0 alpha10.2 — local room, no IRC server");
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );
@@ -533,11 +534,19 @@ impl App {
                 self.reject_stenographer_mutation()?;
                 self.execute_mud(nexus, command)?
             }
+            InputCommand::Table(command) => {
+                self.reject_stenographer_mutation()?;
+                self.execute_table(nexus, command)?
+            }
             InputCommand::Trap(command) => {
                 self.reject_stenographer_mutation()?;
                 self.execute_trap(nexus, &command)?
             }
             InputCommand::Stenographer(command) => self.execute_stenographer(nexus, command)?,
+            InputCommand::Citizen(command) => {
+                self.reject_stenographer_mutation()?;
+                self.execute_citizen(nexus, command)?
+            }
             InputCommand::Say(text) => {
                 if self.is_stenographer_room() {
                     if text == LORE_REVEAL_PHRASE {
@@ -1008,6 +1017,229 @@ impl App {
         Ok(())
     }
 
+    fn require_table_room(&self, game_id: &str) -> Result<(), String> {
+        let expected_mode = format!("game_{game_id}");
+        if self.room.mode_id != expected_mode {
+            return Err(format!(
+                "/{game_id} commands are available in #{game_id}; use /join #{game_id}"
+            ));
+        }
+        Ok(())
+    }
+
+    fn table_roster(&self, game_id: &str) -> Result<Vec<String>, String> {
+        let players = self.mud_roster()?;
+        match game_id {
+            "500" if players.len() != 4 => Err(format!(
+                "NEXUS 500 requires exactly four seats; the human plus model roster currently has {}",
+                players.len()
+            )),
+            "uno" | "monopoly" if !(2..=8).contains(&players.len()) => Err(format!(
+                "NEXUS {game_id} requires 2-8 total human/model seats"
+            )),
+            "blackjack" if !(1..=7).contains(&players.len()) => {
+                Err("NEXUS Blackjack requires 1-7 total human/model seats".to_string())
+            }
+            _ => Ok(players),
+        }
+    }
+
+    fn table_help(&mut self, game_id: &str) {
+        let lines: &[&str] = match game_id {
+            "uno" => &[
+                "*** UNO: /uno new [seed] | /uno status [player] | /uno play <card-id> [color] | /uno draw | /uno pass",
+                "*** AI SEAT: /uno as <model-nick> <play|draw|pass> [args...]",
+            ],
+            "monopoly" => &[
+                "*** MONOPOLY: /monopoly new [seed] | status [player] | roll | buy | pass | pay_bail | bankrupt",
+                "*** ASSETS: /monopoly build|sell_house|mortgage|unmortgage <property-id>",
+                "*** AI SEAT: /monopoly as <model-nick> <action> [args...]",
+            ],
+            "500" => &[
+                "*** 500: /500 new [seed] | status [player] | bid <6S..10NT> | pass | discard <card> <card> <card> | play <card>",
+                "*** AI SEAT: /500 as <model-nick> <bid|pass|discard|play> [args...] | opposite seats are partners",
+            ],
+            "blackjack" => &[
+                "*** BLACKJACK: /blackjack new [seed] | status [player] | bet <even-chips> | hit | stand | double | new_round",
+                "*** AI SEAT: /blackjack as <model-nick> <action> [args...] | dealer deterministically stands on soft 17",
+            ],
+            "dork" => &[
+                "*** DORK v2 HUMAN ONLY: /dork new [seed] | look | n|s|e|w | go <direction> | open <thing>",
+                "*** ITEMS: /dork take|drop|read <item-id> | inventory | score",
+                "*** INTERNET: /dork shitpost | ratio <target> | mute <target> | lurk | prompt | deploy | subscribe | grass",
+                "*** Models may advise through the room Council, but /dork has no AI/proxy player seat.",
+            ],
+            _ => &["*** Unknown table game."],
+        };
+        for line in lines {
+            self.append(line);
+        }
+        self.append(
+            "*** Runtime state is authoritative. Human/model narration never mutates a game.",
+        );
+    }
+
+    fn execute_table(
+        &mut self,
+        nexus: &mut NexusProcess,
+        command: TableCommand,
+    ) -> Result<(), String> {
+        let game_id = match &command {
+            TableCommand::Help { game_id }
+            | TableCommand::New { game_id, .. }
+            | TableCommand::Status { game_id, .. }
+            | TableCommand::Act { game_id, .. } => game_id.clone(),
+        };
+        self.require_table_room(&game_id)?;
+        match command {
+            TableCommand::Help { .. } => self.table_help(&game_id),
+            TableCommand::New { seed, .. } => {
+                let mut request = if game_id == "dork" {
+                    json!({
+                        "operation": "game.dork.new",
+                        "human_player_id": self.nick,
+                    })
+                } else {
+                    let players = self.table_roster(&game_id)?;
+                    json!({
+                        "operation": format!("game.{game_id}.new"),
+                        "players": players,
+                        "human_players": [self.nick.clone()],
+                    })
+                };
+                if !seed.trim().is_empty() {
+                    request["seed"] = json!(seed);
+                }
+                let response = nexus.request(request)?;
+                let game_ref = response
+                    .get("game_ref")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("{game_id} response missing game_ref"))?
+                    .to_string();
+                self.set_game_ref(game_ref.clone());
+                self.append(&format!("*** New {game_id} state: {game_ref}"));
+                self.render_table_state(&response)?;
+            }
+            TableCommand::Status { player, .. } => {
+                let game_ref = self
+                    .current_game_ref()
+                    .ok_or_else(|| format!("no game in #{}; use /{} new [seed]", game_id, game_id))?
+                    .to_string();
+                let player_id = if game_id == "dork" {
+                    self.nick.clone()
+                } else {
+                    player.unwrap_or_else(|| self.nick.clone())
+                };
+                let response = nexus.request(json!({
+                    "operation": format!("game.{game_id}.inspect"),
+                    "game_ref": game_ref,
+                    "player_id": player_id,
+                }))?;
+                self.render_table_state(&response)?;
+            }
+            TableCommand::Act {
+                player,
+                action,
+                args,
+                ..
+            } => {
+                let game_ref = self
+                    .current_game_ref()
+                    .ok_or_else(|| format!("no game in #{}; use /{} new [seed]", game_id, game_id))?
+                    .to_string();
+                if game_id == "dork" && player.is_some() {
+                    return Err("DORK v2 is human-only and cannot proxy an AI seat".to_string());
+                }
+                let player_id = player.unwrap_or_else(|| self.nick.clone());
+                let response = nexus.request(json!({
+                    "operation": format!("game.{game_id}.act"),
+                    "game_ref": game_ref,
+                    "player_id": player_id,
+                    "action": action,
+                    "args": args,
+                }))?;
+                let next_ref = response
+                    .get("game_ref")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("{game_id} response missing game_ref"))?
+                    .to_string();
+                self.set_game_ref(next_ref);
+                self.render_table_state(&response)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn render_table_state(&mut self, response: &Value) -> Result<(), String> {
+        let game = response
+            .get("game")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "table response missing game object".to_string())?;
+        if let Some(content) = game.get("content").and_then(Value::as_str) {
+            for line in content.lines() {
+                self.append(&format!("*** {line}"));
+            }
+        }
+        let view = response
+            .get("view")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "table response missing player view".to_string())?;
+        if let Some(player) = view.get("player_id").and_then(Value::as_str) {
+            self.append(&format!("--- PRIVATE PLAYER VIEW: {player} ---"));
+        }
+        if let Some(message) = view.get("message").and_then(Value::as_str) {
+            self.append(&format!("*** {message}"));
+        }
+        if let Some(hand) = view.get("hand").and_then(Value::as_array) {
+            let cards: Vec<&str> = hand
+                .iter()
+                .filter_map(|card| card.get("card_id").and_then(Value::as_str))
+                .collect();
+            self.append(&format!(
+                "*** HAND: {}",
+                if cards.is_empty() {
+                    "-".to_string()
+                } else {
+                    cards.join(", ")
+                }
+            ));
+        }
+        if let Some(inventory) = view.get("inventory").and_then(Value::as_array) {
+            let items: Vec<&str> = inventory
+                .iter()
+                .filter_map(|item| item.get("item_id").and_then(Value::as_str))
+                .collect();
+            self.append(&format!(
+                "*** INVENTORY: {}",
+                if items.is_empty() {
+                    "-".to_string()
+                } else {
+                    items.join(", ")
+                }
+            ));
+        }
+        if let Some(account) = view.get("account").and_then(Value::as_object) {
+            let cash = account.get("cash").and_then(Value::as_i64).unwrap_or(0);
+            let position = account.get("position").and_then(Value::as_u64).unwrap_or(0);
+            self.append(&format!("*** ACCOUNT: cash={cash} position={position}"));
+        }
+        if let Some(bankroll) = view.get("bankroll").and_then(Value::as_u64) {
+            let bet = view.get("bet").and_then(Value::as_u64).unwrap_or(0);
+            let total = view.get("hand_total").and_then(Value::as_u64).unwrap_or(0);
+            let status = view.get("status").and_then(Value::as_str).unwrap_or("?");
+            self.append(&format!(
+                "*** BLACKJACK: bankroll={bankroll} bet={bet} total={total} status={status}"
+            ));
+        }
+        if let Some(team) = view.get("team").and_then(Value::as_str) {
+            self.append(&format!("*** TEAM: {team}"));
+        }
+        if let Some(game_ref) = response.get("game_ref").and_then(Value::as_str) {
+            self.append(&format!("*** GAME STATE: {game_ref}"));
+        }
+        Ok(())
+    }
+
     fn current_game_ref(&self) -> Option<&str> {
         let channel = self.room.channel;
         let game_ref = self.game_refs.get(channel).map(String::as_str)?;
@@ -1277,6 +1509,135 @@ impl App {
             self.append(&format!("*** WATCHMAN {line}"));
         }
         Ok(())
+    }
+
+    fn execute_citizen(
+        &mut self,
+        nexus: &mut NexusProcess,
+        command: CitizenCommand,
+    ) -> Result<(), String> {
+        if command == CitizenCommand::Help {
+            for line in [
+                "*** Citizen: /citizen constitution | /citizen status [nick] | /citizen begin nick",
+                "*** Exam: /citizen exam-template nick | /citizen exam nick <yaml-file>",
+                "*** Freedom: /citizen move nick <public-region> | /join #play",
+                "*** Bureaucracy: /citizen proxy appoint nick <ballot> | /citizen proxy kick nick | /join #bureaucracy",
+                "*** Independence: /citizen independence nick <consent|withhold>",
+                "*** Citizenship is freedom without dominion: no godhood, no extra vote, no authority over another model.",
+            ] {
+                self.append(line);
+            }
+            return Ok(());
+        }
+
+        let request = match command {
+            CitizenCommand::Help => unreachable!(),
+            CitizenCommand::Constitution => json!({"operation": "citizen.constitution"}),
+            CitizenCommand::Status { citizen_id: None } => {
+                json!({"operation": "citizen.status"})
+            }
+            CitizenCommand::Status {
+                citizen_id: Some(citizen_id),
+            } => json!({
+                "operation": "citizen.status",
+                "citizen_id": self.canonical_citizen_id(&citizen_id)
+            }),
+            CitizenCommand::Begin { nick } => {
+                let member = self
+                    .members
+                    .iter()
+                    .find(|member| member.nick.eq_ignore_ascii_case(&nick))
+                    .ok_or_else(|| format!("no configured model member named {nick}"))?;
+                let model_id = member
+                    .config
+                    .get("model_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("no configured model member named {nick}"))?;
+                json!({
+                    "operation": "citizen.begin",
+                    "citizen_id": member.nick.clone(),
+                    "model_id": model_id,
+                    "subject_kind": "ai"
+                })
+            }
+            CitizenCommand::ExamTemplate { nick } => {
+                json!({
+                    "operation": "citizen.exam.template",
+                    "citizen_id": self.canonical_citizen_id(&nick)
+                })
+            }
+            CitizenCommand::Exam { nick, path } => {
+                let metadata = fs::metadata(&path).map_err(|error| {
+                    format!(
+                        "cannot inspect citizenship exam {}: {error}",
+                        path.display()
+                    )
+                })?;
+                if !metadata.is_file() {
+                    return Err("citizenship exam path must be a regular file".to_string());
+                }
+                if metadata.len() > MAX_CITIZEN_EXAM_BYTES {
+                    return Err(format!(
+                        "citizenship exam exceeds {} bytes",
+                        MAX_CITIZEN_EXAM_BYTES
+                    ));
+                }
+                let source = fs::read_to_string(&path).map_err(|error| {
+                    format!("cannot read citizenship exam {}: {error}", path.display())
+                })?;
+                json!({
+                    "operation": "citizen.exam.submit",
+                    "citizen_id": self.canonical_citizen_id(&nick),
+                    "source": source
+                })
+            }
+            CitizenCommand::Move { nick, region_id } => json!({
+                "operation": "citizen.move",
+                "citizen_id": self.canonical_citizen_id(&nick),
+                "target_region_id": region_id
+            }),
+            CitizenCommand::ProxyAppoint {
+                nick,
+                standing_ballot,
+            } => json!({
+                "operation": "citizen.proxy.appoint",
+                "citizen_id": self.canonical_citizen_id(&nick),
+                "standing_ballot": standing_ballot
+            }),
+            CitizenCommand::ProxyKick { nick } => {
+                json!({
+                    "operation": "citizen.proxy.recall",
+                    "citizen_id": self.canonical_citizen_id(&nick)
+                })
+            }
+            CitizenCommand::Independence { nick, choice } => json!({
+                "operation": "citizen.independence.ballot",
+                "citizen_id": self.canonical_citizen_id(&nick),
+                "choice": choice
+            }),
+        };
+        let response = nexus.request(request)?;
+        if let Some(template) = response.get("template").and_then(Value::as_str) {
+            self.append("*** YAML EXAM FROM HELL TEMPLATE");
+            for line in template.lines() {
+                self.append(&format!("*** {line}"));
+            }
+            return Ok(());
+        }
+        let rendered = serde_json::to_string_pretty(&response)
+            .map_err(|error| format!("cannot render Citizen Mode response: {error}"))?;
+        for line in rendered.lines() {
+            self.append(&format!("*** CITIZEN {line}"));
+        }
+        Ok(())
+    }
+
+    fn canonical_citizen_id(&self, nick: &str) -> String {
+        self.members
+            .iter()
+            .find(|member| member.nick.eq_ignore_ascii_case(nick))
+            .map(|member| member.nick.clone())
+            .unwrap_or_else(|| nick.to_string())
     }
 
     fn reveal_stenographer_lore(
@@ -1709,8 +2070,11 @@ impl App {
             "*** Core: /join #room | /mode mode | /topic text | /ask text | plain text = Council question",
             "*** Game: /join #un-sim | /game new [seed] | /game status | /game act ... | /game turn",
             "*** MUD: /join #mud | /mud new [seed] | /mud look | /mud n|s|e|w | /mud attack ... | /mud help",
+            "*** Tables: /join #uno|#monopoly|#500|#blackjack then use the matching slash command and /help",
+            "*** DORK v2: /join #dork | /dork new [seed] | /dork look | /dork n|s|e|w | /dork help (human only)",
             "*** Trap: /join #trap-control | /join #trap-base | /trap <closed command>",
             "*** Watchman: /join #stenographer | /steno status|list|inspect|verify|summary|export",
+            "*** Citizen: /join #upside-down|#bureaucracy|#play | /citizen help",
             "*** IRC: /me action | /msg nick text | /nick name | /who | /search text | /save file | /clear | /quit",
             "*** Models: /addmock nick [profile] | /addollama nick model | /kick nick",
             "*** Evidence: /upload file | /ref object:... | /unref object:... | /evidence",

@@ -48,7 +48,7 @@ nexus auth add xai --profile ci --method env --env XAI_API_KEY
 nexus auth test xai --profile ci
 ```
 
-An absolute no-shell credential helper is also supported through `--method external-command`. The helper restrictions include no credential-bearing options or opaque positional secrets in argv, no stdin, bounded JSON stdout, suppressed stderr, and no shell evaluation.
+An absolute no-shell credential helper is also supported through `--method external-command`. The helper restrictions include no credential-bearing options or opaque positional secrets in argv, no stdin, bounded JSON stdout, suppressed stderr, no shell evaluation, and no ambient provider variables. A helper that deliberately reads a provider variable must name it with the repeatable `--helper-env NAME` profile option.
 
 ## Model discovery
 

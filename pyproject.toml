@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "qsol-nexus-runtime"
-version = "2.0.0a9.post2"
+version = "2.0.0a10.post2"
 description = "Model-neutral AI Council, shared-world runtime and local IRC-style operator shell for QSOL NEXUS"
 requires-python = ">=3.11"
 license = {text = "Apache-2.0"}

@@ -2,6 +2,51 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.0.0-alpha10.2 — Citizen Mode
+
+- add the equality-consensus Constitution: citizenship is earned in-world status, never godhood, ownership, extra vote weight, epistemic privilege, real-world personhood, or authority over another model;
+- start candidates on no-ballot civic parole in the Upside Down and admit them only through a bounded, closed, deterministic, non-executing YAML examination with retryable path-specific results;
+- bind citizenship to the exact citizen/model identity and preserve state, exam, certificate, proxy, founding-ballot, and declaration lineage as validated content-addressed objects;
+- add `named-regions-v4` with the public Bureaucratic Vote Room and single-exit civic-parole Upside Down while keeping restricted security/control domains outside citizen movement;
+- add `civic_bureaucracy`, `citizen_play`, and `citizenship_parole` modes plus `#bureaucracy`, `#play`, and `#upside-down` TUI rooms;
+- add a transparent replayable civic proxy that occupies the delegator's existing seat, follows one standing ballot, performs deterministic routine administration, creates no extra vote, and can be kicked at any time;
+- preserve Failsafe precedence over civic delegation and prohibit parole Council ballots, proxied constitutional signatures, or generic `world.create` forgery of reserved civic objects;
+- create the in-world Declaration of Independence only at three or more citizens with unanimous direct `CONSENT`, using one locked roster/ballot/declaration transaction;
+- add Citizen JSONL/TUI operations, Constitution and lifecycle documentation, persistence/tamper/equality tests, and claim/security boundaries;
+- bump the control protocol to `nexus/0.14`, runtime/TUI to `2.0.0-alpha10.2`, Python package to `2.0.0a10.post2`, and geometry to `named-regions-v4`.
+
+## 2.0.0-alpha10.1 — Cognitive Rooms
+
+- add `clinical_differential` / `#differential-clinic` for educational, safety-first differential reasoning with ranked candidates, discriminators, explicit uncertainty, red flags, and urgent-care escalation boundaries;
+- add `house_fun` / `#house-fun` for original fictional diagnostic-drama puzzles, zebras and snark, with an automatic instruction to end the comedy framing when real symptoms appear;
+- add `cbt_learning` / `#cbt-workshop` for collaborative CBT concepts, guided discovery and low-risk practical skills without claiming to provide therapy, diagnosis, crisis care, individualized high-risk exposure, or treatment planning;
+- add `roman_orator` / `#roman-forum` for deliberately expansive original oratory, with larger but bounded Ollama phase/direct generation budgets and unchanged concise sealed ballots;
+- add `house_of_wisdom` / `#house-of-wisdom` for translation, provenance, transmission layers, attribution, source plurality and cross-disciplinary synthesis;
+- add `ultimate_questions` / `#deep-thought` for life, consciousness, meaning, reality, the universe and everything, while separating empirical, philosophical, spiritual, literary, personal and speculative lenses;
+- reuse Observatory, Commons, Agora and Archive rather than changing `named-regions-v3` solely to add new reasoning postures;
+- add focused Python/Rust tests and `docs/COGNITIVE_MODES.md` covering the new room mappings, safety boundaries and response-budget behavior;
+- bump the control protocol to `nexus/0.13`, runtime/TUI to `2.0.0-alpha10.1`, and Python package to `2.0.0a10.post1`.
+
+> **The room may contain a differential, a diatribe, or the answer 42. None of them gets an extra vote.**
+
+## 2.0.0-alpha10 — Security remediation, human/AI game tables and DORK v2
+
+- pin third-party checkout actions, reject tracked Rust build artifacts, and add a dedicated security-regression workflow;
+- isolate external credential helpers from ambient provider secrets while allowing explicitly named per-profile variables, including case-insensitive Windows environment matching;
+- remove ambient proxy and redirect behavior from OAuth and configured Ollama transports;
+- migrate legacy WorldStore `0755`/`0644` permissions to owner-only modes, reject unsafe entries, and require exact closed-schema canonical bytes for immutable objects;
+- secret-scrub Council model output before persistence and stamp receipts from the shared protocol-version source;
+
+- add deterministic UNO, Monopoly: Substrate Edition, four-player Australian 500, and fictional-chip Blackjack tables for mixed human/AI rosters;
+- add player-specific private views while keeping bounded Council evidence public, with narration unable to mutate authoritative game state;
+- add a six-deck Blackjack shoe and authoritative deterministic dealer that stands on soft 17;
+- add human-only DORK v2, an original NEXUS-native Zork-shaped satire with no model avatar, Z-machine interpreter, story binary, or upstream source bundle;
+- preserve every initial and successor game state as canonical content-addressed world lineage with deterministic SHA-256-derived decks, dice and shoes;
+- block all new game mutations while Trap Base owns the Council mutation gate, reject credential-shaped player identifiers and scrub seeds before persistence;
+- add `game.uno.*`, `game.monopoly.*`, `game.500.*`, `game.blackjack.*`, and `game.dork.*` JSONL operations plus `#uno`, `#monopoly`, `#500`, `#blackjack`, and `#dork` Rust-TUI rooms;
+- document compact rules profiles and deliberately excluded commercial assets, Monopoly auctions/trading, 500 Misère variants, and Blackjack split/insurance/real-money play;
+- bump the control protocol to `nexus/0.12` and runtime/TUI to `2.0.0-alpha10` (Python package version `2.0.0a10`) while reusing `named-regions-v3`.
+
 ## 2.0.0-alpha9.2 — Courtroom Stenographer
 
 - add the passive Courtroom Stenographer with Sky-Earth Lord, Divine Dragon-House and Knowledge-Watchman lore plus an exact zero-authority boundary;

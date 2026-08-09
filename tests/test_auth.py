@@ -576,16 +576,45 @@ class AuthBrokerTests(unittest.TestCase):
                 _descriptor(server.server_port),
                 environment={"FIXTURE_PROVIDER_TOKEN": FAKE_ACCESS_TOKEN},
             )
-            broker.add_external_command("fixture", "corp", [sys.executable, "-c", helper_script])
+            broker.add_external_command(
+                "fixture",
+                "corp",
+                [sys.executable, "-c", helper_script],
+                environment_variables=["FIXTURE_PROVIDER_TOKEN"],
+            )
             material = broker.resolve("fixture", "corp")
             self.assertEqual(material.access_token, FAKE_ACCESS_TOKEN)
             self.assertNotIn(FAKE_ACCESS_TOKEN, (root / "profiles.json").read_text(encoding="utf-8"))
             self.assertNotIn(FAKE_ACCESS_TOKEN, json.dumps(broker.list_profiles(), sort_keys=True))
+            listed = broker.list_profiles()["profiles"][0]
+            self.assertEqual(
+                listed["source"]["environment_variables"],
+                ["FIXTURE_PROVIDER_TOKEN"],
+            )
+
+    def test_external_helper_environment_allowlist_is_validated(self) -> None:
+        with _ServerFixture() as server, tempfile.TemporaryDirectory() as directory:
+            broker = _broker(Path(directory), _descriptor(server.server_port))
+            with self.assertRaisesRegex(AuthError, "environment variable name"):
+                broker.add_external_command(
+                    "fixture",
+                    "invalid",
+                    [sys.executable, "-c", "print('{}')"],
+                    environment_variables=["NOT-A-NAME"],
+                )
+            with self.assertRaisesRegex(AuthError, "unique"):
+                broker.add_external_command(
+                    "fixture",
+                    "duplicate",
+                    [sys.executable, "-c", "print('{}')"],
+                    environment_variables=["TOKEN", "TOKEN"],
+                )
 
     def test_external_helper_requires_absolute_executable_and_closed_json_shape(self) -> None:
         with _ServerFixture() as server, tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
             broker = _broker(
-                Path(directory),
+                root,
                 _descriptor(server.server_port),
                 environment={"FIXTURE_PROVIDER_TOKEN": FAKE_ACCESS_TOKEN},
             )
@@ -616,6 +645,7 @@ class AuthBrokerTests(unittest.TestCase):
                         "'access_token':os.environ['FIXTURE_PROVIDER_TOKEN'],'extra':1}))"
                     ),
                 ],
+                environment_variables=["FIXTURE_PROVIDER_TOKEN"],
             )
             with self.assertRaisesRegex(AuthError, "unsupported fields"):
                 broker.resolve("fixture", "corp")
@@ -853,8 +883,6 @@ class BrowserPKCETests(unittest.TestCase):
                     scopes=("models.read", "inference"),
                 ),
             )
-            # Turn the fixture profile into a browser-flow profile without
-            # exposing or re-entering the secret.
             browser_profile = type(profile)(
                 **{
                     **profile.storage_dict(),

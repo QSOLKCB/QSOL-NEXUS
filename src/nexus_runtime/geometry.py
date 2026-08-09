@@ -125,7 +125,7 @@ DEFAULT_WORLD_GEOMETRY = WorldGeometry(
             "Observatory",
             0,
             0,
-            ("archive", "agora", "commons", "assembly", "dungeon"),
+            ("archive", "agora", "commons", "assembly", "dungeon", "bureaucratic_vote_room"),
             "Default evidence-first analytical region.",
         ),
         WorldRegion(
@@ -149,7 +149,7 @@ DEFAULT_WORLD_GEOMETRY = WorldGeometry(
             "Commons",
             2,
             1,
-            ("observatory", "agora", "assembly", "dungeon"),
+            ("observatory", "agora", "assembly", "dungeon", "bureaucratic_vote_room"),
             "Meme/casual region for playful interaction without relaxing evidence boundaries.",
         ),
         WorldRegion(
@@ -168,6 +168,22 @@ DEFAULT_WORLD_GEOMETRY = WorldGeometry(
             ("observatory", "commons", "assembly"),
             "Fictional MUD region containing a separate internal room graph owned by the game substrate.",
         ),
+        WorldRegion(
+            "bureaucratic_vote_room",
+            "Bureaucratic Vote Room",
+            4,
+            0,
+            ("observatory", "commons", "upside_down"),
+            "Citizen civic chamber for equal seats, routine administration, and sealed consensus ballots.",
+        ),
+        WorldRegion(
+            "upside_down",
+            "Upside Down / Civic Parole",
+            4,
+            -3,
+            ("bureaucratic_vote_room",),
+            "Isolated citizenship-onboarding region; candidates leave only by passing the deterministic YAML exam.",
+        ),
     ),
-    geometry_id="named-regions-v3",
+    geometry_id="named-regions-v4",
 )

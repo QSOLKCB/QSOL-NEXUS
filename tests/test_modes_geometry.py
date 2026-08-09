@@ -25,14 +25,30 @@ def connected_regions(*, observatory_x: int = 0) -> tuple[WorldRegion, ...]:
             "Observatory",
             observatory_x,
             0,
-            ("archive", "agora", "commons", "assembly", "dungeon"),
+            ("archive", "agora", "commons", "assembly", "dungeon", "bureaucratic_vote_room"),
             "Analytical region.",
         ),
         WorldRegion("archive", "Archive", -2, 1, ("observatory", "agora"), "Historical region."),
         WorldRegion("agora", "Agora", 0, 2, ("archive", "observatory", "commons"), "Cultural region."),
-        WorldRegion("commons", "Commons", 2, 1, ("observatory", "agora", "assembly", "dungeon"), "Playful region."),
+        WorldRegion(
+            "commons",
+            "Commons",
+            2,
+            1,
+            ("observatory", "agora", "assembly", "dungeon", "bureaucratic_vote_room"),
+            "Playful region.",
+        ),
         WorldRegion("assembly", "Assembly Hall", 0, -2, ("observatory", "commons", "dungeon"), "Game region."),
         WorldRegion("dungeon", "Dungeon", 2, -2, ("observatory", "commons", "assembly"), "MUD region."),
+        WorldRegion(
+            "bureaucratic_vote_room",
+            "Bureaucratic Vote Room",
+            4,
+            0,
+            ("observatory", "commons", "upside_down"),
+            "Civic region.",
+        ),
+        WorldRegion("upside_down", "Upside Down", 4, -3, ("bureaucratic_vote_room",), "Parole region."),
     )
 
 
@@ -40,12 +56,47 @@ class WorldModeTests(unittest.TestCase):
     def test_initial_mode_registry_is_explicit(self) -> None:
         self.assertEqual(
             {mode.mode_id for mode in list_modes()},
-            {"analytical", "historical", "pure_history", "cultural", "meme_casual", "game_un", "game_mud"},
+            {
+                "analytical",
+                "historical",
+                "pure_history",
+                "cultural",
+                "meme_casual",
+                "clinical_differential",
+                "house_fun",
+                "cbt_learning",
+                "roman_orator",
+                "house_of_wisdom",
+                "ultimate_questions",
+                "game_un",
+                "game_mud",
+                "game_uno",
+                "game_monopoly",
+                "game_500",
+                "game_blackjack",
+                "game_dork",
+                "citizenship_parole",
+                "civic_bureaucracy",
+                "citizen_play",
+            },
         )
         self.assertEqual(get_mode("historical").region_id, "archive")
         self.assertEqual(get_mode("pure_history").region_id, "archive")
         self.assertEqual(get_mode("game_un").region_id, "assembly")
         self.assertEqual(get_mode("game_mud").region_id, "dungeon")
+        self.assertEqual(get_mode("clinical_differential").region_id, "observatory")
+        self.assertEqual(get_mode("house_fun").region_id, "commons")
+        self.assertEqual(get_mode("cbt_learning").region_id, "observatory")
+        self.assertEqual(get_mode("roman_orator").region_id, "agora")
+        self.assertEqual(get_mode("house_of_wisdom").region_id, "archive")
+        self.assertEqual(get_mode("ultimate_questions").region_id, "observatory")
+        self.assertEqual(get_mode("game_uno").region_id, "commons")
+        self.assertEqual(get_mode("game_monopoly").region_id, "commons")
+        self.assertEqual(get_mode("game_500").region_id, "commons")
+        self.assertEqual(get_mode("game_blackjack").region_id, "commons")
+        self.assertEqual(get_mode("game_dork").region_id, "dungeon")
+        self.assertEqual(get_mode("citizenship_parole").region_id, "upside_down")
+        self.assertEqual(get_mode("civic_bureaucracy").region_id, "bureaucratic_vote_room")
         with self.assertRaises(ValueError):
             get_mode("corporate_supremacy")
 
@@ -73,7 +124,7 @@ class WorldModeTests(unittest.TestCase):
         self.assertEqual(presence.payload["mode_id"], "cultural")
         self.assertEqual(presence.payload["region_id"], "agora")
         self.assertEqual(presence.payload["coordinates"], [0, 2])
-        self.assertEqual(presence.payload["geometry_id"], "named-regions-v3")
+        self.assertEqual(presence.payload["geometry_id"], "named-regions-v4")
         self.assertEqual(presence.payload["geometry_topology_ref"], DEFAULT_WORLD_GEOMETRY.snapshot()["topology_ref"])
         session = world.inspect(result["session_ref"])
         self.assertEqual(session.payload["world_presence_ref"], presence.object_id)
@@ -84,12 +135,14 @@ class WorldModeTests(unittest.TestCase):
 class GeometryTests(unittest.TestCase):
     def test_geometry_is_connected_and_mode_complete(self) -> None:
         snapshot = DEFAULT_WORLD_GEOMETRY.snapshot()
-        self.assertEqual(snapshot["geometry_id"], "named-regions-v3")
+        self.assertEqual(snapshot["geometry_id"], "named-regions-v4")
         self.assertTrue(str(snapshot["topology_ref"]).startswith("geometry:"))
         self.assertEqual(snapshot["semantics"], "operational_topology_not_physical_claim")
         region_ids = [region["region_id"] for region in snapshot["regions"]]  # type: ignore[index]
         self.assertIn("assembly", region_ids)
         self.assertIn("dungeon", region_ids)
+        self.assertIn("bureaucratic_vote_room", region_ids)
+        self.assertIn("upside_down", region_ids)
         for source in region_ids:
             for target in region_ids:
                 with self.subTest(source=source, target=target):
@@ -119,12 +172,28 @@ class GeometryTests(unittest.TestCase):
 
     def test_geometry_rejects_disconnected_mode_complete_map(self) -> None:
         disconnected = (
-            WorldRegion("observatory", "Observatory", 0, 0, ("archive", "assembly", "dungeon"), "A"),
+            WorldRegion(
+                "observatory",
+                "Observatory",
+                0,
+                0,
+                ("archive", "assembly", "dungeon", "bureaucratic_vote_room"),
+                "A",
+            ),
             WorldRegion("archive", "Archive", -2, 1, ("observatory",), "B"),
             WorldRegion("assembly", "Assembly Hall", 0, -2, ("observatory", "dungeon"), "Game"),
             WorldRegion("dungeon", "Dungeon", 2, -2, ("observatory", "assembly"), "MUD"),
             WorldRegion("agora", "Agora", 0, 2, ("commons",), "C"),
             WorldRegion("commons", "Commons", 2, 1, ("agora",), "D"),
+            WorldRegion(
+                "bureaucratic_vote_room",
+                "Bureaucratic Vote Room",
+                4,
+                0,
+                ("observatory", "upside_down"),
+                "Civic",
+            ),
+            WorldRegion("upside_down", "Upside Down", 4, -3, ("bureaucratic_vote_room",), "Parole"),
         )
         with self.assertRaisesRegex(ValueError, "fully connected"):
             WorldGeometry(disconnected)
@@ -151,10 +220,32 @@ class ModeGeometryAPITests(unittest.TestCase):
         self.assertEqual(modes["status"], "ok")
         self.assertEqual(
             {item["mode_id"] for item in modes["modes"]},
-            {"analytical", "historical", "pure_history", "cultural", "meme_casual", "game_un", "game_mud"},
+            {
+                "analytical",
+                "historical",
+                "pure_history",
+                "cultural",
+                "meme_casual",
+                "clinical_differential",
+                "house_fun",
+                "cbt_learning",
+                "roman_orator",
+                "house_of_wisdom",
+                "ultimate_questions",
+                "game_un",
+                "game_mud",
+                "game_uno",
+                "game_monopoly",
+                "game_500",
+                "game_blackjack",
+                "game_dork",
+                "citizenship_parole",
+                "civic_bureaucracy",
+                "citizen_play",
+            },
         )
         geometry = api.handle({"operation": "world.geometry"})
-        self.assertEqual(geometry["geometry_id"], "named-regions-v3")
+        self.assertEqual(geometry["geometry_id"], "named-regions-v4")
         self.assertTrue(geometry["topology_ref"].startswith("geometry:"))
         distance = api.handle(
             {

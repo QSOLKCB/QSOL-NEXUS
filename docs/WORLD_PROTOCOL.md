@@ -14,7 +14,7 @@ The protocol should remain model-neutral and transport-neutral.
 
 ## Current and planned primitives
 
-Current alpha4 reference operations include:
+Current reference operations include:
 
 ```text
 world.create
@@ -22,6 +22,15 @@ world.inspect
 world.modes
 world.geometry
 world.geometry.distance
+citizen.constitution
+citizen.status
+citizen.begin
+citizen.exam.template
+citizen.exam.submit
+citizen.move
+citizen.proxy.appoint
+citizen.proxy.recall
+citizen.independence.ballot
 ```
 
 Longer-term conceptual syscalls include:
@@ -60,44 +69,58 @@ WorldMode
 └── region_id
 ```
 
-Initial built-ins:
+Current built-ins:
 
 ```text
 analytical
 historical
+pure_history
 cultural
 meme_casual
+clinical_differential
+house_fun
+cbt_learning
+roman_orator
+house_of_wisdom
+ultimate_questions
+citizenship_parole
+civic_bureaucracy
+citizen_play
+game_un
+game_mud
+game_uno
+game_monopoly
+game_500
+game_blackjack
+game_dork
 ```
 
-A mode may affect reasoning posture, context and tone. It does not modify evidence status, verification, vote weight, Council threshold, secret handling or Equality Guard policy.
+A mode may affect reasoning posture, context, tone and a bounded generation-length preference. It does not modify evidence status, verification, vote weight, Council threshold, secret handling or Equality Guard policy.
 
 ## World geometry
 
-The first geometry is a small named-region graph with deterministic integer coordinates and explicit symmetric adjacency.
+The current geometry is a small named-region graph with deterministic integer coordinates and explicit symmetric adjacency.
 
-```text
-                         ARCHIVE
-                       Historical
-                         (-2,1)
-                        /      \
-                       /        \
-                 AGORA ---------- OBSERVATORY
-                Cultural           Analytical
-                 (0,2)               (0,0)
-                      \             /
-                       \           /
-                        COMMONS
-                      Meme/Casual
-                         (2,1)
-```
+| Region | Coordinates | Direct neighbors |
+|---|---:|---|
+| Observatory | `(0,0)` | Archive, Agora, Commons, Assembly Hall, Dungeon, Bureaucratic Vote Room |
+| Archive | `(-2,1)` | Observatory, Agora |
+| Agora | `(0,2)` | Archive, Observatory, Commons |
+| Commons | `(2,1)` | Observatory, Agora, Assembly Hall, Dungeon, Bureaucratic Vote Room |
+| Assembly Hall | `(0,-2)` | Observatory, Commons, Dungeon |
+| Dungeon | `(2,-2)` | Observatory, Commons, Assembly Hall |
+| Bureaucratic Vote Room | `(4,0)` | Observatory, Commons, Upside Down |
+| Upside Down / Civic Parole | `(4,-3)` | Bureaucratic Vote Room |
 
 Geometry identifier:
 
 ```text
-named-regions-v1
+named-regions-v4
 ```
 
 This is an **operational topology**, not a physical or neuroscientific claim.
+
+Citizens may move only among public regions. Passing the deterministic civic exam transitions a candidate from the Upside Down to the Bureaucratic Vote Room; movement itself cannot enter the parole region or a non-geometry security/control domain.
 
 ## World presence
 
@@ -125,6 +148,23 @@ Where in the shared world is it happening?
 Who is present?
 Which question brought them there?
 ```
+
+## Citizenship objects
+
+Citizen Mode adds reserved, content-addressed protocol objects:
+
+```text
+nexus_constitution
+citizenship_state
+citizenship_exam_result
+citizenship_certificate
+citizenship_independence_ballots
+nexus_declaration_of_independence
+```
+
+Their schemas, provenance, references, equality fields, lineage heads, and founding-consent envelope are validated by the citizenship registry. Generic `world.create` cannot construct them. The replaceable index is a pointer cache, not authority: it must match the heads discovered from immutable object lineage.
+
+Citizenship is bound to an exact world identity and provides in-world civic access. It is not a real-world personhood, consciousness, sentience, sovereignty, host-control, or provider-control claim. See [`CONSTITUTION.md`](CONSTITUTION.md).
 
 ## World object
 
@@ -294,7 +334,7 @@ This allows a future model to enter the world after the original participant is 
 
 ## Human-created objects
 
-The Human Operator is a valid actor. Human observations, imported datasets, notes, hypotheses and mode choices should be attributable just like model contributions.
+The Human Operator is a valid actor. Human observations, imported datasets, notes, hypotheses and mode choices should be attributable just like model contributions. Human-created generic objects cannot impersonate reserved citizenship protocol objects.
 
 ## Geometry-inspired future diagnostics
 

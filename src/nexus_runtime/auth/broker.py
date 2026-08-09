@@ -32,6 +32,7 @@ from .types import (
     AuthProfile,
     AuthTimeoutError,
     AuthUnavailableError,
+    MAX_EXTERNAL_HELPER_ENVIRONMENT_VARIABLES,
     SecretMaterial,
     validate_environment_name,
     validate_identifier,
@@ -55,6 +56,24 @@ _CREDENTIAL_LABEL_IN_HELPER_VALUE = re.compile(
 _HEX_HELPER_VALUE = re.compile(r"^[A-Fa-f0-9-]+$")
 _HELPER_VALUE_FRAGMENT = re.compile(r"[^\s'\"`(){}\[\],;:]+")
 _WINDOWS_ABSOLUTE_HELPER_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\)")
+_EXTERNAL_HELPER_ENV_ALLOWLIST = frozenset(
+    {
+        "PATH",
+        "LANG",
+        "LC_ALL",
+        "LC_CTYPE",
+        "HOME",
+        "USERPROFILE",
+        "TMPDIR",
+        "TMP",
+        "TEMP",
+        "SYSTEMROOT",
+        "SystemRoot",
+        "WINDIR",
+        "COMSPEC",
+        "PATHEXT",
+    }
+)
 
 
 def _is_supported_helper_path(value: str) -> bool:
@@ -120,6 +139,60 @@ def _credential_candidate_helper_values(command: Sequence[str]) -> list[str]:
             continue
         candidates.append(item)
     return candidates
+
+
+def _external_helper_environment(
+    environment: Mapping[str, str],
+    *,
+    adapter_id: str,
+    profile_name: str,
+    forwarded_names: Sequence[str] = (),
+) -> dict[str, str]:
+    """Build the least-privilege environment visible to a credential helper.
+
+    Baseline process variables are retained for portability. Credential-bearing
+    or provider-specific variables cross the boundary only when their names are
+    explicitly recorded on the external-command profile.
+    """
+
+    forwarded = _validated_external_helper_environment_names(forwarded_names)
+    allowed_names = (*_EXTERNAL_HELPER_ENV_ALLOWLIST, *forwarded)
+    normalize = str.casefold if os.name == "nt" else (lambda value: value)
+    allowed = {normalize(name) for name in allowed_names}
+    clean = {
+        key: value
+        for key, value in environment.items()
+        if isinstance(key, str)
+        and normalize(key) in allowed
+        and isinstance(value, str)
+    }
+    clean.update(
+        {
+            "NEXUS_AUTH_ADAPTER": adapter_id,
+            "NEXUS_AUTH_PROFILE": profile_name,
+        }
+    )
+    return clean
+
+
+def _validated_external_helper_environment_names(names: Sequence[str]) -> list[str]:
+    if isinstance(names, (str, bytes, bytearray)) or not isinstance(names, Sequence):
+        raise AuthError("external helper environment variables must be a list of names")
+    if len(names) > MAX_EXTERNAL_HELPER_ENVIRONMENT_VARIABLES:
+        raise AuthError(
+            "external helper environment variable allowlist exceeds the supported limit"
+        )
+    normalize = str.casefold if os.name == "nt" else (lambda value: value)
+    result: list[str] = []
+    seen: set[str] = set()
+    for name in names:
+        validated = validate_environment_name(name)
+        key = normalize(validated)
+        if key in seen:
+            raise AuthError("external helper environment variable names must be unique")
+        seen.add(key)
+        result.append(validated)
+    return result
 
 
 @dataclass(frozen=True)
@@ -330,17 +403,22 @@ class AuthBroker:
         profile_name: str,
         argv: Sequence[str],
         *,
+        environment_variables: Sequence[str] = (),
         replace: bool = False,
     ) -> dict[str, Any]:
         self._require_flow(adapter_id, AuthFlow.EXTERNAL_COMMAND, AuthMethod.EXTERNAL_SECRET)
         command = self._validated_external_command(argv)
+        forwarded_names = _validated_external_helper_environment_names(environment_variables)
         return self._add_profile(
             adapter_id,
             profile_name,
             AuthMethod.EXTERNAL_SECRET,
             AuthFlow.EXTERNAL_COMMAND,
             secret_source="external_command",
-            source_metadata={"argv": command},
+            source_metadata={
+                "argv": command,
+                "environment_variables": forwarded_names,
+            },
             replace=replace,
         )
 
@@ -536,12 +614,11 @@ class AuthBroker:
 
     def _resolve_external_command(self, profile: AuthProfile) -> SecretMaterial:
         argv = self._validated_external_command(profile.source_metadata["argv"])
-        command_environment = dict(self.environment)
-        command_environment.update(
-            {
-                "NEXUS_AUTH_ADAPTER": profile.adapter_id,
-                "NEXUS_AUTH_PROFILE": profile.profile_name,
-            }
+        command_environment = _external_helper_environment(
+            self.environment,
+            adapter_id=profile.adapter_id,
+            profile_name=profile.profile_name,
+            forwarded_names=profile.source_metadata.get("environment_variables", []),
         )
         try:
             process = subprocess.Popen(

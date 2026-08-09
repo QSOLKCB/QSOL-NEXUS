@@ -17,6 +17,7 @@ from .scrub import SecretScrubber
 from .stenographer import CourtroomStenographer, StenographerError
 from .telemetry import build_council_telemetry
 from .types import Ballot, BallotRecord, CouncilPolicy, PHASE_ORDER, Phase, PhaseContext, PhaseSubmission
+from .version import PROTOCOL_VERSION
 from .world import WorldStore
 
 
@@ -298,7 +299,7 @@ class CouncilCoordinator:
                 + [ref for ref in failsafe_state_by_member.values() if ref is not None],
                 "result_ref": session_obj.object_id,
                 "replayable": execution_replayable,
-                "protocol": "nexus/0.6",
+                "protocol": PROTOCOL_VERSION,
             },
             {"actor": "nexus"},
         )
@@ -432,11 +433,11 @@ class CouncilCoordinator:
             events.append("restated_after_nudge")
 
         if context.mode_id != "pure_history":
-            return content, events
+            return self.scrubber.scrub(content).text, events
 
         history = self.history_guard.inspect(content)
         if not history.flagged:
-            return content, events
+            return self.scrubber.scrub(content).text, events
 
         events.append(history.reason or "pure_history_model_autobiography")
         retry_context = PhaseContext(
@@ -462,7 +463,7 @@ class CouncilCoordinator:
             events.append("repeated_pure_history_model_autobiography")
             return "Contribution withheld pending source-focused historical restatement.", events
         events.append("restated_after_pure_history_nudge")
-        return restated, events
+        return self.scrubber.scrub(restated).text, events
 
     def _collect_ballots(
         self,
@@ -511,6 +512,7 @@ class CouncilCoordinator:
             )
             choice, rationale = actor.ballot(context)
             self._observe_ballot_action(actor, context, choice.value, rationale)
+            rationale = self.scrubber.scrub(rationale).text
             commitment = sha256_ref(
                 "ballot",
                 {

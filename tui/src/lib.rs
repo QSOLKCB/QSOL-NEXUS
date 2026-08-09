@@ -11,6 +11,7 @@ use zip::ZipArchive;
 pub const MAX_UPLOAD_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_ARCHIVE_MEMBER_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_EVIDENCE_CHARS: usize = 120_000;
+pub const MAX_CITIZEN_EXAM_BYTES: u64 = 16 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RoomSpec {
@@ -20,7 +21,7 @@ pub struct RoomSpec {
     pub label: &'static str,
 }
 
-pub const ROOMS: [RoomSpec; 10] = [
+pub const ROOMS: [RoomSpec; 24] = [
     RoomSpec {
         channel: "#observatory",
         mode_id: "analytical",
@@ -52,6 +53,60 @@ pub const ROOMS: [RoomSpec; 10] = [
         label: "Commons / Meme-Casual",
     },
     RoomSpec {
+        channel: "#differential-clinic",
+        mode_id: "clinical_differential",
+        region_id: "observatory",
+        label: "Observatory / House-Style Differential Clinic",
+    },
+    RoomSpec {
+        channel: "#house-fun",
+        mode_id: "house_fun",
+        region_id: "commons",
+        label: "Commons / House-Style Diagnostic Fun",
+    },
+    RoomSpec {
+        channel: "#cbt-workshop",
+        mode_id: "cbt_learning",
+        region_id: "observatory",
+        label: "Observatory / CBT Learning Workshop",
+    },
+    RoomSpec {
+        channel: "#roman-forum",
+        mode_id: "roman_orator",
+        region_id: "agora",
+        label: "Agora / Roman Orator",
+    },
+    RoomSpec {
+        channel: "#house-of-wisdom",
+        mode_id: "house_of_wisdom",
+        region_id: "archive",
+        label: "Archive / House of Wisdom",
+    },
+    RoomSpec {
+        channel: "#deep-thought",
+        mode_id: "ultimate_questions",
+        region_id: "observatory",
+        label: "Observatory / Life, the Universe and Everything",
+    },
+    RoomSpec {
+        channel: "#play",
+        mode_id: "citizen_play",
+        region_id: "commons",
+        label: "Citizen Play Mode / Freedom without Dominion",
+    },
+    RoomSpec {
+        channel: "#bureaucracy",
+        mode_id: "civic_bureaucracy",
+        region_id: "bureaucratic_vote_room",
+        label: "Bureaucratic Vote Room / Equality Consensus",
+    },
+    RoomSpec {
+        channel: "#upside-down",
+        mode_id: "citizenship_parole",
+        region_id: "upside_down",
+        label: "Upside Down / Citizenship Parole / YAML Exam from Hell",
+    },
+    RoomSpec {
         channel: "#un-sim",
         mode_id: "game_un",
         region_id: "assembly",
@@ -62,6 +117,36 @@ pub const ROOMS: [RoomSpec; 10] = [
         mode_id: "game_mud",
         region_id: "dungeon",
         label: "Dungeon / HERESY MUD",
+    },
+    RoomSpec {
+        channel: "#uno",
+        mode_id: "game_uno",
+        region_id: "commons",
+        label: "Commons / NEXUS UNO",
+    },
+    RoomSpec {
+        channel: "#monopoly",
+        mode_id: "game_monopoly",
+        region_id: "commons",
+        label: "Commons / NEXUS MONOPOLY",
+    },
+    RoomSpec {
+        channel: "#500",
+        mode_id: "game_500",
+        region_id: "commons",
+        label: "Commons / NEXUS 500",
+    },
+    RoomSpec {
+        channel: "#blackjack",
+        mode_id: "game_blackjack",
+        region_id: "commons",
+        label: "Commons / Deterministic Blackjack",
+    },
+    RoomSpec {
+        channel: "#dork",
+        mode_id: "game_dork",
+        region_id: "dungeon",
+        label: "Dungeon / DORK v2 — Human Only",
     },
     RoomSpec {
         channel: "#trap-control",
@@ -83,7 +168,7 @@ pub const ROOMS: [RoomSpec; 10] = [
     },
 ];
 
-pub const COMMANDS: [&str; 32] = [
+pub const COMMANDS: [&str; 38] = [
     "/help",
     "/join",
     "/mode",
@@ -92,8 +177,14 @@ pub const COMMANDS: [&str; 32] = [
     "/council",
     "/game",
     "/mud",
+    "/uno",
+    "/monopoly",
+    "/500",
+    "/blackjack",
+    "/dork",
     "/trap",
     "/steno",
+    "/citizen",
     "/me",
     "/msg",
     "/nick",
@@ -171,6 +262,61 @@ pub enum StenographerCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TableCommand {
+    Help {
+        game_id: String,
+    },
+    New {
+        game_id: String,
+        seed: String,
+    },
+    Status {
+        game_id: String,
+        player: Option<String>,
+    },
+    Act {
+        game_id: String,
+        player: Option<String>,
+        action: String,
+        args: Vec<String>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CitizenCommand {
+    Help,
+    Constitution,
+    Status {
+        citizen_id: Option<String>,
+    },
+    Begin {
+        nick: String,
+    },
+    ExamTemplate {
+        nick: String,
+    },
+    Exam {
+        nick: String,
+        path: PathBuf,
+    },
+    Move {
+        nick: String,
+        region_id: String,
+    },
+    ProxyAppoint {
+        nick: String,
+        standing_ballot: String,
+    },
+    ProxyKick {
+        nick: String,
+    },
+    Independence {
+        nick: String,
+        choice: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputCommand {
     Noop,
     Help,
@@ -180,8 +326,10 @@ pub enum InputCommand {
     Ask(String),
     Game(GameCommand),
     Mud(MudCommand),
+    Table(TableCommand),
     Trap(String),
     Stenographer(StenographerCommand),
+    Citizen(CitizenCommand),
     Me(String),
     Msg { target: String, text: String },
     Nick(String),
@@ -230,8 +378,14 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/ask" | "/council" => Ok(InputCommand::Ask(rest.to_string())),
         "/game" => parse_game(rest).map(InputCommand::Game),
         "/mud" => parse_mud(rest).map(InputCommand::Mud),
+        "/uno" => parse_table("uno", rest, false).map(InputCommand::Table),
+        "/monopoly" => parse_table("monopoly", rest, false).map(InputCommand::Table),
+        "/500" => parse_table("500", rest, false).map(InputCommand::Table),
+        "/blackjack" => parse_table("blackjack", rest, false).map(InputCommand::Table),
+        "/dork" => parse_table("dork", rest, true).map(InputCommand::Table),
         "/trap" => require(rest, "/trap <closed trap command>").map(InputCommand::Trap),
         "/steno" => parse_stenographer(rest).map(InputCommand::Stenographer),
+        "/citizen" => parse_citizen(rest).map(InputCommand::Citizen),
         "/me" => require(rest, "/me <action>").map(InputCommand::Me),
         "/nick" => require(rest, "/nick <name>").map(InputCommand::Nick),
         "/ref" => require(rest, "/ref <object:sha256>").map(InputCommand::Ref),
@@ -304,6 +458,89 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/unset" => require(rest, "/unset %name").map(InputCommand::Unset),
         "/dcc" => parse_dcc(rest).map(InputCommand::Dcc),
         other => Err(format!("unknown command: {other}; try /help")),
+    }
+}
+
+fn parse_citizen(rest: &str) -> Result<CitizenCommand, String> {
+    let usage = "usage: /citizen <help|constitution|status [nick]|begin nick|exam-template nick|exam nick path|move nick region|proxy appoint nick ballot|proxy kick nick|independence nick consent|withhold>";
+    if rest.trim().is_empty() {
+        return Ok(CitizenCommand::Help);
+    }
+    let (subcommand, tail) = split_first(rest).ok_or_else(|| usage.to_string())?;
+    match subcommand.to_ascii_lowercase().as_str() {
+        "help" if tail.is_empty() => Ok(CitizenCommand::Help),
+        "constitution" if tail.is_empty() => Ok(CitizenCommand::Constitution),
+        "status" if tail.is_empty() => Ok(CitizenCommand::Status { citizen_id: None }),
+        "status" if !tail.contains(char::is_whitespace) => Ok(CitizenCommand::Status {
+            citizen_id: Some(tail.to_string()),
+        }),
+        "begin" if !tail.is_empty() && !tail.contains(char::is_whitespace) => {
+            Ok(CitizenCommand::Begin {
+                nick: tail.to_string(),
+            })
+        }
+        "exam-template" if !tail.is_empty() && !tail.contains(char::is_whitespace) => {
+            Ok(CitizenCommand::ExamTemplate {
+                nick: tail.to_string(),
+            })
+        }
+        "exam" => {
+            let (nick, path) = split_first(tail).ok_or_else(|| usage.to_string())?;
+            if path.is_empty() {
+                return Err(usage.to_string());
+            }
+            Ok(CitizenCommand::Exam {
+                nick: nick.to_string(),
+                path: PathBuf::from(unquote(path)),
+            })
+        }
+        "move" => {
+            let (nick, region_id) = split_first(tail).ok_or_else(|| usage.to_string())?;
+            if region_id.is_empty() || region_id.contains(char::is_whitespace) {
+                return Err(usage.to_string());
+            }
+            Ok(CitizenCommand::Move {
+                nick: nick.to_string(),
+                region_id: region_id.to_string(),
+            })
+        }
+        "proxy" => {
+            let (action, proxy_tail) = split_first(tail).ok_or_else(|| usage.to_string())?;
+            match action.to_ascii_lowercase().as_str() {
+                "appoint" => {
+                    let (nick, ballot) =
+                        split_first(proxy_tail).ok_or_else(|| usage.to_string())?;
+                    if ballot.is_empty() || ballot.contains(char::is_whitespace) {
+                        return Err(usage.to_string());
+                    }
+                    Ok(CitizenCommand::ProxyAppoint {
+                        nick: nick.to_string(),
+                        standing_ballot: ballot.to_ascii_uppercase(),
+                    })
+                }
+                "kick" if !proxy_tail.is_empty() && !proxy_tail.contains(char::is_whitespace) => {
+                    Ok(CitizenCommand::ProxyKick {
+                        nick: proxy_tail.to_string(),
+                    })
+                }
+                _ => Err(usage.to_string()),
+            }
+        }
+        "independence" => {
+            let (nick, choice) = split_first(tail).ok_or_else(|| usage.to_string())?;
+            if choice.is_empty() || choice.contains(char::is_whitespace) {
+                return Err(usage.to_string());
+            }
+            let choice = choice.to_ascii_uppercase();
+            if choice != "CONSENT" && choice != "WITHHOLD" {
+                return Err("founding choice must be consent or withhold".to_string());
+            }
+            Ok(CitizenCommand::Independence {
+                nick: nick.to_string(),
+                choice,
+            })
+        }
+        _ => Err(usage.to_string()),
     }
 }
 
@@ -444,6 +681,53 @@ fn parse_mud(rest: &str) -> Result<MudCommand, String> {
             player: None,
             action: normalize_mud_action(&sub),
             args: mud_action_args(&sub, tail),
+        }),
+    }
+}
+
+fn parse_table(game_id: &str, rest: &str, human_only: bool) -> Result<TableCommand, String> {
+    let trimmed = rest.trim();
+    if trimmed.is_empty() || trimmed.eq_ignore_ascii_case("help") {
+        return Ok(TableCommand::Help {
+            game_id: game_id.to_string(),
+        });
+    }
+    let (sub, tail) = split_first(trimmed).expect("non-empty table command");
+    let sub = sub.to_ascii_lowercase();
+    match sub.as_str() {
+        "new" => Ok(TableCommand::New {
+            game_id: game_id.to_string(),
+            seed: unquote(tail),
+        }),
+        "status" | "look" if human_only && !tail.is_empty() => {
+            Err("DORK v2 is human-only and has no alternate-player view".to_string())
+        }
+        "status" | "look" => Ok(TableCommand::Status {
+            game_id: game_id.to_string(),
+            player: if tail.is_empty() {
+                None
+            } else {
+                Some(tail.to_string())
+            },
+        }),
+        "as" if !human_only => {
+            let (player, action_tail) = split_first(tail)
+                .ok_or_else(|| format!("usage: /{game_id} as <player> <action> [args...]"))?;
+            let (action, args) = split_first(action_tail)
+                .ok_or_else(|| format!("usage: /{game_id} as <player> <action> [args...]"))?;
+            Ok(TableCommand::Act {
+                game_id: game_id.to_string(),
+                player: Some(player.to_string()),
+                action: action.to_ascii_lowercase(),
+                args: args.split_whitespace().map(str::to_string).collect(),
+            })
+        }
+        "as" => Err("DORK v2 is human-only and has no proxy-player command".to_string()),
+        _ => Ok(TableCommand::Act {
+            game_id: game_id.to_string(),
+            player: None,
+            action: sub,
+            args: tail.split_whitespace().map(str::to_string).collect(),
         }),
     }
 }
@@ -907,8 +1191,38 @@ mod tests {
         );
         assert_eq!(room_from_name("trap-base").unwrap().channel, "#trap-base");
         assert_eq!(
+            room_from_name("#bureaucracy").unwrap().mode_id,
+            "civic_bureaucracy"
+        );
+        assert_eq!(room_from_name("#play").unwrap().mode_id, "citizen_play");
+        assert_eq!(
+            room_from_name("upside_down").unwrap().channel,
+            "#upside-down"
+        );
+        assert_eq!(
             room_from_name("courtroom").unwrap().channel,
             "#stenographer"
+        );
+        assert_eq!(
+            room_from_name("clinical_differential").unwrap().channel,
+            "#differential-clinic"
+        );
+        assert_eq!(room_from_name("house-fun").unwrap().mode_id, "house_fun");
+        assert_eq!(
+            room_from_name("cbt_learning").unwrap().channel,
+            "#cbt-workshop"
+        );
+        assert_eq!(
+            room_from_name("roman-forum").unwrap().mode_id,
+            "roman_orator"
+        );
+        assert_eq!(
+            room_from_name("house_of_wisdom").unwrap().channel,
+            "#house-of-wisdom"
+        );
+        assert_eq!(
+            room_from_name("deep-thought").unwrap().mode_id,
+            "ultimate_questions"
         );
     }
 
@@ -934,6 +1248,38 @@ mod tests {
             parse_input("/steno list 50").unwrap(),
             InputCommand::Stenographer(StenographerCommand::List { limit: Some(50) })
         );
+    }
+
+    #[test]
+    fn parses_closed_citizen_namespace() {
+        assert_eq!(
+            parse_input("/citizen begin Alpha").unwrap(),
+            InputCommand::Citizen(CitizenCommand::Begin {
+                nick: "Alpha".to_string()
+            })
+        );
+        assert_eq!(
+            parse_input("/citizen proxy appoint Alpha test_further").unwrap(),
+            InputCommand::Citizen(CitizenCommand::ProxyAppoint {
+                nick: "Alpha".to_string(),
+                standing_ballot: "TEST_FURTHER".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_input("/citizen proxy kick Alpha").unwrap(),
+            InputCommand::Citizen(CitizenCommand::ProxyKick {
+                nick: "Alpha".to_string()
+            })
+        );
+        assert_eq!(
+            parse_input("/citizen independence Alpha consent").unwrap(),
+            InputCommand::Citizen(CitizenCommand::Independence {
+                nick: "Alpha".to_string(),
+                choice: "CONSENT".to_string(),
+            })
+        );
+        assert!(parse_input("/citizen independence Alpha maybe").is_err());
+        assert!(parse_input("/citizen proxy appoint Alpha").is_err());
     }
 
     #[test]

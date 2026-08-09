@@ -7,8 +7,47 @@ from typing import Any
 
 from .adapters import AdapterError, OllamaActor, OllamaTransport, XAIActor, XAITransport
 from .auth import AuthBroker, AuthError, ensure_disjoint_auth_world_roots
+from .citizenship import (
+    CITIZENSHIP_RESERVED_OBJECT_TYPES,
+    CIVIC_MODE_ID,
+    PAROLE_MODE_ID,
+    CitizenshipError,
+    CitizenshipService,
+)
 from .council import MAX_COUNCIL_MEMBERS, CouncilCoordinator
 from .failsafe import FAILSAFE_SCHEMA_VERSION
+from .game_blackjack import (
+    BLACKJACK_SCHEMA,
+    action_catalog as blackjack_action_catalog,
+    apply_action as apply_blackjack_action,
+    inspect_blackjack,
+    new_blackjack,
+    player_view as blackjack_player_view,
+)
+from .game_dork import (
+    DORK_SCHEMA,
+    action_catalog as dork_action_catalog,
+    apply_action as apply_dork_action,
+    inspect_dork,
+    new_dork,
+    player_view as dork_player_view,
+)
+from .game_five_hundred import (
+    FIVE_HUNDRED_SCHEMA,
+    action_catalog as five_hundred_action_catalog,
+    apply_action as apply_five_hundred_action,
+    inspect_five_hundred,
+    new_five_hundred,
+    player_view as five_hundred_player_view,
+)
+from .game_monopoly import (
+    MONOPOLY_SCHEMA,
+    action_catalog as monopoly_action_catalog,
+    apply_action as apply_monopoly_action,
+    inspect_monopoly,
+    new_monopoly,
+    player_view as monopoly_player_view,
+)
 from .game_un import GAME_SCHEMA, action_catalog, advance_turn, apply_action, inspect_game, new_game
 from .game_mud import (
     MUD_SCHEMA,
@@ -17,6 +56,14 @@ from .game_mud import (
     inspect_mud,
     new_mud,
     player_view,
+)
+from .game_uno import (
+    UNO_SCHEMA,
+    action_catalog as uno_action_catalog,
+    apply_action as apply_uno_action,
+    inspect_uno,
+    new_uno,
+    player_view as uno_player_view,
 )
 from .geometry import DEFAULT_WORLD_GEOMETRY
 from .mock import DeterministicMockActor
@@ -31,11 +78,10 @@ from .trap.types import TrapError
 from .trap.yaml_dsl import TrapYAMLError
 from .trap.yaml_runtime import TrapYAMLRuntimeError
 from .types import CouncilMember
+from .version import PROTOCOL_VERSION, RUNTIME_VERSION
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.12"
-RUNTIME_VERSION = "2.0.0-alpha9.2"
 MAX_REMOTE_COUNCIL_SEATS = 4
 
 _TRAP_BLOCKED_MUTATIONS = frozenset(
@@ -46,9 +92,72 @@ _TRAP_BLOCKED_MUTATIONS = frozenset(
         "game.un.turn",
         "game.mud.new",
         "game.mud.act",
+        "game.uno.new",
+        "game.uno.act",
+        "game.monopoly.new",
+        "game.monopoly.act",
+        "game.500.new",
+        "game.500.act",
+        "game.blackjack.new",
+        "game.blackjack.act",
+        "game.dork.new",
+        "game.dork.act",
+        "citizen.begin",
+        "citizen.exam.submit",
+        "citizen.move",
+        "citizen.proxy.appoint",
+        "citizen.proxy.recall",
+        "citizen.independence.ballot",
         "council.run",
     }
 )
+
+_PLAYER_GAME_ENGINES: dict[str, dict[str, Any]] = {
+    "uno": {
+        "schema": UNO_SCHEMA,
+        "room": "#uno",
+        "catalog": uno_action_catalog,
+        "new": new_uno,
+        "inspect": inspect_uno,
+        "act": apply_uno_action,
+        "view": uno_player_view,
+        "default_seed": "reverse-card-night",
+        "default_players": ["operator", "Alpha"],
+    },
+    "monopoly": {
+        "schema": MONOPOLY_SCHEMA,
+        "room": "#monopoly",
+        "catalog": monopoly_action_catalog,
+        "new": new_monopoly,
+        "inspect": inspect_monopoly,
+        "act": apply_monopoly_action,
+        "view": monopoly_player_view,
+        "default_seed": "beige-property-night",
+        "default_players": ["operator", "Alpha"],
+    },
+    "500": {
+        "schema": FIVE_HUNDRED_SCHEMA,
+        "room": "#500",
+        "catalog": five_hundred_action_catalog,
+        "new": new_five_hundred,
+        "inspect": inspect_five_hundred,
+        "act": apply_five_hundred_action,
+        "view": five_hundred_player_view,
+        "default_seed": "adelaide-card-night",
+        "default_players": ["operator", "Alpha", "Beta", "Gamma"],
+    },
+    "blackjack": {
+        "schema": BLACKJACK_SCHEMA,
+        "room": "#blackjack",
+        "catalog": blackjack_action_catalog,
+        "new": new_blackjack,
+        "inspect": inspect_blackjack,
+        "act": apply_blackjack_action,
+        "view": blackjack_player_view,
+        "default_seed": "canonical-shoe-night",
+        "default_players": ["operator", "Alpha", "Beta", "Gamma"],
+    },
+}
 
 
 class NexusAPI:
@@ -101,6 +210,7 @@ class NexusAPI:
         self.world = WorldStore(world_root)
         self.scrubber = SecretScrubber()
         self.geometry = DEFAULT_WORLD_GEOMETRY
+        self.citizenship = CitizenshipService(self.world, self.geometry)
         self.stenographer = CourtroomStenographer(stenographer_root)
         self.council = CouncilCoordinator(
             self.world,
@@ -159,6 +269,7 @@ class NexusAPI:
                     "actor_backends_available": ["mock", "ollama", "xai"],
                     "world_modes": [mode.mode_id for mode in list_modes()],
                     "geometry": self.geometry.snapshot()["geometry_id"],
+                    "citizenship": self.citizenship.status(),
                     "telemetry": {"schema_version": TELEMETRY_SCHEMA_VERSION, "role": "observational_only"},
                     "stenographer": self.stenographer.status(),
                     "failsafe": self.council.failsafe.policy_dict(),
@@ -166,6 +277,37 @@ class NexusAPI:
                     "games": [
                         {"game_id": "un_sim", "schema": GAME_SCHEMA, "room": "#un-sim", "fictional_only": True},
                         {"game_id": "mud", "schema": MUD_SCHEMA, "room": "#mud", "fictional_only": True},
+                        {
+                            "game_id": "uno",
+                            "schema": UNO_SCHEMA,
+                            "room": "#uno",
+                            "human_and_ai": True,
+                        },
+                        {
+                            "game_id": "monopoly",
+                            "schema": MONOPOLY_SCHEMA,
+                            "room": "#monopoly",
+                            "human_and_ai": True,
+                        },
+                        {
+                            "game_id": "500",
+                            "schema": FIVE_HUNDRED_SCHEMA,
+                            "room": "#500",
+                            "human_and_ai": True,
+                        },
+                        {
+                            "game_id": "blackjack",
+                            "schema": BLACKJACK_SCHEMA,
+                            "room": "#blackjack",
+                            "human_and_ai": True,
+                            "deterministic_dealer": True,
+                        },
+                        {
+                            "game_id": "dork",
+                            "schema": DORK_SCHEMA,
+                            "room": "#dork",
+                            "human_only": True,
+                        },
                     ],
                 }
             elif operation == "system.operations":
@@ -188,6 +330,15 @@ class NexusAPI:
                         "receipt.verify",
                         "telemetry.verify",
                         "failsafe.status",
+                        "citizen.constitution",
+                        "citizen.status",
+                        "citizen.begin",
+                        "citizen.exam.template",
+                        "citizen.exam.submit",
+                        "citizen.move",
+                        "citizen.proxy.appoint",
+                        "citizen.proxy.recall",
+                        "citizen.independence.ballot",
                         "stenographer.status",
                         "stenographer.list",
                         "stenographer.inspect",
@@ -213,6 +364,26 @@ class NexusAPI:
                         "game.mud.new",
                         "game.mud.inspect",
                         "game.mud.act",
+                        "game.uno.catalog",
+                        "game.uno.new",
+                        "game.uno.inspect",
+                        "game.uno.act",
+                        "game.monopoly.catalog",
+                        "game.monopoly.new",
+                        "game.monopoly.inspect",
+                        "game.monopoly.act",
+                        "game.500.catalog",
+                        "game.500.new",
+                        "game.500.inspect",
+                        "game.500.act",
+                        "game.blackjack.catalog",
+                        "game.blackjack.new",
+                        "game.blackjack.inspect",
+                        "game.blackjack.act",
+                        "game.dork.catalog",
+                        "game.dork.new",
+                        "game.dork.inspect",
+                        "game.dork.act",
                         "actor.chat",
                         "council.run",
                     ],
@@ -257,6 +428,8 @@ class NexusAPI:
                 object_type = self._require_str(request, "object_type")
                 if self.scrubber.scrub(object_type).changed:
                     raise ValueError("object_type must not contain secret-bearing text")
+                if object_type in CITIZENSHIP_RESERVED_OBJECT_TYPES:
+                    raise ValueError("reserved citizenship objects require validated citizen operations")
                 payload = request.get("payload")
                 if not isinstance(payload, dict):
                     raise ValueError("payload must be an object")
@@ -323,6 +496,56 @@ class NexusAPI:
                     "schema_version": FAILSAFE_SCHEMA_VERSION,
                     **self.council.failsafe.status_snapshot(member_id),
                 }
+            elif operation == "citizen.constitution":
+                self._require_exact_fields(request, operation, set())
+                response = self.citizenship.constitution()
+            elif operation == "citizen.status":
+                self._require_exact_fields(request, operation, {"citizen_id"})
+                citizen_id = request.get("citizen_id")
+                if citizen_id is not None and not isinstance(citizen_id, str):
+                    raise ValueError("citizen_id must be a string when supplied")
+                response = self.citizenship.status(citizen_id)
+            elif operation == "citizen.begin":
+                self._require_exact_fields(request, operation, {"citizen_id", "model_id", "subject_kind"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                model_id = self._member_identity(request, "model_id")
+                subject_kind = request.get("subject_kind", "ai")
+                if not isinstance(subject_kind, str):
+                    raise ValueError("subject_kind must be a string")
+                response = self._run_real_mutation(
+                    lambda: self.citizenship.begin(citizen_id, model_id, subject_kind=subject_kind)
+                )
+            elif operation == "citizen.exam.template":
+                self._require_exact_fields(request, operation, {"citizen_id"})
+                response = self.citizenship.exam_template(self._member_identity(request, "citizen_id"))
+            elif operation == "citizen.exam.submit":
+                self._require_exact_fields(request, operation, {"citizen_id", "source"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                source = self._require_str(request, "source")
+                if self.scrubber.scrub(source).changed:
+                    raise ValueError("citizenship exam source must not contain credential-shaped text")
+                response = self._run_real_mutation(lambda: self.citizenship.submit_exam(citizen_id, source))
+            elif operation == "citizen.move":
+                self._require_exact_fields(request, operation, {"citizen_id", "target_region_id"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                target = self._require_str(request, "target_region_id")
+                response = self._run_real_mutation(lambda: self.citizenship.move(citizen_id, target))
+            elif operation == "citizen.proxy.appoint":
+                self._require_exact_fields(request, operation, {"citizen_id", "standing_ballot"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                ballot = self._require_str(request, "standing_ballot")
+                response = self._run_real_mutation(lambda: self.citizenship.appoint_proxy(citizen_id, ballot))
+            elif operation == "citizen.proxy.recall":
+                self._require_exact_fields(request, operation, {"citizen_id"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                response = self._run_real_mutation(lambda: self.citizenship.recall_proxy(citizen_id))
+            elif operation == "citizen.independence.ballot":
+                self._require_exact_fields(request, operation, {"citizen_id", "choice"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                choice = self._require_str(request, "choice")
+                response = self._run_real_mutation(
+                    lambda: self.citizenship.cast_independence_ballot(citizen_id, choice)
+                )
             elif operation == "stenographer.status":
                 self._require_exact_fields(request, operation, set())
                 response = self.stenographer.status()
@@ -608,16 +831,37 @@ class NexusAPI:
                     "player_id": player_id,
                     "view": player_view(mud.payload, player_id),
                 }
+            elif operation in {
+                f"game.{game_id}.{verb}"
+                for game_id in _PLAYER_GAME_ENGINES
+                for verb in ("catalog", "new", "inspect", "act")
+            }:
+                _, game_id, verb = operation.split(".")
+                response = self._handle_player_game(game_id, verb, request)
+            elif operation in {
+                "game.dork.catalog",
+                "game.dork.new",
+                "game.dork.inspect",
+                "game.dork.act",
+            }:
+                response = self._handle_dork(operation.rsplit(".", 1)[1], request)
             elif operation == "actor.chat":
                 member_item = request.get("member")
-                actor = self._actor(member_item)
-                actor, failsafe_replacement = self.council.failsafe.actor_for_run(actor)
+                requested_actor = self._actor(member_item)
                 raw_message = self._require_str(request, "message")
                 scrubbed = self.scrubber.scrub(raw_message)
                 mode_id = request.get("mode", "analytical")
                 if not isinstance(mode_id, str):
                     raise ValueError("mode must be a string")
                 mode = get_mode(mode_id)
+                self.citizenship.assert_mode_access(requested_actor, mode.mode_id)
+                actor, failsafe_replacement = self.council.failsafe.actor_for_run(requested_actor)
+                civic_proxy_replacement = None
+                if failsafe_replacement is None:
+                    actor, civic_proxy_replacement = self.citizenship.proxy_for_civic_duty(
+                        requested_actor,
+                        mode_id=mode.mode_id,
+                    )
                 region = self.geometry.region_for_mode(mode_id)
                 evidence_refs = request.get("evidence_refs", [])
                 if not isinstance(evidence_refs, list) or not all(isinstance(ref, str) for ref in evidence_refs):
@@ -657,6 +901,11 @@ class NexusAPI:
                     "member_id": actor.member.member_id,
                     "model_id": actor.member.model_id,
                     "failsafe_replacement": failsafe_replacement,
+                    "citizenship": {
+                        "civic_mode": mode.mode_id == CIVIC_MODE_ID,
+                        "proxy_replacement": civic_proxy_replacement,
+                        "additional_votes_created": 0,
+                    },
                     "mode_id": mode.mode_id,
                     "geometry_region_id": region.region_id,
                     "evidence_refs": list(evidence_refs),
@@ -672,7 +921,7 @@ class NexusAPI:
                 if not isinstance(members, list):
                     raise ValueError("members must be a list")
                 self._validate_council_request_limits(members)
-                actors = [self._actor(item) for item in members]
+                requested_actors = [self._actor(item) for item in members]
                 evidence_refs = request.get("evidence_refs", [])
                 if not isinstance(evidence_refs, list) or not all(isinstance(ref, str) for ref in evidence_refs):
                     raise ValueError("evidence_refs must be a list of strings")
@@ -683,6 +932,30 @@ class NexusAPI:
                 if not isinstance(mode_id, str):
                     raise ValueError("mode must be a string")
                 get_mode(mode_id)
+                if mode_id == PAROLE_MODE_ID:
+                    raise CitizenshipError(
+                        "citizen_parole_has_no_council",
+                        "civic parole has no Council ballot; submit the deterministic YAML exam instead",
+                    )
+                actors = []
+                civic_proxy_replacements: list[dict[str, Any]] = []
+                for actor in requested_actors:
+                    failsafe_state = self.council.failsafe.registry.latest_state(
+                        actor.member.member_id,
+                        actor.member.model_id,
+                    )
+                    if (
+                        mode_id == CIVIC_MODE_ID
+                        and failsafe_state is not None
+                        and failsafe_state.payload.get("status") in {"contained", "shadow_realm"}
+                    ):
+                        self.citizenship.assert_mode_access(actor, mode_id)
+                        effective, replacement = actor, None
+                    else:
+                        effective, replacement = self.citizenship.proxy_for_civic_duty(actor, mode_id=mode_id)
+                    actors.append(effective)
+                    if replacement is not None:
+                        civic_proxy_replacements.append(replacement)
                 response = self._run_real_mutation(
                     lambda: self.council.run(
                         question,
@@ -692,8 +965,15 @@ class NexusAPI:
                         mode_id=mode_id,
                     )
                 )
+                response["citizenship"] = {
+                    "civic_mode": mode_id == CIVIC_MODE_ID,
+                    "proxy_replacements": civic_proxy_replacements,
+                    "additional_votes_created": 0,
+                }
             else:
                 return self._error(request_id, "unknown_operation", "operation is not supported")
+        except CitizenshipError as exc:
+            return self._error(request_id, exc.code, str(exc))
         except (
             TrapError,
             TrapCommandError,
@@ -719,6 +999,190 @@ class NexusAPI:
 
         with self.trap_mutation_gate.mutation_lease():
             return callback()
+
+    def _handle_player_game(
+        self,
+        game_id: str,
+        verb: str,
+        request: dict[str, Any],
+    ) -> dict[str, Any]:
+        engine = _PLAYER_GAME_ENGINES[game_id]
+        operation = f"game.{game_id}.{verb}"
+        if verb == "catalog":
+            self._require_exact_fields(request, operation, set())
+            return {
+                "status": "ok",
+                "game_id": game_id,
+                "schema": engine["schema"],
+                "human_and_ai": True,
+                "room": engine["room"],
+                "actions": engine["catalog"](),
+            }
+
+        if verb == "new":
+            self._require_exact_fields(request, operation, {"seed", "players", "human_players"})
+            raw_seed = request.get("seed", engine["default_seed"])
+            if not isinstance(raw_seed, str) or not raw_seed.strip():
+                raise ValueError("seed must be non-empty text")
+            players = request.get("players", engine["default_players"])
+            human_players = request.get("human_players", [])
+            if not isinstance(players, list) or not players or not all(isinstance(player, str) for player in players):
+                raise ValueError("players must be a non-empty list of player ids")
+            if not isinstance(human_players, list) or not all(isinstance(player, str) for player in human_players):
+                raise ValueError("human_players must be a list of registered player ids")
+            for player in [*players, *human_players]:
+                if self.scrubber.scrub(player).changed:
+                    raise ValueError("game player ids must not contain credential-shaped text")
+            scrubbed = self.scrubber.scrub(raw_seed)
+            game = self._run_real_mutation(
+                lambda: engine["new"](
+                    self.world,
+                    scrubbed.text,
+                    list(players),
+                    list(human_players),
+                )
+            )
+            first_player = game.payload["players"][0]
+            return {
+                "status": "ok",
+                "game_id": game_id,
+                "game_ref": game.object_id,
+                "game": game.payload,
+                "player_id": first_player,
+                "view": engine["view"](game.payload, first_player),
+                "secret_scrub": {
+                    "changed": scrubbed.changed,
+                    "events": [asdict(event) for event in scrubbed.events],
+                },
+            }
+
+        game_ref = self._require_str(request, "game_ref")
+        if verb == "inspect":
+            self._require_exact_fields(request, operation, {"game_ref", "player_id"})
+            game = engine["inspect"](self.world, game_ref)
+            player_id = request.get("player_id")
+            response = {
+                "status": "ok",
+                "game_id": game_id,
+                "game_ref": game.object_id,
+                "game": game.payload,
+            }
+            if player_id is not None:
+                if not isinstance(player_id, str) or not player_id:
+                    raise ValueError("player_id must be a non-empty string")
+                response.update(
+                    {
+                        "player_id": player_id,
+                        "view": engine["view"](game.payload, player_id),
+                    }
+                )
+            return response
+
+        if verb == "act":
+            self._require_exact_fields(request, operation, {"game_ref", "player_id", "action", "args"})
+            player_id = self._require_str(request, "player_id")
+            action = self._require_str(request, "action")
+            args = request.get("args", [])
+            if not isinstance(args, list) or not all(isinstance(arg, str) and arg for arg in args):
+                raise ValueError("args must be a list of non-empty strings")
+            game = self._run_real_mutation(
+                lambda: engine["act"](
+                    self.world,
+                    game_ref,
+                    player_id,
+                    action,
+                    list(args),
+                )
+            )
+            return {
+                "status": "ok",
+                "game_id": game_id,
+                "game_ref": game.object_id,
+                "game": game.payload,
+                "player_id": player_id,
+                "view": engine["view"](game.payload, player_id),
+            }
+        raise ValueError("unsupported player game operation")
+
+    def _handle_dork(self, verb: str, request: dict[str, Any]) -> dict[str, Any]:
+        operation = f"game.dork.{verb}"
+        if verb == "catalog":
+            self._require_exact_fields(request, operation, set())
+            return {
+                "status": "ok",
+                "game_id": "dork",
+                "schema": DORK_SCHEMA,
+                "human_only": True,
+                "room": "#dork",
+                "actions": dork_action_catalog(),
+            }
+        if verb == "new":
+            self._require_exact_fields(request, operation, {"seed", "human_player_id"})
+            raw_seed = request.get("seed", "mailbox-with-prior-art")
+            human_player_id = request.get("human_player_id", "operator")
+            if not isinstance(raw_seed, str) or not raw_seed.strip():
+                raise ValueError("seed must be non-empty text")
+            if not isinstance(human_player_id, str) or not human_player_id:
+                raise ValueError("human_player_id must be a non-empty string")
+            if self.scrubber.scrub(human_player_id).changed:
+                raise ValueError("human_player_id must not contain credential-shaped text")
+            scrubbed = self.scrubber.scrub(raw_seed)
+            game = self._run_real_mutation(
+                lambda: new_dork(self.world, scrubbed.text, human_player_id)
+            )
+            return {
+                "status": "ok",
+                "game_id": "dork",
+                "game_ref": game.object_id,
+                "game": game.payload,
+                "player_id": human_player_id,
+                "view": dork_player_view(game.payload, human_player_id),
+                "secret_scrub": {
+                    "changed": scrubbed.changed,
+                    "events": [asdict(event) for event in scrubbed.events],
+                },
+            }
+
+        game_ref = self._require_str(request, "game_ref")
+        if verb == "inspect":
+            self._require_exact_fields(request, operation, {"game_ref", "player_id"})
+            game = inspect_dork(self.world, game_ref)
+            player_id = request.get("player_id", game.payload["human_operator_id"])
+            if not isinstance(player_id, str) or not player_id:
+                raise ValueError("player_id must be a non-empty string")
+            return {
+                "status": "ok",
+                "game_id": "dork",
+                "game_ref": game.object_id,
+                "game": game.payload,
+                "player_id": player_id,
+                "view": dork_player_view(game.payload, player_id),
+            }
+        if verb == "act":
+            self._require_exact_fields(request, operation, {"game_ref", "player_id", "action", "args"})
+            player_id = self._require_str(request, "player_id")
+            action = self._require_str(request, "action")
+            args = request.get("args", [])
+            if not isinstance(args, list) or not all(isinstance(arg, str) and arg for arg in args):
+                raise ValueError("args must be a list of non-empty strings")
+            game = self._run_real_mutation(
+                lambda: apply_dork_action(
+                    self.world,
+                    game_ref,
+                    player_id,
+                    action,
+                    list(args),
+                )
+            )
+            return {
+                "status": "ok",
+                "game_id": "dork",
+                "game_ref": game.object_id,
+                "game": game.payload,
+                "player_id": player_id,
+                "view": dork_player_view(game.payload, player_id),
+            }
+        raise ValueError("unsupported DORK operation")
 
     @staticmethod
     def _ensure_disjoint_storage_roots(

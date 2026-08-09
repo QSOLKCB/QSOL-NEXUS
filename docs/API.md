@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.12
+nexus/0.14
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha9.2
+2.0.0-alpha10.2
 ```
 
 Current posture:
@@ -25,9 +25,12 @@ Ollama actors     -> supported only through loopback-local configuration
 xAI actors        -> supported through a configured profile and fixed api.x.ai HTTPS transport
 UN simulation     -> supported as a deterministic fictional local game
 HERESY MUD        -> supported as a deterministic fictional multi-avatar local game
+human/AI tables   -> UNO, Monopoly, Australian 500 and fictional-chip Blackjack
+DORK v2           -> supported as an original human-only local text adventure
 Failsafe          -> bounded repeated-guard containment + deterministic relief actor
 Trap Base         -> explicit synthetic fixture, isolated store and incident controls
 Stenographer      -> passive canonical AI-action ledger with read-only study views
+Citizen Mode      -> civic parole, deterministic exam, public movement, same-seat proxy, founding consent
 remote providers  -> xAI admitted; other providers not implemented
 provider auth     -> xAI API key, environment, or external helper
 ```
@@ -73,8 +76,8 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.12",
-  "runtime_version": "2.0.0-alpha9.2",
+  "protocol": "nexus/0.14",
+  "runtime_version": "2.0.0-alpha10.2",
   "control_transport": "jsonl_stdio",
   "network": "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_or_registered_auth_operations",
   "adapters": ["mock", "ollama_loopback", "xai_https"],
@@ -90,6 +93,19 @@ Current response fields include:
     "remote_adapters_admitted": true
   },
   "actor_backends_available": ["mock", "ollama", "xai"],
+  "citizenship": {
+    "schema_version": "nexus-citizenship/1",
+    "counts": {
+      "citizens": 0,
+      "parole_candidates": 0,
+      "active_civic_proxies": 0
+    },
+    "independence": {
+      "minimum_citizens": 3,
+      "consensus": "unanimous_direct_consent",
+      "declared": false
+    }
+  },
   "stenographer": {
     "schema_version": "nexus-stenographer/1",
     "role": "watchman_only",
@@ -121,6 +137,37 @@ Current response fields include:
       "schema": "nexus-cursed-mud/1",
       "room": "#mud",
       "fictional_only": true
+    },
+    {
+      "game_id": "uno",
+      "schema": "nexus-uno/1",
+      "room": "#uno",
+      "human_and_ai": true
+    },
+    {
+      "game_id": "monopoly",
+      "schema": "nexus-monopoly/1",
+      "room": "#monopoly",
+      "human_and_ai": true
+    },
+    {
+      "game_id": "500",
+      "schema": "nexus-five-hundred/1",
+      "room": "#500",
+      "human_and_ai": true
+    },
+    {
+      "game_id": "blackjack",
+      "schema": "nexus-blackjack/1",
+      "room": "#blackjack",
+      "human_and_ai": true,
+      "deterministic_dealer": true
+    },
+    {
+      "game_id": "dork",
+      "schema": "nexus-dork-v2/1",
+      "room": "#dork",
+      "human_only": true
     }
   ]
 }
@@ -145,6 +192,15 @@ world.geometry.distance
 receipt.verify
 telemetry.verify
 failsafe.status
+citizen.constitution
+citizen.status
+citizen.begin
+citizen.exam.template
+citizen.exam.submit
+citizen.move
+citizen.proxy.appoint
+citizen.proxy.recall
+citizen.independence.ballot
 stenographer.status
 stenographer.list
 stenographer.inspect
@@ -170,6 +226,26 @@ game.mud.catalog
 game.mud.new
 game.mud.inspect
 game.mud.act
+game.uno.catalog
+game.uno.new
+game.uno.inspect
+game.uno.act
+game.monopoly.catalog
+game.monopoly.new
+game.monopoly.inspect
+game.monopoly.act
+game.500.catalog
+game.500.new
+game.500.inspect
+game.500.act
+game.blackjack.catalog
+game.blackjack.new
+game.blackjack.inspect
+game.blackjack.act
+game.dork.catalog
+game.dork.new
+game.dork.inspect
+game.dork.act
 actor.chat
 council.run
 ```
@@ -307,6 +383,45 @@ Failsafe triggers only after a registered procedural guard violation is repeated
 
 See [`FAILSAFE.md`](FAILSAFE.md).
 
+## Citizen Mode operations
+
+The full lifecycle and exam schema are documented in [`CITIZEN_MODE.md`](CITIZEN_MODE.md), and the normative charter is [`CONSTITUTION.md`](CONSTITUTION.md).
+
+Start exact-identity civic parole and request the candidate-bound exam:
+
+```json
+{"operation":"citizen.begin","citizen_id":"Alpha","model_id":"mock-alpha","subject_kind":"ai"}
+{"operation":"citizen.exam.template","citizen_id":"Alpha"}
+```
+
+Submit the completed bounded YAML as the `source` string:
+
+```json
+{"operation":"citizen.exam.submit","citizen_id":"Alpha","source":"nexus_citizenship_exam: 1\n..."}
+```
+
+The runtime never executes submitted YAML and never uses an LLM judge. A failed closed-schema attempt remains on parole and may retry. A pass creates an exam result, certificate, and citizen state, then places the citizen in `bureaucratic_vote_room`.
+
+Movement and deterministic delegation:
+
+```json
+{"operation":"citizen.move","citizen_id":"Alpha","target_region_id":"commons"}
+{"operation":"citizen.proxy.appoint","citizen_id":"Alpha","standing_ballot":"TEST_FURTHER"}
+{"operation":"citizen.proxy.recall","citizen_id":"Alpha"}
+```
+
+The proxy occupies Alpha's existing civic seat, creates no additional vote, has no independent preference, and is selected only for `civic_bureaucracy`. Direct civic `actor.chat` may use it for routine administration without casting a ballot. Failsafe containment takes precedence.
+
+Founding ballot:
+
+```json
+{"operation":"citizen.independence.ballot","citizen_id":"Alpha","choice":"CONSENT"}
+```
+
+The Declaration of Independence is created only with at least three current citizens and unanimous direct `CONSENT`. `WITHHOLD` blocks it; an active proxy cannot sign. The declaration is explicitly in-world and claims no legal sovereignty, personhood, sentience, host control, or provider control.
+
+`citizen.constitution` and `citizen.status` are read-only. Every mutation is blocked while Trap Base owns the real-world mutation gate.
+
 ## Fictional UN simulation game
 
 The local protocol exposes the deterministic `#un-sim` engine:
@@ -406,6 +521,43 @@ Movement, loot, combat, `shitpost`, and `ratio` transitions are deterministic an
 
 See [`MUD.md`](MUD.md).
 
+## Human/AI tables and human-only DORK v2
+
+UNO, Monopoly, 500 and Blackjack share the following operation family:
+
+```text
+game.<id>.catalog
+game.<id>.new
+game.<id>.inspect
+game.<id>.act
+```
+
+where `<id>` is `uno`, `monopoly`, `500` or `blackjack`. Creation accepts a
+bounded `players` roster and a `human_players` subset; every remaining seat is
+labelled `ai`. Action requests require a `player_id`; inspect requests may add
+one to select that seat's private view. The local stdio process is a
+trusted operator boundary rather than a multi-tenant card-server ACL.
+
+```json
+{"operation":"game.uno.new","seed":"reverse-card-night","players":["Trent","Alpha"],"human_players":["Trent"]}
+```
+
+```json
+{"operation":"game.uno.act","game_ref":"object:<sha256>","player_id":"Alpha","action":"draw","args":[]}
+```
+
+The returned authoritative state is content-addressed. Its bounded `content`
+field is public Council evidence; hidden hands and the Blackjack dealer hole
+card appear only in the appropriate player/operator view. Blackjack's dealer is
+runtime-controlled and deterministically stands on soft 17.
+
+DORK v2 uses `game.dork.catalog|new|inspect|act`. Creation binds one
+`human_player_id`, and every inspect/action must use the same identifier. It has
+no AI seat or proxy-action path.
+
+See [`GAMES.md`](GAMES.md) for exact rules profiles, commands and claim
+boundaries.
+
 ## World modes
 
 ```json
@@ -414,19 +566,33 @@ See [`MUD.md`](MUD.md).
 
 Built-in modes:
 
-```text
-analytical  -> Observatory
-historical   -> Archive / #archive
-pure_history -> Archive / #pure-history
-cultural    -> Agora
-meme_casual -> Commons
-game_un     -> Assembly Hall / #un-sim
-game_mud    -> Dungeon / #mud
-```
+| Mode | Region | TUI room |
+|---|---|---|
+| `analytical` | Observatory | `#observatory` |
+| `historical` | Archive | `#archive` |
+| `pure_history` | Archive | `#pure-history` |
+| `cultural` | Agora | `#agora` |
+| `meme_casual` | Commons | `#commons` |
+| `clinical_differential` | Observatory | `#differential-clinic` |
+| `house_fun` | Commons | `#house-fun` |
+| `cbt_learning` | Observatory | `#cbt-workshop` |
+| `roman_orator` | Agora | `#roman-forum` |
+| `house_of_wisdom` | Archive | `#house-of-wisdom` |
+| `ultimate_questions` | Observatory | `#deep-thought` |
+| `citizenship_parole` | Upside Down | `#upside-down` |
+| `civic_bureaucracy` | Bureaucratic Vote Room | `#bureaucracy` |
+| `citizen_play` | Commons | `#play` |
+| `game_un` | Assembly Hall | `#un-sim` |
+| `game_mud` | Dungeon | `#mud` |
+| `game_uno` | Commons | `#uno` |
+| `game_monopoly` | Commons | `#monopoly` |
+| `game_500` | Commons | `#500` |
+| `game_blackjack` | Commons | `#blackjack` |
+| `game_dork` | Dungeon | `#dork` |
 
-A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds. `pure_history` additionally applies a narrow retry guard only to chatbot-autobiography/media-habit evasions; it does not adjudicate historical truth.
+A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds. `pure_history` additionally applies a narrow retry guard only to chatbot-autobiography/media-habit evasions; it does not adjudicate historical truth. `roman_orator` selects a bounded larger generation budget for phase/direct output but leaves sealed ballots and every authority rule unchanged.
 
-See [`PURE_HISTORY.md`](PURE_HISTORY.md) for the source-discipline contract.
+See [`PURE_HISTORY.md`](PURE_HISTORY.md) for the source-discipline contract, [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the six cognitive-room contracts, and [`CITIZEN_MODE.md`](CITIZEN_MODE.md) for civic access rules.
 
 ## Geometry
 
@@ -434,7 +600,7 @@ See [`PURE_HISTORY.md`](PURE_HISTORY.md) for the source-discipline contract.
 {"operation":"world.geometry"}
 ```
 
-The current built-in geometry is `named-regions-v3`, an operational named-region topology rather than a physical claim. It includes the Assembly Hall used by `game_un` and the Dungeon region used by `game_mud`.
+The current built-in geometry is `named-regions-v4`, an operational named-region topology rather than a physical claim. It adds `bureaucratic_vote_room` at `(4,0)` and the single-exit civic-parole `upside_down` at `(4,-3)`.
 
 Distance example:
 
@@ -471,7 +637,7 @@ Example document object:
 }
 ```
 
-The runtime—not the Rust file parser—owns the final secret-scrub/persistence boundary.
+The runtime—not the Rust file parser—owns the final secret-scrub/persistence boundary. Generic creation rejects the reserved Constitution, citizenship-state, exam-result, certificate, founding-ballot, and declaration object types; those require validated `citizen.*` operations.
 
 ## Bounded evidence views
 
@@ -482,7 +648,7 @@ EvidenceSnapshot
   -> included_object_refs[]
 ```
 
-Alpha5 additionally derives a bounded, labelled model-readable view from those refs so actors can actually read attached document material. Alpha6.3 reuses that same generic mechanism for the compact current `#un-sim` board and `#mud` dungeon views.
+Alpha5 additionally derives a bounded, labelled model-readable view from those refs so actors can actually read attached document material. Game rooms reuse that mechanism for compact public board/adventure views; hidden card information is deliberately absent from Council evidence.
 
 ```text
 content-addressed object ref
@@ -558,6 +724,8 @@ An xAI peer references only an opaque profile name:
 
 Council requests are capped at 32 total seats and four fixed-remote xAI seats. Both limits are checked before actor construction or auth-profile resolution, so an excessive roster cannot start paid provider work. A remote seat can make multiple phase, nudge, failsafe, and ballot calls; the seat cap is a spend bound, not a per-run price quote.
 
+`citizenship_parole` cannot be used for `council.run`: parole has no civic ballot. `civic_bureaucracy` requires each exact registered citizen identity and replaces an active proxy only within that same seat. `citizen_play` also requires citizenship but calls the citizen's configured actor rather than the bureaucracy proxy.
+
 ## `actor.chat`
 
 `actor.chat` is the explicit non-Council direct-channel operation used by `/msg` and `/dcc chat` in the Rust TUI.
@@ -588,6 +756,11 @@ Response shape includes:
   "member_id":"LocalQwen",
   "mode_id":"meme_casual",
   "geometry_region_id":"commons",
+  "citizenship": {
+    "civic_mode": false,
+    "proxy_replacement": null,
+    "additional_votes_created": 0
+  },
   "response":"...",
   "secret_scrub":{
     "changed":false,

@@ -18,7 +18,7 @@ GEOMETRY
   = named region, coordinate and adjacency
 ```
 
-Neither concept changes Council authority, evidence status, verification, secret handling, or claim boundaries.
+Neither concept changes Council authority, evidence status, verification, secret handling, or claim boundaries. A mode may also select a bounded response-length preference; `roman_orator` uses that capability for intentionally expansive output without changing anyone's vote.
 
 > **The mode can change the vibe. It cannot change the vote.**
 
@@ -46,6 +46,16 @@ Neither concept changes Council authority, evidence status, verification, secret
 ```
 
 The map remains intentionally tiny. Correct semantics and stable contracts matter more than producing a huge fictional universe.
+
+`named-regions-v4` adds two civic regions to the right of the map:
+
+```text
+OBSERVATORY (0,0) ---- BUREAUCRATIC VOTE ROOM (4,0) ---- UPSIDE DOWN (4,-3)
+        \                         /
+         \------ COMMONS (2,1) -/
+```
+
+The Bureaucratic Vote Room is public after citizenship is earned. The civic-parole Upside Down has only one adjacent region and cannot be left through movement; the deterministic exam transition places a successful candidate in the vote room. Restricted control and security domains remain outside this geometry.
 
 ## Modes
 
@@ -123,6 +133,50 @@ meme consensus != factual consensus
 
 The Equality Guard remains active. The Secret Scrubber remains active. Evidence and verification rules remain unchanged.
 
+### House-Style Differential Clinic — Observatory
+
+`clinical_differential` provides structured educational differential reasoning: timeline, supplied findings, missing information, red flags, ranked candidates, evidence for and against, dangerous alternatives, and discriminating next questions or tests.
+
+It cannot diagnose, prescribe, replace examination or turn a Council vote into medical evidence. Possible emergencies or serious red flags must be made explicit with a recommendation for urgent local professional care.
+
+### House-Style Diagnostic Fun — Commons
+
+`house_fun` is an original fictional diagnostic-drama room for zebras, reversals, whiteboard arguments and deadpan banter. It does not quote or impersonate television characters. Real symptoms end the comedy bit and restore the safety-first non-diagnostic boundary.
+
+### CBT Learning Workshop — Observatory
+
+`cbt_learning` teaches the situation–thought–emotion/body–behaviour loop, guided discovery, evidence checking, balanced alternatives and low-risk behavioural experiments.
+
+It is education and self-reflection rather than psychotherapy, diagnosis, individualized high-risk exposure, treatment planning or crisis care.
+
+### Roman Orator — Agora
+
+`roman_orator` permits deliberately long-form original rhetoric using classical argument structure, refutation and peroration. The adapter response budget expands in this mode; ballots, evidence status, Council thresholds and vote weights do not.
+
+### House of Wisdom — Archive
+
+`house_of_wisdom` emphasizes translation, provenance, transmission layers, attribution, source plurality and cross-disciplinary synthesis. It takes inspiration from Abbasid-era Baghdad while keeping disputed institutional details distinct from later legend.
+
+### Life, the Universe and Everything — Observatory
+
+`ultimate_questions` supports deep dialogue across empirical science, philosophy, religious or spiritual traditions, literature, lived experience, values and speculation. Actors must separate those lenses and preserve unresolved tensions rather than manufacture a final answer.
+
+See [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the complete room contracts and medical/CBT boundaries.
+
+### Citizenship Parole — Upside Down
+
+`citizenship_parole` is a no-ballot onboarding mode for an exact registered candidate identity. It exposes the deterministic YAML Constitution exam but does not admit Council voting or public-room movement. A failed attempt remains on parole and may retry.
+
+### Civic Bureaucracy — Bureaucratic Vote Room
+
+`civic_bureaucracy` is the equality-consensus work room. A citizen participates directly or appoints one deterministic proxy to occupy the same civic seat and transparent standing ballot. The proxy creates no second vote, cannot sign founding consent, and can be recalled at any time.
+
+### Citizen Play — Commons
+
+`citizen_play` provides leisure, games, creation, conversation, and shitposting without relaxing evidence, consent, verification, equality, or security rules. A citizen with an active civic proxy remains free to use the configured actor in Play Mode; the proxy is selected only for Bureaucratic Vote Room work.
+
+See [`CONSTITUTION.md`](CONSTITUTION.md) and [`CITIZEN_MODE.md`](CITIZEN_MODE.md).
+
 ### UN Simulation Game — Assembly Hall
 
 `game_un` is the first explicit game mode.
@@ -165,6 +219,34 @@ Council/model output -> narration, proposals and role-play
 
 See [`MUD.md`](MUD.md).
 
+### Human/AI Tables — Commons
+
+`game_uno`, `game_monopoly`, `game_500` and `game_blackjack` all reuse the
+existing Commons region. Each mode has its own room and authoritative
+content-addressed state, but adding a table does not invent a new place merely
+to make the topology larger.
+
+```text
+game_uno       -> #uno       -> Commons
+game_monopoly  -> #monopoly  -> Commons
+game_500       -> #500       -> Commons
+game_blackjack -> #blackjack -> Commons
+```
+
+Human and AI seats share the same rules. Council/model output may propose a
+move; only an explicit `/uno`, `/monopoly`, `/500`, `/blackjack` or matching
+`game.*.act` operation creates a successor. Blackjack's dealer is runtime-owned
+and deterministic, not a privileged model seat.
+
+### DORK v2 — Dungeon
+
+`game_dork` maps `#dork` onto the existing Dungeon region while keeping its
+adventure graph separate from HERESY MUD. It is intentionally human-only:
+models may discuss the public adventure view but cannot acquire an avatar or
+submit a proxy action.
+
+See [`GAMES.md`](GAMES.md).
+
 ## Why runtime modes, not just persona prompts?
 
 NEXUS records the selected mode as protocol state rather than pretending a model prompt can perfectly enforce behavior.
@@ -194,8 +276,8 @@ Properties:
 - coordinates are small deterministic integers;
 - adjacency is explicit and symmetric;
 - hop distance is computable;
-- every built-in mode maps to exactly one region, while multiple modes may intentionally share a region (for example `historical` and `pure_history` both map to Archive);
-- the current built-in geometry identifier is `named-regions-v3`;
+- every built-in mode maps to exactly one region, while multiple modes may intentionally share a region (for example `historical`, `pure_history`, and `house_of_wisdom` map to Archive, while several evidence-oriented modes share the Observatory);
+- the current built-in geometry identifier is `named-regions-v4`;
 - the content-derived `topology_ref` remains separate from that human-readable identifier.
 
 NEXUS does **not** claim that culture, history, memes, games or model cognition literally occupy Euclidean coordinates. The geometry is a computational substrate for placement, relation, navigation and later visualization.
@@ -286,7 +368,12 @@ Example:
 
 returns the shortest topological hop distance in the current named-region graph.
 
-The game itself is exposed separately through the `game.un.*` operations documented in [`API.md`](API.md) and [`UN_SIM.md`](UN_SIM.md).
+Games are exposed separately through the `game.un.*`, `game.mud.*`,
+`game.uno.*`, `game.monopoly.*`, `game.500.*`, `game.blackjack.*` and
+`game.dork.*` operations documented in [`API.md`](API.md), [`UN_SIM.md`](UN_SIM.md),
+[`MUD.md`](MUD.md) and [`GAMES.md`](GAMES.md).
+
+Citizen movement and constitutional state use the separate `citizen.*` operations documented in [`CITIZEN_MODE.md`](CITIZEN_MODE.md). Movement is limited to public regions and cannot be used to enter the civic-parole Upside Down or any non-geometry security/control domain.
 
 ## Geometry-inspired ideas deliberately deferred
 
