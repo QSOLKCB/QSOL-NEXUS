@@ -634,4 +634,4 @@ class ThirdPartyActor:
             max_output_tokens=THIRD_PARTY_BALLOT_OUTPUT_TOKENS,
             require_complete=True,
         )
-        return parse_ballot_response(raw)
+        return parse_ballot_response(raw, self.transport.spec.provider_name)
