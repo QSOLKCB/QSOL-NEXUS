@@ -10,7 +10,6 @@ on:
   push:
     branches:
       - main
-      - agent/security-audit-remediation
 
 permissions:
   contents: read
