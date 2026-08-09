@@ -12,7 +12,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
-from ..auth.types import AdapterAuthDescriptor, AuthFlow, AuthMethod, SecretMaterial
+from ..auth.types import SecretMaterial
 from ..types import Ballot, CouncilMember, PhaseContext
 from .base import (
     AdapterAuthenticationError,
@@ -54,47 +54,6 @@ class _NoRedirectHandler(HTTPRedirectHandler):
         return None
 
 
-def local_ai_auth_descriptors() -> tuple[AdapterAuthDescriptor, ...]:
-    """Authentication descriptors for optional loopback-local AI hosts."""
-
-    optional_token_methods = (
-        AuthMethod.LOCAL_ENDPOINT,
-        AuthMethod.NO_AUTH_REQUIRED,
-        AuthMethod.API_CREDENTIAL,
-        AuthMethod.EXTERNAL_SECRET,
-    )
-    optional_token_flows = (
-        AuthFlow.LOCAL_ENDPOINT,
-        AuthFlow.NONE,
-        AuthFlow.API_KEY,
-        AuthFlow.ENVIRONMENT,
-        AuthFlow.EXTERNAL_COMMAND,
-    )
-    return (
-        AdapterAuthDescriptor(
-            adapter_id="lmstudio_local",
-            provider_name="LM Studio loopback",
-            local_or_remote="local",
-            auth_methods=optional_token_methods,
-            auth_flows=optional_token_flows,
-        ),
-        AdapterAuthDescriptor(
-            adapter_id="anythingllm_local",
-            provider_name="AnythingLLM loopback",
-            local_or_remote="local",
-            auth_methods=optional_token_methods,
-            auth_flows=optional_token_flows,
-        ),
-        AdapterAuthDescriptor(
-            adapter_id="openai_local",
-            provider_name="OpenAI-compatible loopback",
-            local_or_remote="local",
-            auth_methods=optional_token_methods,
-            auth_flows=optional_token_flows,
-        ),
-    )
-
-
 def default_local_ai_endpoint(adapter_id: str) -> str:
     try:
         return _DEFAULT_ENDPOINTS[adapter_id]
@@ -103,7 +62,7 @@ def default_local_ai_endpoint(adapter_id: str) -> str:
 
 
 def validate_local_ai_endpoint(value: str) -> str:
-    """Require a root loopback HTTP(S) origin with no redirect/proxy escape surface."""
+    """Require a root loopback HTTP(S) origin with no proxy/redirect escape surface."""
 
     if not isinstance(value, str) or not value:
         raise ValueError("local AI endpoint must be a non-empty URL")
@@ -143,8 +102,9 @@ def _validate_workspace(value: str) -> str:
 class LocalMCPPlugin:
     """One pre-configured LM Studio mcp.json plugin reference.
 
-    NEXUS intentionally accepts plugin ids only. It never accepts per-request
-    MCP URLs, headers, commands, or environment variables through this surface.
+    NEXUS accepts plugin ids and optional tool allowlists only. Per-request MCP
+    URLs, custom headers, commands, arguments and environment blocks are not an
+    admitted NEXUS input shape.
     """
 
     plugin_id: str
@@ -170,12 +130,7 @@ class LocalMCPPlugin:
 
 @dataclass
 class LocalAITransport:
-    """Bounded loopback-only transport for local model hosts.
-
-    MCP is delegated only to pre-configured LM Studio plugin ids. NEXUS does not
-    admit ephemeral MCP server URLs on this boundary and does not claim that a
-    downstream host's own plugin configuration is independently verified.
-    """
+    """Bounded loopback-only transport for local model hosts."""
 
     adapter_id: str
     endpoint: str | None = None
@@ -210,7 +165,7 @@ class LocalAITransport:
         workspace: str | None = None,
         mcp_plugins: tuple[LocalMCPPlugin, ...] = (),
         session_key: str | None = None,
-        max_output_tokens: int = 768,
+        max_output_tokens: int = LOCAL_AI_PHASE_OUTPUT_TOKENS,
     ) -> str:
         if not isinstance(prompt, str) or not prompt.strip():
             raise AdapterProtocolError("local AI prompt must be non-empty text")
@@ -233,6 +188,10 @@ class LocalAITransport:
             if model is None:
                 raise ValueError("LM Studio local role requires a model")
             model = _validate_model(model)
+            if mcp_plugins and self.credential is None:
+                raise AdapterAuthenticationError(
+                    "LM Studio configured MCP plugins require an API token"
+                )
             payload: dict[str, Any] = {
                 "model": model,
                 "input": prompt,
@@ -254,7 +213,7 @@ class LocalAITransport:
             if workspace is None:
                 raise ValueError("AnythingLLM local role requires a workspace")
             workspace = _validate_workspace(workspace)
-            payload = {"message": prompt, "mode": "chat"}
+            payload = {"message": f"@agent {prompt}", "mode": "chat"}
             if session_key is not None:
                 if not isinstance(session_key, str) or not session_key or len(session_key) > 128:
                     raise ValueError("AnythingLLM session_key must be bounded text")
@@ -407,10 +366,11 @@ class LocalAIActor:
             "network_scope": "loopback_only",
             "local_model_id": self.model,
             "anythingllm_workspace": self.workspace,
+            "anythingllm_agent_mode": self.transport.adapter_id == "anythingllm_local",
             "mcp_plugin_ids": [item.plugin_id for item in self.mcp_plugins],
             "mcp_ephemeral_urls_allowed": False,
             "mcp_tools_enabled_for_ballot": False,
-            "automatic_tools": bool(self.mcp_plugins),
+            "automatic_tools": bool(self.mcp_plugins) or self.transport.adapter_id == "anythingllm_local",
         }
 
     def _session_key(self, value: str) -> str:
@@ -465,7 +425,7 @@ class LocalAIActor:
         )
 
     def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
-        # MCP integrations are intentionally absent from sealed-ballot calls.
+        # Tools are deliberately unavailable while a model produces its sealed ballot.
         raw = self.transport.generate(
             build_ballot_prompt(context),
             model=self.model,
@@ -487,6 +447,5 @@ __all__ = [
     "LocalAITransport",
     "LocalMCPPlugin",
     "default_local_ai_endpoint",
-    "local_ai_auth_descriptors",
     "validate_local_ai_endpoint",
 ]
