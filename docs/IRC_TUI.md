@@ -101,6 +101,9 @@ NEXUS rooms map directly to built-in World Modes and geometry regions:
 | `#roman-forum` | `roman_orator` | Agora |
 | `#house-of-wisdom` | `house_of_wisdom` | Archive |
 | `#deep-thought` | `ultimate_questions` | Observatory |
+| `#upside-down` | `citizenship_parole` | Upside Down |
+| `#bureaucracy` | `civic_bureaucracy` | Bureaucratic Vote Room |
+| `#play` | `citizen_play` | Commons |
 | `#un-sim` | `game_un` | Assembly Hall |
 | `#mud` | `game_mud` | Dungeon |
 | `#uno` | `game_uno` | Commons |
@@ -133,7 +136,29 @@ Changing room changes mode and world region. It does not change evidence rules, 
 
 > **The mode can change the vibe. It cannot change the vote.**
 
-See [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the six cognitive-room contracts, including the medical and CBT boundaries.
+See [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the six cognitive-room contracts, including the medical and CBT boundaries, and [`CITIZEN_MODE.md`](CITIZEN_MODE.md) for civic access.
+
+## Citizen rooms and `/citizen`
+
+The citizenship lifecycle is explicit and exact-identity bound:
+
+```text
+/join #upside-down
+/citizen begin Alpha
+/citizen exam-template Alpha
+/citizen exam Alpha ./alpha-citizenship.yaml
+
+/join #bureaucracy
+/citizen proxy appoint Alpha TEST_FURTHER
+/join #play
+
+/citizen proxy kick Alpha
+/citizen independence Alpha CONSENT
+```
+
+`/citizen begin` resolves the configured nick's current model identity. Exam files larger than 16 KiB are rejected by the TUI before JSONL transport; the Python runtime applies the authoritative closed YAML parser and persists only the source hash binding and deterministic result. Parole has no Council ballot.
+
+The civic proxy occupies the same citizen seat and cannot create an additional vote, play, move, become a citizen, or sign founding consent. It is used for Bureaucratic Vote Room administration only; Play Mode calls the citizen's configured actor. `/citizen proxy kick` recalls the proxy and returns the citizen to the vote room. See [`CONSTITUTION.md`](CONSTITUTION.md).
 
 ## `#stenographer` and `/steno`
 
@@ -520,6 +545,17 @@ There is no arbitrary expression evaluator.
 /500 help | new [seed] | status | <action...>
 /blackjack help | new [seed] | status | <action...>
 /dork help | new [seed] | status | <action...>
+
+/citizen help
+/citizen constitution
+/citizen status [nick]
+/citizen begin <nick>
+/citizen exam-template <nick>
+/citizen exam <nick> <yaml-file>
+/citizen move <nick> <public-region>
+/citizen proxy appoint <nick> <standing-ballot>
+/citizen proxy kick <nick>
+/citizen independence <nick> <consent|withhold>
 
 /addmock <nick> [profile]
 /addollama <nick> <ollama-model>

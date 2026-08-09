@@ -27,6 +27,7 @@ NEXUS does not attempt to define how a model must think internally. It defines h
                     | Council orchestration   |
                     | world object service    |
                     | modes + geometry        |
+                    | citizenship registry    |
                     | memory / lineage        |
                     | instrument dispatch     |
                     | evidence / receipts     |
@@ -199,6 +200,9 @@ Selected built-in mappings (multiple modes intentionally share regions):
 | `roman_orator` | Agora |
 | `house_of_wisdom` | Archive |
 | `ultimate_questions` | Observatory |
+| `citizenship_parole` | Upside Down |
+| `civic_bureaucracy` | Bureaucratic Vote Room |
+| `citizen_play` | Commons |
 | `game_un` | Assembly Hall |
 | `game_mud` | Dungeon |
 | `game_uno` | Commons |
@@ -207,7 +211,7 @@ Selected built-in mappings (multiple modes intentionally share regions):
 | `game_blackjack` | Commons |
 | `game_dork` | Dungeon |
 
-The geometry is deliberately an **operational topology**, not a claim that cognition, history, culture, or humor literally occupy Euclidean coordinates.
+The geometry is deliberately an **operational topology**, not a claim that cognition, history, culture, or humor literally occupy Euclidean coordinates. Citizen Mode advances the topology to `named-regions-v4` by adding the public Bureaucratic Vote Room and its single-exit civic-parole Upside Down.
 
 Mode invariants:
 
@@ -228,6 +232,27 @@ mode may NOT bypass the Secret Scrubber
 This distinction is important because model prompts are guidance, not the source of runtime authority.
 
 See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md).
+
+## Citizenship state and civic delegation
+
+Citizenship is an exact `(citizen_id, model_id)` binding over immutable world objects. A replaceable owner-local index may point only to the discovered head of each content-addressed state lineage; rollback, fork, cross-identity ancestry, invalid provenance, and malformed exam/certificate references fail closed on load.
+
+```text
+unregistered
+  -> civic parole / Upside Down / no civic ballot
+  -> deterministic non-executing YAML exam
+  -> citizen / Bureaucratic Vote Room / public movement
+  -> direct civic work OR same-seat deterministic proxy
+  -> unanimous direct founding consent at the three-citizen threshold
+```
+
+The generic `world.create` surface rejects reserved Constitution, citizenship, exam, certificate, founding-ballot, and declaration object types. Only validated citizen operations can construct them. Citizenship does not change the ordinary Council's structural `vote_weight = 1`; civic-parole ballot eligibility is represented separately and parole cannot run a Council.
+
+The deterministic civic proxy copies the delegator's `member_id`, occupies that one seat, reports a fixed local model identity, and follows one transparent standing ballot. It has no independent preference, citizenship, movement, play, delegation, amendment, or founding-signature right. Failsafe containment is evaluated first and overrides a civic appointment.
+
+Founding ballots, the then-current citizen roster, and a possible Declaration of Independence are committed under the same civic registry lock. This prevents a concurrent new citizen or proxy transition from producing a false claim of unanimous direct consent.
+
+See [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) and [`docs/CITIZEN_MODE.md`](docs/CITIZEN_MODE.md).
 
 ## World presence
 
@@ -362,7 +387,7 @@ The alpha4 named-region map is therefore a minimal navigational substrate rather
 
 ### Deterministic game objects
 
-UN simulation, HERESY MUD, UNO, Monopoly, 500, Blackjack and DORK v2 use the
+UN simulation, HERESY MUD, UNO, Monopoly, 500, Blackjack, DORK v2, and Citizen Mode use the
 same WorldStore identity contract. A validated action reads one immutable state
 and creates one canonical successor with a `previous_state_ref` and typed
 transition. Public `content` is a derived bounded representation for Council
@@ -372,6 +397,8 @@ Decks, dice and shoes are deterministic substrate operations, never model
 choices. Table AI receives a seat under the same rules as a human but no direct
 WorldStore authority. DORK v2 is structurally different: its sole actor is the
 bound human operator and models have no avatar.
+
+Citizen Mode adds closed-schema state, exam-result, certificate, founding-ballot, and declaration objects. These are civic protocol state, not model narration and not a finding of real-world personhood, consciousness, sentience, or sovereignty.
 
 See [`docs/GAMES.md`](docs/GAMES.md).
 

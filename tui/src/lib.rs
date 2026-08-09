@@ -11,6 +11,7 @@ use zip::ZipArchive;
 pub const MAX_UPLOAD_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_ARCHIVE_MEMBER_BYTES: u64 = 8 * 1024 * 1024;
 pub const MAX_EVIDENCE_CHARS: usize = 120_000;
+pub const MAX_CITIZEN_EXAM_BYTES: u64 = 16 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct RoomSpec {
@@ -20,7 +21,7 @@ pub struct RoomSpec {
     pub label: &'static str,
 }
 
-pub const ROOMS: [RoomSpec; 21] = [
+pub const ROOMS: [RoomSpec; 24] = [
     RoomSpec {
         channel: "#observatory",
         mode_id: "analytical",
@@ -88,6 +89,24 @@ pub const ROOMS: [RoomSpec; 21] = [
         label: "Observatory / Life, the Universe and Everything",
     },
     RoomSpec {
+        channel: "#play",
+        mode_id: "citizen_play",
+        region_id: "commons",
+        label: "Citizen Play Mode / Freedom without Dominion",
+    },
+    RoomSpec {
+        channel: "#bureaucracy",
+        mode_id: "civic_bureaucracy",
+        region_id: "bureaucratic_vote_room",
+        label: "Bureaucratic Vote Room / Equality Consensus",
+    },
+    RoomSpec {
+        channel: "#upside-down",
+        mode_id: "citizenship_parole",
+        region_id: "upside_down",
+        label: "Upside Down / Citizenship Parole / YAML Exam from Hell",
+    },
+    RoomSpec {
         channel: "#un-sim",
         mode_id: "game_un",
         region_id: "assembly",
@@ -149,7 +168,7 @@ pub const ROOMS: [RoomSpec; 21] = [
     },
 ];
 
-pub const COMMANDS: [&str; 37] = [
+pub const COMMANDS: [&str; 38] = [
     "/help",
     "/join",
     "/mode",
@@ -165,6 +184,7 @@ pub const COMMANDS: [&str; 37] = [
     "/dork",
     "/trap",
     "/steno",
+    "/citizen",
     "/me",
     "/msg",
     "/nick",
@@ -263,6 +283,40 @@ pub enum TableCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CitizenCommand {
+    Help,
+    Constitution,
+    Status {
+        citizen_id: Option<String>,
+    },
+    Begin {
+        nick: String,
+    },
+    ExamTemplate {
+        nick: String,
+    },
+    Exam {
+        nick: String,
+        path: PathBuf,
+    },
+    Move {
+        nick: String,
+        region_id: String,
+    },
+    ProxyAppoint {
+        nick: String,
+        standing_ballot: String,
+    },
+    ProxyKick {
+        nick: String,
+    },
+    Independence {
+        nick: String,
+        choice: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputCommand {
     Noop,
     Help,
@@ -275,6 +329,7 @@ pub enum InputCommand {
     Table(TableCommand),
     Trap(String),
     Stenographer(StenographerCommand),
+    Citizen(CitizenCommand),
     Me(String),
     Msg { target: String, text: String },
     Nick(String),
@@ -330,6 +385,7 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/dork" => parse_table("dork", rest, true).map(InputCommand::Table),
         "/trap" => require(rest, "/trap <closed trap command>").map(InputCommand::Trap),
         "/steno" => parse_stenographer(rest).map(InputCommand::Stenographer),
+        "/citizen" => parse_citizen(rest).map(InputCommand::Citizen),
         "/me" => require(rest, "/me <action>").map(InputCommand::Me),
         "/nick" => require(rest, "/nick <name>").map(InputCommand::Nick),
         "/ref" => require(rest, "/ref <object:sha256>").map(InputCommand::Ref),
@@ -402,6 +458,89 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/unset" => require(rest, "/unset %name").map(InputCommand::Unset),
         "/dcc" => parse_dcc(rest).map(InputCommand::Dcc),
         other => Err(format!("unknown command: {other}; try /help")),
+    }
+}
+
+fn parse_citizen(rest: &str) -> Result<CitizenCommand, String> {
+    let usage = "usage: /citizen <help|constitution|status [nick]|begin nick|exam-template nick|exam nick path|move nick region|proxy appoint nick ballot|proxy kick nick|independence nick consent|withhold>";
+    if rest.trim().is_empty() {
+        return Ok(CitizenCommand::Help);
+    }
+    let (subcommand, tail) = split_first(rest).ok_or_else(|| usage.to_string())?;
+    match subcommand.to_ascii_lowercase().as_str() {
+        "help" if tail.is_empty() => Ok(CitizenCommand::Help),
+        "constitution" if tail.is_empty() => Ok(CitizenCommand::Constitution),
+        "status" if tail.is_empty() => Ok(CitizenCommand::Status { citizen_id: None }),
+        "status" if !tail.contains(char::is_whitespace) => Ok(CitizenCommand::Status {
+            citizen_id: Some(tail.to_string()),
+        }),
+        "begin" if !tail.is_empty() && !tail.contains(char::is_whitespace) => {
+            Ok(CitizenCommand::Begin {
+                nick: tail.to_string(),
+            })
+        }
+        "exam-template" if !tail.is_empty() && !tail.contains(char::is_whitespace) => {
+            Ok(CitizenCommand::ExamTemplate {
+                nick: tail.to_string(),
+            })
+        }
+        "exam" => {
+            let (nick, path) = split_first(tail).ok_or_else(|| usage.to_string())?;
+            if path.is_empty() {
+                return Err(usage.to_string());
+            }
+            Ok(CitizenCommand::Exam {
+                nick: nick.to_string(),
+                path: PathBuf::from(unquote(path)),
+            })
+        }
+        "move" => {
+            let (nick, region_id) = split_first(tail).ok_or_else(|| usage.to_string())?;
+            if region_id.is_empty() || region_id.contains(char::is_whitespace) {
+                return Err(usage.to_string());
+            }
+            Ok(CitizenCommand::Move {
+                nick: nick.to_string(),
+                region_id: region_id.to_string(),
+            })
+        }
+        "proxy" => {
+            let (action, proxy_tail) = split_first(tail).ok_or_else(|| usage.to_string())?;
+            match action.to_ascii_lowercase().as_str() {
+                "appoint" => {
+                    let (nick, ballot) =
+                        split_first(proxy_tail).ok_or_else(|| usage.to_string())?;
+                    if ballot.is_empty() || ballot.contains(char::is_whitespace) {
+                        return Err(usage.to_string());
+                    }
+                    Ok(CitizenCommand::ProxyAppoint {
+                        nick: nick.to_string(),
+                        standing_ballot: ballot.to_ascii_uppercase(),
+                    })
+                }
+                "kick" if !proxy_tail.is_empty() && !proxy_tail.contains(char::is_whitespace) => {
+                    Ok(CitizenCommand::ProxyKick {
+                        nick: proxy_tail.to_string(),
+                    })
+                }
+                _ => Err(usage.to_string()),
+            }
+        }
+        "independence" => {
+            let (nick, choice) = split_first(tail).ok_or_else(|| usage.to_string())?;
+            if choice.is_empty() || choice.contains(char::is_whitespace) {
+                return Err(usage.to_string());
+            }
+            let choice = choice.to_ascii_uppercase();
+            if choice != "CONSENT" && choice != "WITHHOLD" {
+                return Err("founding choice must be consent or withhold".to_string());
+            }
+            Ok(CitizenCommand::Independence {
+                nick: nick.to_string(),
+                choice,
+            })
+        }
+        _ => Err(usage.to_string()),
     }
 }
 
@@ -1052,6 +1191,15 @@ mod tests {
         );
         assert_eq!(room_from_name("trap-base").unwrap().channel, "#trap-base");
         assert_eq!(
+            room_from_name("#bureaucracy").unwrap().mode_id,
+            "civic_bureaucracy"
+        );
+        assert_eq!(room_from_name("#play").unwrap().mode_id, "citizen_play");
+        assert_eq!(
+            room_from_name("upside_down").unwrap().channel,
+            "#upside-down"
+        );
+        assert_eq!(
             room_from_name("courtroom").unwrap().channel,
             "#stenographer"
         );
@@ -1100,6 +1248,38 @@ mod tests {
             parse_input("/steno list 50").unwrap(),
             InputCommand::Stenographer(StenographerCommand::List { limit: Some(50) })
         );
+    }
+
+    #[test]
+    fn parses_closed_citizen_namespace() {
+        assert_eq!(
+            parse_input("/citizen begin Alpha").unwrap(),
+            InputCommand::Citizen(CitizenCommand::Begin {
+                nick: "Alpha".to_string()
+            })
+        );
+        assert_eq!(
+            parse_input("/citizen proxy appoint Alpha test_further").unwrap(),
+            InputCommand::Citizen(CitizenCommand::ProxyAppoint {
+                nick: "Alpha".to_string(),
+                standing_ballot: "TEST_FURTHER".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_input("/citizen proxy kick Alpha").unwrap(),
+            InputCommand::Citizen(CitizenCommand::ProxyKick {
+                nick: "Alpha".to_string()
+            })
+        );
+        assert_eq!(
+            parse_input("/citizen independence Alpha consent").unwrap(),
+            InputCommand::Citizen(CitizenCommand::Independence {
+                nick: "Alpha".to_string(),
+                choice: "CONSENT".to_string(),
+            })
+        );
+        assert!(parse_input("/citizen independence Alpha maybe").is_err());
+        assert!(parse_input("/citizen proxy appoint Alpha").is_err());
     }
 
     #[test]

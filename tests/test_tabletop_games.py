@@ -350,7 +350,7 @@ class TabletopAPITests(unittest.TestCase):
     def test_health_operations_catalogs_and_player_controller_metadata(self) -> None:
         api = NexusAPI()
         health = api.handle({"operation": "system.health"})
-        self.assertEqual(health["protocol"], "nexus/0.13")
+        self.assertEqual(health["protocol"], "nexus/0.14")
         games = {item["game_id"]: item for item in health["games"]}
         self.assertEqual(set(games) & {"uno", "monopoly", "500", "blackjack", "dork"}, {"uno", "monopoly", "500", "blackjack", "dork"})
         self.assertTrue(games["blackjack"]["deterministic_dealer"])

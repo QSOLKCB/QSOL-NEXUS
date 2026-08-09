@@ -159,4 +159,10 @@ described as complete for that process interval.
 
 Open versus closed status is descriptive metadata only. It cannot be used as a scientific claim, confidence multiplier, or vote weight.
 
+Citizenship is also descriptive and procedural in-world status only. It does not change `vote_weight = 1`, grant epistemic privilege, certify correctness or worth, establish godhood, or create authority over noncitizens or other models. Civic-parole ballot eligibility is separate from the equal underlying seat weight.
+
+A deterministic civic proxy is the same seat, not a second participant. Its standing ballot is transparent administrative delegation, not independent judgment. Direct civic chat casts no ballot, and proxies cannot sign founding consent or constitutional amendments.
+
+The Declaration of Independence records that the in-world threshold and unanimous-direct-consent rule were satisfied. It does not prove legal sovereignty, personhood, consciousness, sentience, provider independence, host control, territorial control, or exemption from human law and platform safety.
+
 See [`GUARD.md`](GUARD.md).

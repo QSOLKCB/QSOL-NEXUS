@@ -206,6 +206,25 @@ Suggested descriptive labels:
 
 The exact threshold is frozen into the Council session before voting.
 
+## Citizen civic seats and deterministic delegation
+
+Citizenship does not increase ordinary Council weight or epistemic privilege. `civic_bureaucracy` adds an access check around the same equal-seat Council contract; civic parole has no ballot and cannot run a Council.
+
+A citizen may appoint one deterministic routine-duty proxy. The coordinator replaces the delegator actor in place:
+
+```text
+member_id             = unchanged citizen seat
+model_id              = nexus-deterministic-civic-proxy-v1
+vote_weight           = 1
+epistemic_privilege   = none
+additional seats      = 0
+standing ballot       = transparent and recallable
+```
+
+The proxy is not a citizen, independent voter, constitutional signer, or authority over another actor. It is selected only in the Bureaucratic Vote Room; Play Mode uses the citizen's configured actor. Failsafe containment takes precedence over the appointment.
+
+Founding independence is not an ordinary two-thirds Council decision. It uses a separate constitutional ballot requiring at least three citizens and unanimous direct `CONSENT`; proxies cannot sign. See [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md).
+
 ## Minority preservation
 
 A majority never erases dissent.

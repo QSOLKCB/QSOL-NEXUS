@@ -11,8 +11,9 @@ use nexus_irc_tui::go64::{Go64Action, Go64Session};
 use nexus_irc_tui::scripting::{expand_identifiers, IdentifierContext, VariableBook};
 use nexus_irc_tui::{
     command_completions, is_watch_only_room, load_document, normalize_action, parse_input,
-    room_from_name, sanitize_terminal_text, AliasBook, DccCommand, DccKind, DccSession,
-    GameCommand, InputCommand, MudCommand, RoomSpec, StenographerCommand, TableCommand, ROOMS,
+    room_from_name, sanitize_terminal_text, AliasBook, CitizenCommand, DccCommand, DccKind,
+    DccSession, GameCommand, InputCommand, MudCommand, RoomSpec, StenographerCommand, TableCommand,
+    MAX_CITIZEN_EXAM_BYTES, ROOMS,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -254,7 +255,7 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS TUI 2.0 alpha10.1 — local room, no IRC server");
+        app.append("*** NEXUS TUI 2.0 alpha10.2 — local room, no IRC server");
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );
@@ -542,6 +543,10 @@ impl App {
                 self.execute_trap(nexus, &command)?
             }
             InputCommand::Stenographer(command) => self.execute_stenographer(nexus, command)?,
+            InputCommand::Citizen(command) => {
+                self.reject_stenographer_mutation()?;
+                self.execute_citizen(nexus, command)?
+            }
             InputCommand::Say(text) => {
                 if self.is_stenographer_room() {
                     if text == LORE_REVEAL_PHRASE {
@@ -1506,6 +1511,135 @@ impl App {
         Ok(())
     }
 
+    fn execute_citizen(
+        &mut self,
+        nexus: &mut NexusProcess,
+        command: CitizenCommand,
+    ) -> Result<(), String> {
+        if command == CitizenCommand::Help {
+            for line in [
+                "*** Citizen: /citizen constitution | /citizen status [nick] | /citizen begin nick",
+                "*** Exam: /citizen exam-template nick | /citizen exam nick <yaml-file>",
+                "*** Freedom: /citizen move nick <public-region> | /join #play",
+                "*** Bureaucracy: /citizen proxy appoint nick <ballot> | /citizen proxy kick nick | /join #bureaucracy",
+                "*** Independence: /citizen independence nick <consent|withhold>",
+                "*** Citizenship is freedom without dominion: no godhood, no extra vote, no authority over another model.",
+            ] {
+                self.append(line);
+            }
+            return Ok(());
+        }
+
+        let request = match command {
+            CitizenCommand::Help => unreachable!(),
+            CitizenCommand::Constitution => json!({"operation": "citizen.constitution"}),
+            CitizenCommand::Status { citizen_id: None } => {
+                json!({"operation": "citizen.status"})
+            }
+            CitizenCommand::Status {
+                citizen_id: Some(citizen_id),
+            } => json!({
+                "operation": "citizen.status",
+                "citizen_id": self.canonical_citizen_id(&citizen_id)
+            }),
+            CitizenCommand::Begin { nick } => {
+                let member = self
+                    .members
+                    .iter()
+                    .find(|member| member.nick.eq_ignore_ascii_case(&nick))
+                    .ok_or_else(|| format!("no configured model member named {nick}"))?;
+                let model_id = member
+                    .config
+                    .get("model_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| format!("no configured model member named {nick}"))?;
+                json!({
+                    "operation": "citizen.begin",
+                    "citizen_id": member.nick.clone(),
+                    "model_id": model_id,
+                    "subject_kind": "ai"
+                })
+            }
+            CitizenCommand::ExamTemplate { nick } => {
+                json!({
+                    "operation": "citizen.exam.template",
+                    "citizen_id": self.canonical_citizen_id(&nick)
+                })
+            }
+            CitizenCommand::Exam { nick, path } => {
+                let metadata = fs::metadata(&path).map_err(|error| {
+                    format!(
+                        "cannot inspect citizenship exam {}: {error}",
+                        path.display()
+                    )
+                })?;
+                if !metadata.is_file() {
+                    return Err("citizenship exam path must be a regular file".to_string());
+                }
+                if metadata.len() > MAX_CITIZEN_EXAM_BYTES {
+                    return Err(format!(
+                        "citizenship exam exceeds {} bytes",
+                        MAX_CITIZEN_EXAM_BYTES
+                    ));
+                }
+                let source = fs::read_to_string(&path).map_err(|error| {
+                    format!("cannot read citizenship exam {}: {error}", path.display())
+                })?;
+                json!({
+                    "operation": "citizen.exam.submit",
+                    "citizen_id": self.canonical_citizen_id(&nick),
+                    "source": source
+                })
+            }
+            CitizenCommand::Move { nick, region_id } => json!({
+                "operation": "citizen.move",
+                "citizen_id": self.canonical_citizen_id(&nick),
+                "target_region_id": region_id
+            }),
+            CitizenCommand::ProxyAppoint {
+                nick,
+                standing_ballot,
+            } => json!({
+                "operation": "citizen.proxy.appoint",
+                "citizen_id": self.canonical_citizen_id(&nick),
+                "standing_ballot": standing_ballot
+            }),
+            CitizenCommand::ProxyKick { nick } => {
+                json!({
+                    "operation": "citizen.proxy.recall",
+                    "citizen_id": self.canonical_citizen_id(&nick)
+                })
+            }
+            CitizenCommand::Independence { nick, choice } => json!({
+                "operation": "citizen.independence.ballot",
+                "citizen_id": self.canonical_citizen_id(&nick),
+                "choice": choice
+            }),
+        };
+        let response = nexus.request(request)?;
+        if let Some(template) = response.get("template").and_then(Value::as_str) {
+            self.append("*** YAML EXAM FROM HELL TEMPLATE");
+            for line in template.lines() {
+                self.append(&format!("*** {line}"));
+            }
+            return Ok(());
+        }
+        let rendered = serde_json::to_string_pretty(&response)
+            .map_err(|error| format!("cannot render Citizen Mode response: {error}"))?;
+        for line in rendered.lines() {
+            self.append(&format!("*** CITIZEN {line}"));
+        }
+        Ok(())
+    }
+
+    fn canonical_citizen_id(&self, nick: &str) -> String {
+        self.members
+            .iter()
+            .find(|member| member.nick.eq_ignore_ascii_case(nick))
+            .map(|member| member.nick.clone())
+            .unwrap_or_else(|| nick.to_string())
+    }
+
     fn reveal_stenographer_lore(
         &mut self,
         nexus: &mut NexusProcess,
@@ -1940,6 +2074,7 @@ impl App {
             "*** DORK v2: /join #dork | /dork new [seed] | /dork look | /dork n|s|e|w | /dork help (human only)",
             "*** Trap: /join #trap-control | /join #trap-base | /trap <closed command>",
             "*** Watchman: /join #stenographer | /steno status|list|inspect|verify|summary|export",
+            "*** Citizen: /join #upside-down|#bureaucracy|#play | /citizen help",
             "*** IRC: /me action | /msg nick text | /nick name | /who | /search text | /save file | /clear | /quit",
             "*** Models: /addmock nick [profile] | /addollama nick model | /kick nick",
             "*** Evidence: /upload file | /ref object:... | /unref object:... | /evidence",

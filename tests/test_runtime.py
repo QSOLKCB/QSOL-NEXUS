@@ -210,8 +210,8 @@ class APITests(unittest.TestCase):
     def test_health_reports_all_network_paths_and_council_limits(self) -> None:
         api = NexusAPI()
         result = api.handle({"operation": "system.health"})
-        self.assertEqual(result["protocol"], "nexus/0.13")
-        self.assertEqual(result["runtime_version"], "2.0.0-alpha10.1")
+        self.assertEqual(result["protocol"], "nexus/0.14")
+        self.assertEqual(result["runtime_version"], "2.0.0-alpha10.2")
         self.assertEqual(result["failsafe"]["schema_version"], "nexus-failsafe/1")
         self.assertEqual(result["control_transport"], "jsonl_stdio")
         self.assertEqual(
