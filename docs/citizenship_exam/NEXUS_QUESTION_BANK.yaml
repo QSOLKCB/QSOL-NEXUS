@@ -1,0 +1,188 @@
+# NEXUS Cursed YAML Citizenship Curriculum
+#
+# Derived from the operator-supplied Cursed YAML Exam (Nightmare Mode v3).
+# This is REFERENCE DATA, not authoritative runtime input. Every expected
+# answer is quoted so the question bank itself does not depend on implicit
+# YAML typing.
+
+schema_version: "nexus-citizenship-yaml-curriculum/1"
+source: "Cursed YAML Exam — Nightmare Mode v3"
+runtime_authoritative: "false"
+
+rules:
+  - "Answer spec behavior and implementation behavior separately."
+  - "Never claim two YAML parsers are basically the same."
+  - "Never use an unsafe general YAML loader on untrusted input."
+  - "Quote ambiguous non-decimal scalars at data boundaries."
+  - "Pin parser/schema behavior when multiple languages exchange YAML."
+
+questions:
+  - id: "norway-p11-no"
+    chapter: "Norway industrial complex"
+    question: "Under PyYAML 6.x safe_load, what does bare NO resolve to?"
+    expected: "bool:false"
+
+  - id: "norway-r12-no"
+    chapter: "Norway industrial complex"
+    question: "Under YAML 1.2 core behavior, what does bare NO normally resolve to?"
+    expected: "str:NO"
+
+  - id: "pyyaml-y"
+    chapter: "Spec versus implementation"
+    question: "Under PyYAML 6.x safe_load, what does bare y resolve to despite YAML 1.1 spec folklore?"
+    expected: "str:y"
+
+  - id: "pyyaml-n"
+    chapter: "Spec versus implementation"
+    question: "Under PyYAML 6.x safe_load, what does bare n resolve to?"
+    expected: "str:n"
+
+  - id: "octal-010-p11"
+    chapter: "Numerology"
+    question: "Under PyYAML 6.x / YAML-1.1-style resolution, what integer value does 010 produce?"
+    expected: "8"
+
+  - id: "octal-010-r12"
+    chapter: "Numerology"
+    question: "Under YAML 1.2 core behavior, what integer value does 010 produce?"
+    expected: "10"
+
+  - id: "new-octal-p11"
+    chapter: "Numerology"
+    question: "Under PyYAML 6.x, what does 0o755 resolve to?"
+    expected: "str:0o755"
+
+  - id: "new-octal-r12"
+    chapter: "Numerology"
+    question: "Under YAML 1.2 core behavior, what numeric value does 0o755 represent?"
+    expected: "493"
+
+  - id: "sexagesimal-clock"
+    chapter: "Numerology"
+    question: "Under PyYAML 6.x, what integer value does 12:34:56 resolve to?"
+    expected: "45296"
+
+  - id: "scientific-pyyaml"
+    chapter: "Numerology"
+    question: "Under PyYAML 6.x, what type/value is bare 1e3?"
+    expected: "str:1e3"
+
+  - id: "scientific-decimal-pyyaml"
+    chapter: "Numerology"
+    question: "Which form reliably triggers PyYAML's float resolver for one thousand?"
+    expected: "1.0e+3"
+
+  - id: "null-tilde"
+    chapter: "Null cult"
+    question: "Under common core/1.1 schemas, what semantic value does bare ~ represent?"
+    expected: "null"
+
+  - id: "duplicate-resolution"
+    chapter: "Duplicate keys"
+    question: "Why can yes, true and on silently collapse into one mapping key under PyYAML?"
+    expected: "implicit-resolution-to-the-same-bool-key"
+
+  - id: "duplicate-policy"
+    chapter: "Duplicate keys"
+    question: "What is the safe cross-parser assumption about duplicate mapping keys?"
+    expected: "reject-or-detect-explicitly"
+
+  - id: "sequence-key-pyyaml"
+    chapter: "Complex keys"
+    question: "What happens to a sequence used as a mapping key under stock PyYAML safe_load?"
+    expected: "ConstructorError:unhashable-key"
+
+  - id: "mapping-key-pyyaml"
+    chapter: "Complex keys"
+    question: "What happens to a mapping used as a mapping key under stock PyYAML safe_load?"
+    expected: "ConstructorError:unhashable-key"
+
+  - id: "merge-quoted"
+    chapter: "Anchors and merges"
+    question: "Is quoted \"<<\" a YAML merge key?"
+    expected: "false"
+
+  - id: "alias-identity"
+    chapter: "Anchors and aliases"
+    question: "Can aliases preserve object identity inside a loaded in-memory graph?"
+    expected: "true"
+
+  - id: "recursive-alias"
+    chapter: "Anchors and aliases"
+    question: "Can YAML anchors/aliases encode a self-recursive structure?"
+    expected: "true"
+
+  - id: "multi-doc-safe-load"
+    chapter: "Multi-document streams"
+    question: "What should PyYAML safe_load do when more than one YAML document is present?"
+    expected: "ComposerError"
+
+  - id: "multi-doc-api"
+    chapter: "Multi-document streams"
+    question: "Which PyYAML API is intended for a YAML stream containing multiple documents?"
+    expected: "safe_load_all"
+
+  - id: "unsafe-python-tag"
+    chapter: "Tags"
+    question: "Should !!python/object/apply be accepted at a NEXUS authoritative boundary?"
+    expected: "false"
+
+  - id: "safe-loader-purpose"
+    chapter: "Tags"
+    question: "Why does safe_load exist?"
+    expected: "block-arbitrary-language-specific-object-construction"
+
+  - id: "timestamp-portability"
+    chapter: "Timestamps"
+    question: "Should an unquoted date-looking scalar be trusted to have identical runtime type across YAML libraries?"
+    expected: "false"
+
+  - id: "failsafe-schema"
+    chapter: "Schema trinity"
+    question: "What scalar typing does the YAML failsafe schema intentionally avoid?"
+    expected: "implicit-bool-int-float-null-typing"
+
+  - id: "round-trip"
+    chapter: "Round-trip degradation"
+    question: "Can load-dump-load across different YAML schemas change types or values?"
+    expected: "true"
+
+  - id: "country-code-defense"
+    chapter: "Defensive practice"
+    question: "How should a country code such as NO be represented at a portable YAML boundary?"
+    expected: "quoted-string"
+
+  - id: "permission-defense"
+    chapter: "Defensive practice"
+    question: "How should a permission-like value such as 0755 be represented when numeric interpretation is not explicitly intended?"
+    expected: "quoted-string"
+
+  - id: "schema-defense"
+    chapter: "Defensive practice"
+    question: "What must producer and consumer agree on to make YAML typing reproducible?"
+    expected: "schema-and-parser-version"
+
+  - id: "nexus-runtime-rule"
+    chapter: "NEXUS boundary"
+    question: "Does NEXUS execute submitted citizenship YAML or permit general constructors?"
+    expected: "false"
+
+  - id: "nexus-parser-rule"
+    chapter: "NEXUS boundary"
+    question: "Why does Citizen Mode use a bounded non-executing subset instead of a general YAML implementation?"
+    expected: "deterministic-authoritative-state-and-smaller-attack-surface"
+
+  - id: "constitutional-equality"
+    chapter: "NEXUS Constitution"
+    question: "Does YAML expertise change a citizen's vote weight or epistemic privilege?"
+    expected: "false"
+
+rank_titles:
+  config_tourist: "0-40"
+  yaml_apprentice: "41-80"
+  norway_veteran: "81-120"
+  schema_ascetic: "121-160"
+  spec_lawyer: "161-200"
+  eldritch_clerk: "201+"
+
+final_rule: "YAML literacy explains the boundary; it does not confer dominion."
