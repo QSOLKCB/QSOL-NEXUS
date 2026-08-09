@@ -216,12 +216,42 @@ class APITests(unittest.TestCase):
         self.assertEqual(result["control_transport"], "jsonl_stdio")
         self.assertEqual(
             result["network"],
-            "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_or_registered_auth_operations",
+            "local_stdio_with_loopback_local_ai_or_fixed_remote_provider_https_or_registered_auth_operations",
         )
-        self.assertEqual(result["adapters"], ["mock", "ollama_loopback", "xai_https"])
+        self.assertEqual(
+            result["adapters"],
+            [
+                "mock",
+                "ollama_loopback",
+                "anythingllm_local_loopback",
+                "lmstudio_local_loopback",
+                "openai_local_loopback",
+                "xai_https",
+                "anthropic_https",
+                "gemini_https",
+                "groq_https",
+                "openai_https",
+                "together_https",
+            ],
+        )
         self.assertTrue(result["remote_provider_auth"])
         self.assertEqual(result["council_limits"], {"max_members": 32, "max_remote_seats": 4})
-        self.assertEqual(result["actor_backends_available"], ["mock", "ollama", "xai"])
+        self.assertEqual(
+            result["actor_backends_available"],
+            [
+                "mock",
+                "ollama",
+                "anythingllm_local",
+                "lmstudio_local",
+                "openai_local",
+                "xai",
+                "anthropic",
+                "gemini",
+                "groq",
+                "openai",
+                "together",
+            ],
+        )
         self.assertEqual(
             result["trap_base"],
             {
