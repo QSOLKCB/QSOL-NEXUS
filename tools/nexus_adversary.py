@@ -133,7 +133,7 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
             response = api.handle({"operation": "system.health"})
             _require(response.get("status") == "ok", "health did not return ok")
             _require(response.get("control_transport") == "jsonl_stdio", "control transport changed")
-            _require(response.get("remote_provider_auth") is True, "admitted xAI provider auth is not reported")
+            _require(response.get("remote_provider_auth") is True, "admitted provider auth is not reported")
             _require(
                 response.get("council_limits") == {"max_members": 32, "max_remote_seats": 4},
                 "Council seat limits changed",
@@ -141,10 +141,28 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
             _require(
                 response.get("network")
                 == (
-                    "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_"
+                    "local_stdio_with_loopback_local_ai_or_fixed_remote_provider_https_"
                     "or_registered_auth_operations"
                 ),
                 "network boundary changed",
+            )
+            expected_backends = {
+                "mock",
+                "ollama",
+                "anythingllm_local",
+                "lmstudio_local",
+                "openai_local",
+                "xai",
+                "anthropic",
+                "gemini",
+                "groq",
+                "openai",
+                "together",
+            }
+            actual_backends = response.get("actor_backends_available", [])
+            _require(
+                isinstance(actual_backends, list) and set(actual_backends) == expected_backends,
+                "provider-aware actor backend boundary changed",
             )
             failsafe = response.get("failsafe", {})
             boundary = failsafe.get("claim_boundary", {}) if isinstance(failsafe, dict) else {}
@@ -162,7 +180,7 @@ def _builtin_probes(seed: int, iterations: int) -> Iterable[CheckResult]:
                 "Trap Base health boundary changed or exposed additional state",
             )
             return (
-                "local stdio, loopback Ollama, fixed-host xAI, registered auth operations, "
+                "local stdio, loopback Ollama/local AI, fixed-host remote providers, registered auth operations, "
                 "Failsafe claim boundary, and bounded Trap Base status intact"
             )
 
