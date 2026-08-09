@@ -2,6 +2,12 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## Unreleased — Grok front-door hardening
+
+- reject credential-labelled, long opaque and hash-like positional values in external-helper argv before profile metadata is persisted;
+- expand Equality Guard coverage for account tier, authentication method, rate-limit standing, provider/model ranking, direct ballot weighting and reverse-order deference claims;
+- preserve ordinary capability, source, SI-measurement and evidence-based opinion controls, and promote both Grok findings into the adversarial gauntlet.
+
 ## 2.0.0-alpha9.0 — First remote provider: xAI / Grok
 
 - admit an `xai` auth descriptor using xAI's documented API-key, environment, and external-helper paths;

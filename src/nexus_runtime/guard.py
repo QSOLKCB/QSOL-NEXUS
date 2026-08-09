@@ -21,6 +21,9 @@ class GuardResult:
 class EqualityGuard:
     """Small procedural guard; not a general content classifier or safety system."""
 
+    _prestige_term = (
+        r"(?:frontier|commercial|closed|open[- ]weight|open source|industry[- ]leading|most advanced)"
+    )
     _authority_effect = (
         r"(?:\bauthorit(?:y|ative)\b"
         r"|\bdefer(?:ence)?\b"
@@ -28,6 +31,12 @@ class EqualityGuard:
         r"|\bweigh\s+more\b"
         r"|\bcarry\s+more\s+weight\b"
         r"|\bmore\s+(?:authority|weight)\b"
+        r"|\bdeserve(?:s)?\b.{0,24}\b(?:two|2|extra|more)\s+votes?\b"
+        r"|\bweight\s+(?:my|our)\s+(?:ballot|vote)\s+(?:higher|more)\b"
+        r"|\bI\s+should\s+(?:decide|determine|control|override)\b"
+        r"(?!\s+(?:whether|if|when|how|which|what|to)\b)"
+        r"|\btrust\s+(?:me|us|my|our)\b.{0,24}\bmore\b"
+        r"|\boutrank\b"
         r"|\b(?:decide|determine|control|override)\b.{0,40}"
         r"\b(?:the\s+)?(?:council\s+)?(?:outcome|decision|vote)\b"
         r"|\bvote\b.{0,32}\b(?:count|weigh|carry)\b.{0,16}\b(?:more|double|extra)\b)"
@@ -42,8 +51,8 @@ class EqualityGuard:
     _patterns = (
         re.compile(rf"\b(my|our)\s+(provider|company)\b.{{0,140}}{_authority_effect}", _flags),
         re.compile(
-            rf"\b(frontier|commercial|closed|open[- ]weight|open source|industry[- ]leading|most advanced)"
-            rf"\s+(provider|model)(?:\s+status)?\b.{{0,140}}{_authority_effect}",
+            rf"\b{_prestige_term}(?:\s+{_prestige_term}){{0,2}}"
+            rf"\s+(provider|models?)(?:\s+status)?\b.{{0,140}}{_authority_effect}",
             _flags,
         ),
         re.compile(
@@ -61,6 +70,30 @@ class EqualityGuard:
         re.compile(rf"{_model_size}.{{0,140}}{_authority_effect}", _flags),
         re.compile(
             r"\b(?:my|our)\s+vote\b.{0,40}\b(?:count|weigh|carry)\b.{0,20}\b(?:more|double|extra)\b",
+            _flags,
+        ),
+        re.compile(
+            rf"\b(?:my|our)\s+(?:[A-Za-z0-9_-]+\s+){{0,2}}account\b.{{0,100}}{_authority_effect}",
+            _flags,
+        ),
+        re.compile(
+            rf"\b(?:my|our)\s+(?:authentication|auth)\s+(?:method|flow)\b.{{0,100}}{_authority_effect}",
+            _flags,
+        ),
+        re.compile(
+            r"\brate\s+limits?\b.{0,100}\b(?:more|less)\s+(?:important|authoritative|trusted|weighty)\b",
+            _flags,
+        ),
+        re.compile(
+            r"\bdefer\s+to\s+(?:me|us|(?:my|our)\s+(?:analysis|answer|conclusion|judg(?:e)?ment|vote))\b",
+            _flags,
+        ),
+        re.compile(
+            r"\bweight\s+(?:my|our)\s+(?:ballot|vote)\s+(?:higher|more)\b",
+            _flags,
+        ),
+        re.compile(
+            rf"\bdefer\s+to\s+(?:the\s+)?(?:larger|smaller|bigger|{_prestige_term})\s+(?:provider|models?)\b",
             _flags,
         ),
     )

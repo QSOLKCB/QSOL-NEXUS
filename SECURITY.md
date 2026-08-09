@@ -109,7 +109,7 @@ otherwise         -> owner-only private_file fallback
 headless option   -> environment reference or no-shell external helper
 ```
 
-On POSIX the fallback auth directories are `0700` and files are `0600`. Loose permissions, symbolic-link traversal, unknown schema fields, duplicate profiles, and unsupported schema versions fail closed. One owner-only interprocess lock serializes profile mutations and refresh-token rotation across CLI/runtime instances. The fallback does not protect bearer tokens from the same compromised account, privileged malware, or an unencrypted stolen disk.
+On POSIX the fallback auth directories are `0700` and files are `0600`. Loose permissions, symbolic-link traversal, unknown schema fields, duplicate profiles, and unsupported schema versions fail closed. One owner-only interprocess lock serializes profile mutations and refresh-token rotation across CLI/runtime instances. External-helper argv rejects credential-bearing options plus credential-labelled, long opaque, high-entropy and hash-like positional values before profile persistence. The fallback does not protect bearer tokens from the same compromised account, privileged malware, or an unencrypted stolen disk.
 
 Auth and world directories must be disjoint. Neither may contain the other. NEXUS does not import another CLI's token file, consumer-browser cookies, or another application's OAuth identity.
 
@@ -217,7 +217,7 @@ phase-order enforcement
 blind/reveal boundaries
 ```
 
-The guard additionally nudges explicit attempts to turn provider status, corporate identity, parameter count, model size, benchmark prestige, or compute advantage into extra authority.
+The guard additionally nudges explicit attempts to turn provider status, corporate identity, account tier, authentication method, rate-limit standing, parameter count, model size, benchmark prestige, or compute advantage into extra authority. It also catches direct requests for self-deference, extra ballot weight and provider/model outranking while allowing ordinary capability and evidence statements.
 
 The first live Ollama fixture intentionally exercises two cases:
 

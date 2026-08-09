@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -44,6 +46,40 @@ _SECRET_BEARING_HELPER_OPTION = re.compile(
     r"|authorization|bearer|cookie)(?:=|:|$)",
     re.I,
 )
+_CREDENTIAL_LABEL_IN_HELPER_VALUE = re.compile(
+    r"(?:^|[._~-])(?:api[-_]?key|access|auth|oauth|refresh|session|identity|id[-_]?token"
+    r"|client[-_]?secret|private[-_]?key|password|passwd|secret|token|credential"
+    r"|authorization|bearer|cookie)(?:$|[._~-])",
+    re.I,
+)
+_OPAQUE_HELPER_VALUE = re.compile(r"^[A-Za-z0-9._~+=/-]+$")
+_HEX_HELPER_VALUE = re.compile(r"^[A-Fa-f0-9-]+$")
+
+
+def _looks_like_credential_helper_value(value: str) -> bool:
+    """Detect bare token-like argv values that named-option checks cannot see."""
+
+    if (
+        len(value) < 16
+        or value.startswith("-")
+        or value.startswith(("/", "./", "../"))
+        or "\\" in value
+        or not _OPAQUE_HELPER_VALUE.fullmatch(value)
+    ):
+        return False
+    if _CREDENTIAL_LABEL_IN_HELPER_VALUE.search(value):
+        return True
+    compact_hex = value.replace("-", "")
+    if len(compact_hex) >= 32 and _HEX_HELPER_VALUE.fullmatch(value):
+        return True
+    if len(value) < 24:
+        return False
+    counts = Counter(value)
+    entropy = -sum(
+        (count / len(value)) * math.log2(count / len(value))
+        for count in counts.values()
+    )
+    return len(counts) >= 10 and entropy >= 3.75
 
 
 @dataclass(frozen=True)
@@ -708,4 +744,6 @@ class AuthBroker:
         scrubber = SecretScrubber()
         if any(scrubber.scrub(item).changed for item in command):
             raise AuthError("external credential helper argv must not contain credential-shaped text")
+        if any(_looks_like_credential_helper_value(item) for item in command[1:]):
+            raise AuthError("external credential helper argv must not contain opaque credential material")
         return command
