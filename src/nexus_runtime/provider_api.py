@@ -13,7 +13,6 @@ from .adapters import (
 from .adapters.base import build_direct_prompt, build_phase_prompt
 from .adapters.third_party import THIRD_PARTY_DIRECT_OUTPUT_TOKENS, THIRD_PARTY_PHASE_OUTPUT_TOKENS
 from .api import MAX_REMOTE_COUNCIL_SEATS, NexusAPI as CoreNexusAPI
-from .auth import AuthError
 from .local_role_runtime import LocalAwareCitizenship, LocalAwareFailsafe
 from .local_roles import LocalRoleBackendConfig, LocalRoleRegistry
 from .types import CouncilMember, PhaseContext
@@ -73,15 +72,16 @@ class _ModeAwareThirdPartyActor(ThirdPartyActor):
 class ProviderNexusAPI(CoreNexusAPI):
     """NEXUS API with fixed-host cloud and loopback-local provider admission.
 
-    Remote provider credentials stay behind AuthBroker profiles. Local AI hosts
-    are admitted only on loopback. Optional local role substitution can enrich
-    deterministic Failsafe/civic role language, while the wrapped deterministic
-    role remains authoritative for seat identity and ballots.
+    Cloud credentials remain AuthBroker profiles. Local AI credentials are
+    optional ephemeral environment references and never become world state.
+    Optional local role substitution enriches deterministic Failsafe/civic
+    language while the wrapped deterministic role remains authoritative for
+    seat identity and ballots.
     """
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.local_roles = LocalRoleRegistry(self.auth)
+        self.local_roles = LocalRoleRegistry()
         self.citizenship = LocalAwareCitizenship(self.citizenship, self.local_roles)
         self.council.failsafe = LocalAwareFailsafe(self.council.failsafe, self.local_roles)
 
@@ -150,7 +150,7 @@ class ProviderNexusAPI(CoreNexusAPI):
                 response = self.local_roles.clear(self._require_str(request, "role_id"))
             else:  # pragma: no cover - dispatch set is closed above
                 return self._error(request_id, "unknown_operation", "operation is not supported")
-        except (AuthError, KeyError, TypeError, ValueError) as exc:
+        except (KeyError, TypeError, ValueError) as exc:
             return self._error(request_id, "invalid_request", str(exc))
         if request_id is not None:
             response = {"request_id": request_id, **response}
@@ -197,16 +197,14 @@ class ProviderNexusAPI(CoreNexusAPI):
                 f"{adapter_id} member contains unsupported fields: {', '.join(sorted(unknown))}"
             )
 
-        vote_weight = item.get("vote_weight", 1)
-        epistemic_privilege = item.get("epistemic_privilege", "none")
         member = CouncilMember(
             member_id=self._member_identity(item, "member_id"),
             model_id=self._member_identity(item, "model_id"),
             adapter_id=adapter_id,
             deployment_metadata=self._member_metadata(item, "deployment_metadata"),
             capability_metadata=self._member_metadata(item, "capability_metadata"),
-            vote_weight=vote_weight,
-            epistemic_privilege=epistemic_privilege,
+            vote_weight=item.get("vote_weight", 1),
+            epistemic_privilege=item.get("epistemic_privilege", "none"),
         )
         profile_name = item.get("auth_profile", "default")
         if not isinstance(profile_name, str) or not profile_name:
@@ -235,7 +233,7 @@ class ProviderNexusAPI(CoreNexusAPI):
             "vote_weight",
             "epistemic_privilege",
             "endpoint",
-            "auth_profile",
+            "credential_env",
             "model",
             "workspace",
             "mcp_plugins",
@@ -260,7 +258,7 @@ class ProviderNexusAPI(CoreNexusAPI):
             key: item[key]
             for key in (
                 "endpoint",
-                "auth_profile",
+                "credential_env",
                 "model",
                 "workspace",
                 "mcp_plugins",
@@ -273,17 +271,12 @@ class ProviderNexusAPI(CoreNexusAPI):
         if adapter_id != "anythingllm_local" and "model" not in backend_fields:
             backend_fields["model"] = member.model_id
         backend = LocalRoleBackendConfig.from_request("failsafe_relief", backend_fields)
-        credential = None
-        if backend.auth_profile is not None:
-            credential = self.auth.resolve(adapter_id, backend.auth_profile)
-            if credential is None:
-                raise ValueError(f"{adapter_id} auth profile did not resolve a credential")
         return LocalAIActor(
             member=member,
             transport=LocalAITransport(
                 adapter_id,
                 endpoint=backend.endpoint,
-                credential=credential,
+                credential=self.local_roles._credential(backend),
                 timeout_seconds=backend.timeout_seconds,
             ),
             model=backend.model,
