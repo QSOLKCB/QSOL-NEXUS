@@ -906,7 +906,10 @@ mod tests {
             "trap_control"
         );
         assert_eq!(room_from_name("trap-base").unwrap().channel, "#trap-base");
-        assert_eq!(room_from_name("courtroom").unwrap().channel, "#stenographer");
+        assert_eq!(
+            room_from_name("courtroom").unwrap().channel,
+            "#stenographer"
+        );
     }
 
     #[test]

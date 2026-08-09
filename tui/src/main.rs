@@ -24,8 +24,7 @@ use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 use std::time::Duration;
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 
-const LORE_REVEAL_PHRASE: &str =
-    "Dragon seed awakens divine house through forbidden knowledge.";
+const LORE_REVEAL_PHRASE: &str = "Dragon seed awakens divine house through forbidden knowledge.";
 
 #[derive(Debug, Clone)]
 struct MemberConfig {
@@ -538,9 +537,7 @@ impl App {
                 self.reject_stenographer_mutation()?;
                 self.execute_trap(nexus, &command)?
             }
-            InputCommand::Stenographer(command) => {
-                self.execute_stenographer(nexus, command)?
-            }
+            InputCommand::Stenographer(command) => self.execute_stenographer(nexus, command)?,
             InputCommand::Say(text) => {
                 if self.is_stenographer_room() {
                     if text == LORE_REVEAL_PHRASE {
@@ -2068,8 +2065,8 @@ fn parse_args() -> (PathBuf, PathBuf, PathBuf, PathBuf, String) {
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (world, state, trap_root, stenographer_root, nick) = parse_args();
-    let mut nexus = NexusProcess::spawn(&world, &trap_root, &stenographer_root)
-        .map_err(io::Error::other)?;
+    let mut nexus =
+        NexusProcess::spawn(&world, &trap_root, &stenographer_root).map_err(io::Error::other)?;
     let _guard = TerminalGuard::enter()?;
     let mut app = App::new(nick, state);
     app.scrub_loaded_script_state(&mut nexus)
