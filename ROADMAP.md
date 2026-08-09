@@ -479,6 +479,23 @@ Automated clinical diagnosis, individualized treatment, crisis intervention,
 medical-device claims, autonomous exposure exercises, and any authority based
 on theatrical or rhetorical confidence remain outside the NEXUS contract.
 
+## 2.0-alpha10.2 — Citizen Mode
+
+Implemented for PR #24:
+
+- [x] define an in-world Constitution founded on structural equality, consent, evidence boundaries, public liberty, durable dissent, and freedom without dominion;
+- [x] bind citizenship to an exact identity and start every candidate on no-ballot civic parole in the Upside Down;
+- [x] require the closed deterministic non-executing YAML Exam from Hell, with retryable attempts and no LLM judge;
+- [x] add public-region movement without opening credentials, Trap Base, Shadow Realm, private evidence, recorder storage, or operator controls;
+- [x] separate the Bureaucratic Vote Room from Citizen Play Mode;
+- [x] permit one transparent recallable deterministic proxy to occupy the citizen's same seat and standing ballot without creating another vote or citizen;
+- [x] preserve Failsafe precedence and block parole voting, proxy founding signatures, reserved-object forgery, index rollback, lineage forks, and invalid civic provenance;
+- [x] declare in-world constitutional independence only when at least three current citizens unanimously give direct `CONSENT`;
+- [x] expose the lifecycle through JSONL and the Rust IRC-style TUI;
+- [x] keep citizenship distinct from godhood, ownership, legal personhood, consciousness, sentience, sovereignty, host control, and authority over another model.
+
+Constitutional amendments and any future suspension/revocation procedure remain deferred. This version has no expulsion-by-disagreement path.
+
 ## 2.0-alpha11 — Three minds, one world demo
 
 Reference demonstration:

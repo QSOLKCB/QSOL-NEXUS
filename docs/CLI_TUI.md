@@ -63,6 +63,9 @@ There is no IRC daemon or network connection.
 | `#roman-forum` | `roman_orator` | Agora |
 | `#house-of-wisdom` | `house_of_wisdom` | Archive |
 | `#deep-thought` | `ultimate_questions` | Observatory |
+| `#upside-down` | `citizenship_parole` | Upside Down |
+| `#bureaucracy` | `civic_bureaucracy` | Bureaucratic Vote Room |
+| `#play` | `citizen_play` | Commons |
 | `#un-sim` | `game_un` | Assembly Hall |
 | `#mud` | `game_mud` | Dungeon |
 | `#trap-control` | operator-only incident control | Trap Base |
@@ -83,7 +86,23 @@ The room/mode selection affects framing but not Council authority.
 
 > **The mode can change the vibe. It cannot change the vote.**
 
-See [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the six cognitive-room contracts.
+See [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the six cognitive-room contracts and [`CITIZEN_MODE.md`](CITIZEN_MODE.md) for civic access and delegation.
+
+Citizen commands are explicit control operations rather than role-play:
+
+```text
+/citizen constitution
+/citizen status [nick]
+/citizen begin <nick>
+/citizen exam-template <nick>
+/citizen exam <nick> <yaml-file>
+/citizen move <nick> <public-region>
+/citizen proxy appoint <nick> <standing-ballot>
+/citizen proxy kick <nick>
+/citizen independence <nick> <consent|withhold>
+```
+
+The Python runtime owns identity binding, the 16-KiB non-executing exam parser, civic lineage, public movement, proxy selection, and founding consensus. The TUI only parses commands, bounds the exam file before transport, and renders responses.
 
 Trap rooms are views over the separate TrapStore, not normal WorldStore rooms.
 The operator can see both. The hostile subject receives only synthetic

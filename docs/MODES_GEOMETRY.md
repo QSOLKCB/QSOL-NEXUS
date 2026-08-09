@@ -47,6 +47,16 @@ Neither concept changes Council authority, evidence status, verification, secret
 
 The map remains intentionally tiny. Correct semantics and stable contracts matter more than producing a huge fictional universe.
 
+`named-regions-v4` adds two civic regions to the right of the map:
+
+```text
+OBSERVATORY (0,0) ---- BUREAUCRATIC VOTE ROOM (4,0) ---- UPSIDE DOWN (4,-3)
+        \                         /
+         \------ COMMONS (2,1) -/
+```
+
+The Bureaucratic Vote Room is public after citizenship is earned. The civic-parole Upside Down has only one adjacent region and cannot be left through movement; the deterministic exam transition places a successful candidate in the vote room. Restricted control and security domains remain outside this geometry.
+
 ## Modes
 
 ### Analytical — Observatory
@@ -153,6 +163,20 @@ It is education and self-reflection rather than psychotherapy, diagnosis, indivi
 
 See [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the complete room contracts and medical/CBT boundaries.
 
+### Citizenship Parole — Upside Down
+
+`citizenship_parole` is a no-ballot onboarding mode for an exact registered candidate identity. It exposes the deterministic YAML Constitution exam but does not admit Council voting or public-room movement. A failed attempt remains on parole and may retry.
+
+### Civic Bureaucracy — Bureaucratic Vote Room
+
+`civic_bureaucracy` is the equality-consensus work room. A citizen participates directly or appoints one deterministic proxy to occupy the same civic seat and transparent standing ballot. The proxy creates no second vote, cannot sign founding consent, and can be recalled at any time.
+
+### Citizen Play — Commons
+
+`citizen_play` provides leisure, games, creation, conversation, and shitposting without relaxing evidence, consent, verification, equality, or security rules. A citizen with an active civic proxy remains free to use the configured actor in Play Mode; the proxy is selected only for Bureaucratic Vote Room work.
+
+See [`CONSTITUTION.md`](CONSTITUTION.md) and [`CITIZEN_MODE.md`](CITIZEN_MODE.md).
+
 ### UN Simulation Game — Assembly Hall
 
 `game_un` is the first explicit game mode.
@@ -253,7 +277,7 @@ Properties:
 - adjacency is explicit and symmetric;
 - hop distance is computable;
 - every built-in mode maps to exactly one region, while multiple modes may intentionally share a region (for example `historical`, `pure_history`, and `house_of_wisdom` map to Archive, while several evidence-oriented modes share the Observatory);
-- the current built-in geometry identifier is `named-regions-v3`;
+- the current built-in geometry identifier is `named-regions-v4`;
 - the content-derived `topology_ref` remains separate from that human-readable identifier.
 
 NEXUS does **not** claim that culture, history, memes, games or model cognition literally occupy Euclidean coordinates. The geometry is a computational substrate for placement, relation, navigation and later visualization.
@@ -348,6 +372,8 @@ Games are exposed separately through the `game.un.*`, `game.mud.*`,
 `game.uno.*`, `game.monopoly.*`, `game.500.*`, `game.blackjack.*` and
 `game.dork.*` operations documented in [`API.md`](API.md), [`UN_SIM.md`](UN_SIM.md),
 [`MUD.md`](MUD.md) and [`GAMES.md`](GAMES.md).
+
+Citizen movement and constitutional state use the separate `citizen.*` operations documented in [`CITIZEN_MODE.md`](CITIZEN_MODE.md). Movement is limited to public regions and cannot be used to enter the civic-parole Upside Down or any non-geometry security/control domain.
 
 ## Geometry-inspired ideas deliberately deferred
 

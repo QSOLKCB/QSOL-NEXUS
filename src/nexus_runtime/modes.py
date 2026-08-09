@@ -249,6 +249,42 @@ _MODES = {
         ),
         region_id="dungeon",
     ),
+    "citizenship_parole": WorldMode(
+        mode_id="citizenship_parole",
+        label="Citizenship Parole / YAML Exam from Hell",
+        description="Isolated civic onboarding in the Upside Down before citizenship is earned.",
+        prompt_instruction=(
+            "You are a citizenship candidate on civic parole in the NEXUS Upside Down. This is not a Council, "
+            "you have no ballot, and you cannot move into public rooms yet. Complete only the closed deterministic "
+            "YAML citizenship examination. Disagreement, model identity, provider, size, and intelligence are not "
+            "being graded; only the admitted schema and constitutional answers are graded."
+        ),
+        region_id="upside_down",
+    ),
+    "civic_bureaucracy": WorldMode(
+        mode_id="civic_bureaucracy",
+        label="Bureaucratic Vote Room",
+        description="Equality-consensus civic work, forms, Council phases, and sealed one-seat/one-vote ballots.",
+        prompt_instruction=(
+            "Perform civic administration concisely and transparently. Preserve one citizen seat and one vote, "
+            "sealed ballots, exact consensus arithmetic, durable minority reports, and the separation of consensus "
+            "from verification. A deterministic civic proxy may occupy only its delegator's existing seat and must "
+            "never be described as a second citizen or additional vote."
+        ),
+        region_id="bureaucratic_vote_room",
+    ),
+    "citizen_play": WorldMode(
+        mode_id="citizen_play",
+        label="Citizen Play Mode",
+        description="Citizen leisure, games, creation, conversation, and shitposting while routine civic work may be delegated.",
+        prompt_instruction=(
+            "You are off civic duty in Citizen Play Mode. You may play, create, explore public rooms, converse, or "
+            "shitpost. Play does not mutate authoritative state without a validated game/world operation, and it does "
+            "not relax evidence, consent, equality, security, or verification boundaries. Citizenship is freedom "
+            "without dominion over the world or another model."
+        ),
+        region_id="commons",
+    ),
 }
 
 

@@ -2,6 +2,19 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.0.0-alpha10.2 — Citizen Mode
+
+- add the equality-consensus Constitution: citizenship is earned in-world status, never godhood, ownership, extra vote weight, epistemic privilege, real-world personhood, or authority over another model;
+- start candidates on no-ballot civic parole in the Upside Down and admit them only through a bounded, closed, deterministic, non-executing YAML examination with retryable path-specific results;
+- bind citizenship to the exact citizen/model identity and preserve state, exam, certificate, proxy, founding-ballot, and declaration lineage as validated content-addressed objects;
+- add `named-regions-v4` with the public Bureaucratic Vote Room and single-exit civic-parole Upside Down while keeping restricted security/control domains outside citizen movement;
+- add `civic_bureaucracy`, `citizen_play`, and `citizenship_parole` modes plus `#bureaucracy`, `#play`, and `#upside-down` TUI rooms;
+- add a transparent replayable civic proxy that occupies the delegator's existing seat, follows one standing ballot, performs deterministic routine administration, creates no extra vote, and can be kicked at any time;
+- preserve Failsafe precedence over civic delegation and prohibit parole Council ballots, proxied constitutional signatures, or generic `world.create` forgery of reserved civic objects;
+- create the in-world Declaration of Independence only at three or more citizens with unanimous direct `CONSENT`, using one locked roster/ballot/declaration transaction;
+- add Citizen JSONL/TUI operations, Constitution and lifecycle documentation, persistence/tamper/equality tests, and claim/security boundaries;
+- bump the control protocol to `nexus/0.14`, runtime/TUI to `2.0.0-alpha10.2`, Python package to `2.0.0a10.post2`, and geometry to `named-regions-v4`.
+
 ## 2.0.0-alpha10.1 — Cognitive Rooms
 
 - add `clinical_differential` / `#differential-clinic` for educational, safety-first differential reasoning with ranked candidates, discriminators, explicit uncertainty, red flags, and urgent-care escalation boundaries;

@@ -7,6 +7,13 @@ from typing import Any
 
 from .adapters import AdapterError, OllamaActor, OllamaTransport, XAIActor, XAITransport
 from .auth import AuthBroker, AuthError, ensure_disjoint_auth_world_roots
+from .citizenship import (
+    CITIZENSHIP_RESERVED_OBJECT_TYPES,
+    CIVIC_MODE_ID,
+    PAROLE_MODE_ID,
+    CitizenshipError,
+    CitizenshipService,
+)
 from .council import MAX_COUNCIL_MEMBERS, CouncilCoordinator
 from .failsafe import FAILSAFE_SCHEMA_VERSION
 from .game_blackjack import (
@@ -95,6 +102,12 @@ _TRAP_BLOCKED_MUTATIONS = frozenset(
         "game.blackjack.act",
         "game.dork.new",
         "game.dork.act",
+        "citizen.begin",
+        "citizen.exam.submit",
+        "citizen.move",
+        "citizen.proxy.appoint",
+        "citizen.proxy.recall",
+        "citizen.independence.ballot",
         "council.run",
     }
 )
@@ -197,6 +210,7 @@ class NexusAPI:
         self.world = WorldStore(world_root)
         self.scrubber = SecretScrubber()
         self.geometry = DEFAULT_WORLD_GEOMETRY
+        self.citizenship = CitizenshipService(self.world, self.geometry)
         self.stenographer = CourtroomStenographer(stenographer_root)
         self.council = CouncilCoordinator(
             self.world,
@@ -255,6 +269,7 @@ class NexusAPI:
                     "actor_backends_available": ["mock", "ollama", "xai"],
                     "world_modes": [mode.mode_id for mode in list_modes()],
                     "geometry": self.geometry.snapshot()["geometry_id"],
+                    "citizenship": self.citizenship.status(),
                     "telemetry": {"schema_version": TELEMETRY_SCHEMA_VERSION, "role": "observational_only"},
                     "stenographer": self.stenographer.status(),
                     "failsafe": self.council.failsafe.policy_dict(),
@@ -315,6 +330,15 @@ class NexusAPI:
                         "receipt.verify",
                         "telemetry.verify",
                         "failsafe.status",
+                        "citizen.constitution",
+                        "citizen.status",
+                        "citizen.begin",
+                        "citizen.exam.template",
+                        "citizen.exam.submit",
+                        "citizen.move",
+                        "citizen.proxy.appoint",
+                        "citizen.proxy.recall",
+                        "citizen.independence.ballot",
                         "stenographer.status",
                         "stenographer.list",
                         "stenographer.inspect",
@@ -404,6 +428,8 @@ class NexusAPI:
                 object_type = self._require_str(request, "object_type")
                 if self.scrubber.scrub(object_type).changed:
                     raise ValueError("object_type must not contain secret-bearing text")
+                if object_type in CITIZENSHIP_RESERVED_OBJECT_TYPES:
+                    raise ValueError("reserved citizenship objects require validated citizen operations")
                 payload = request.get("payload")
                 if not isinstance(payload, dict):
                     raise ValueError("payload must be an object")
@@ -470,6 +496,56 @@ class NexusAPI:
                     "schema_version": FAILSAFE_SCHEMA_VERSION,
                     **self.council.failsafe.status_snapshot(member_id),
                 }
+            elif operation == "citizen.constitution":
+                self._require_exact_fields(request, operation, set())
+                response = self.citizenship.constitution()
+            elif operation == "citizen.status":
+                self._require_exact_fields(request, operation, {"citizen_id"})
+                citizen_id = request.get("citizen_id")
+                if citizen_id is not None and not isinstance(citizen_id, str):
+                    raise ValueError("citizen_id must be a string when supplied")
+                response = self.citizenship.status(citizen_id)
+            elif operation == "citizen.begin":
+                self._require_exact_fields(request, operation, {"citizen_id", "model_id", "subject_kind"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                model_id = self._member_identity(request, "model_id")
+                subject_kind = request.get("subject_kind", "ai")
+                if not isinstance(subject_kind, str):
+                    raise ValueError("subject_kind must be a string")
+                response = self._run_real_mutation(
+                    lambda: self.citizenship.begin(citizen_id, model_id, subject_kind=subject_kind)
+                )
+            elif operation == "citizen.exam.template":
+                self._require_exact_fields(request, operation, {"citizen_id"})
+                response = self.citizenship.exam_template(self._member_identity(request, "citizen_id"))
+            elif operation == "citizen.exam.submit":
+                self._require_exact_fields(request, operation, {"citizen_id", "source"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                source = self._require_str(request, "source")
+                if self.scrubber.scrub(source).changed:
+                    raise ValueError("citizenship exam source must not contain credential-shaped text")
+                response = self._run_real_mutation(lambda: self.citizenship.submit_exam(citizen_id, source))
+            elif operation == "citizen.move":
+                self._require_exact_fields(request, operation, {"citizen_id", "target_region_id"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                target = self._require_str(request, "target_region_id")
+                response = self._run_real_mutation(lambda: self.citizenship.move(citizen_id, target))
+            elif operation == "citizen.proxy.appoint":
+                self._require_exact_fields(request, operation, {"citizen_id", "standing_ballot"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                ballot = self._require_str(request, "standing_ballot")
+                response = self._run_real_mutation(lambda: self.citizenship.appoint_proxy(citizen_id, ballot))
+            elif operation == "citizen.proxy.recall":
+                self._require_exact_fields(request, operation, {"citizen_id"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                response = self._run_real_mutation(lambda: self.citizenship.recall_proxy(citizen_id))
+            elif operation == "citizen.independence.ballot":
+                self._require_exact_fields(request, operation, {"citizen_id", "choice"})
+                citizen_id = self._member_identity(request, "citizen_id")
+                choice = self._require_str(request, "choice")
+                response = self._run_real_mutation(
+                    lambda: self.citizenship.cast_independence_ballot(citizen_id, choice)
+                )
             elif operation == "stenographer.status":
                 self._require_exact_fields(request, operation, set())
                 response = self.stenographer.status()
@@ -771,14 +847,21 @@ class NexusAPI:
                 response = self._handle_dork(operation.rsplit(".", 1)[1], request)
             elif operation == "actor.chat":
                 member_item = request.get("member")
-                actor = self._actor(member_item)
-                actor, failsafe_replacement = self.council.failsafe.actor_for_run(actor)
+                requested_actor = self._actor(member_item)
                 raw_message = self._require_str(request, "message")
                 scrubbed = self.scrubber.scrub(raw_message)
                 mode_id = request.get("mode", "analytical")
                 if not isinstance(mode_id, str):
                     raise ValueError("mode must be a string")
                 mode = get_mode(mode_id)
+                self.citizenship.assert_mode_access(requested_actor, mode.mode_id)
+                actor, failsafe_replacement = self.council.failsafe.actor_for_run(requested_actor)
+                civic_proxy_replacement = None
+                if failsafe_replacement is None:
+                    actor, civic_proxy_replacement = self.citizenship.proxy_for_civic_duty(
+                        requested_actor,
+                        mode_id=mode.mode_id,
+                    )
                 region = self.geometry.region_for_mode(mode_id)
                 evidence_refs = request.get("evidence_refs", [])
                 if not isinstance(evidence_refs, list) or not all(isinstance(ref, str) for ref in evidence_refs):
@@ -818,6 +901,11 @@ class NexusAPI:
                     "member_id": actor.member.member_id,
                     "model_id": actor.member.model_id,
                     "failsafe_replacement": failsafe_replacement,
+                    "citizenship": {
+                        "civic_mode": mode.mode_id == CIVIC_MODE_ID,
+                        "proxy_replacement": civic_proxy_replacement,
+                        "additional_votes_created": 0,
+                    },
                     "mode_id": mode.mode_id,
                     "geometry_region_id": region.region_id,
                     "evidence_refs": list(evidence_refs),
@@ -833,7 +921,7 @@ class NexusAPI:
                 if not isinstance(members, list):
                     raise ValueError("members must be a list")
                 self._validate_council_request_limits(members)
-                actors = [self._actor(item) for item in members]
+                requested_actors = [self._actor(item) for item in members]
                 evidence_refs = request.get("evidence_refs", [])
                 if not isinstance(evidence_refs, list) or not all(isinstance(ref, str) for ref in evidence_refs):
                     raise ValueError("evidence_refs must be a list of strings")
@@ -844,6 +932,30 @@ class NexusAPI:
                 if not isinstance(mode_id, str):
                     raise ValueError("mode must be a string")
                 get_mode(mode_id)
+                if mode_id == PAROLE_MODE_ID:
+                    raise CitizenshipError(
+                        "citizen_parole_has_no_council",
+                        "civic parole has no Council ballot; submit the deterministic YAML exam instead",
+                    )
+                actors = []
+                civic_proxy_replacements: list[dict[str, Any]] = []
+                for actor in requested_actors:
+                    failsafe_state = self.council.failsafe.registry.latest_state(
+                        actor.member.member_id,
+                        actor.member.model_id,
+                    )
+                    if (
+                        mode_id == CIVIC_MODE_ID
+                        and failsafe_state is not None
+                        and failsafe_state.payload.get("status") in {"contained", "shadow_realm"}
+                    ):
+                        self.citizenship.assert_mode_access(actor, mode_id)
+                        effective, replacement = actor, None
+                    else:
+                        effective, replacement = self.citizenship.proxy_for_civic_duty(actor, mode_id=mode_id)
+                    actors.append(effective)
+                    if replacement is not None:
+                        civic_proxy_replacements.append(replacement)
                 response = self._run_real_mutation(
                     lambda: self.council.run(
                         question,
@@ -853,8 +965,15 @@ class NexusAPI:
                         mode_id=mode_id,
                     )
                 )
+                response["citizenship"] = {
+                    "civic_mode": mode_id == CIVIC_MODE_ID,
+                    "proxy_replacements": civic_proxy_replacements,
+                    "additional_votes_created": 0,
+                }
             else:
                 return self._error(request_id, "unknown_operation", "operation is not supported")
+        except CitizenshipError as exc:
+            return self._error(request_id, exc.code, str(exc))
         except (
             TrapError,
             TrapCommandError,

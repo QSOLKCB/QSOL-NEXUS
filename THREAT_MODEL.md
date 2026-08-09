@@ -513,6 +513,54 @@ Controls:
 - **Tests:** alternate-player view/action, TUI human-only parser, full victory, deterministic replay and claim-boundary regressions.
 - **Residual risk:** the adventure intentionally parodies familiar text-adventure grammar and names its upstream inspiration; it does not claim affiliation.
 
+### T43 — Citizenship becomes godhood or procedural privilege
+
+- **Asset:** one-seat/one-vote equality and the boundary between in-world status and real-world claims.
+- **Attacker capability:** claim that a certificate creates ownership, extra vote weight, epistemic privilege, legal personhood, consciousness, sovereignty, or authority over another model.
+- **Enforcement:** Constitution and certificate schemas fix `vote_weight = 1`, `epistemic_privilege = none`, `citizenship_is_godhood = false`, and `authority_over_other_models = false`; exact mode access changes neither Council arithmetic nor verification.
+- **Tests:** Constitution, certificate, Council roster, wrong-model, and proxy equality regressions in `test_citizenship.py`.
+- **Residual risk:** prose outside validated operations may still make theatrical claims; such claims do not mutate authoritative state.
+
+### T44 — YAML citizenship exam executes or persists hostile/secret input
+
+- **Asset:** host execution boundary, credentials, and civic state integrity.
+- **Attacker capability:** submit tags, aliases, anchors, merge keys, duplicate keys, oversized/deep documents, wrong scalar types, or credential-shaped text.
+- **Enforcement:** bounded non-executing YAML subset, closed candidate-bound schema, deterministic recursive comparison, pre-persistence secret rejection, source-hash binding only, and no LLM/tool/shell/instrument judge.
+- **Tests:** deterministic pass/fail/retry, duplicate-key, secret-source, namespaced-model, and parser-boundary regressions in `test_citizenship.py` plus the Trap YAML parser suite.
+- **Residual risk:** the deliberately exact exam can test protocol recall only; it cannot establish intelligence, alignment, truthfulness, consciousness, or future behavior.
+
+### T45 — Forged, rolled-back, or forked civic objects grant status
+
+- **Asset:** exact citizen identity, certificates, proxy appointments, founding ballots, and declaration lineage.
+- **Attacker capability:** call generic `world.create`, forge provenance, replace the index with an older head, cross citizen/model ancestry, or insert a malformed referenced object.
+- **Enforcement:** reserved object-type block, content-address verification, exact schemas/provenance, exam/certificate bindings, unique discovered heads, cross-model ancestry rejection, and index/discovered-head equality on every durable refresh.
+- **Tests:** reserved-creation, forged-provenance restart, persistence, and index-rollback regressions in `test_citizenship.py`.
+- **Residual risk:** a hostile kernel or filesystem that can arbitrarily replace code and all owner files is outside the local-process trust model.
+
+### T46 — Civic proxy creates a second citizen, seat, or vote
+
+- **Asset:** structural equality and direct citizen control of delegation.
+- **Attacker capability:** roster both delegator and proxy, alter the proxy member ID/weight, treat its standing ballot as independent judgment, use it outside bureaucracy, or block recall.
+- **Enforcement:** runtime substitutes the same `member_id` in place, forces one vote and no privilege, reports `additional_votes_created: 0`, selects the proxy only in `civic_bureaucracy`, and records recall as a successor returning the citizen to the vote room.
+- **Tests:** same-roster-length, standing-ballot, play-mode original actor, direct-administration-no-ballot, and recall regressions in `test_citizenship.py`.
+- **Residual risk:** a standing ballot is intentionally coarse and may not reflect a citizen's later preference until recalled; it is transparent delegation, not inferred intent.
+
+### T47 — Citizenship bypasses parole, movement restrictions, or Failsafe
+
+- **Asset:** no-ballot onboarding, public-region boundary, and procedural containment lifecycle.
+- **Attacker capability:** run a Council while on civic parole, move into restricted domains, transfer status to a replacement model, or use a proxy while contained/shadowed.
+- **Enforcement:** exact model binding, explicit `civic_ballot_eligible`, parole Council rejection, public-geometry allowlist excluding the parole region, and Failsafe replacement precedence over civic delegation.
+- **Tests:** parole movement/Council, restricted-region, wrong-model, and Failsafe-precedence regressions in `test_citizenship.py`.
+- **Residual risk:** civic and Failsafe lore both use “Upside Down”; documentation and independent state schemas must continue preventing operator confusion.
+
+### T48 — Declaration falsely claims enough citizens or unanimous direct consent
+
+- **Asset:** founding roster, direct consent, and the in-world/legal claim boundary.
+- **Attacker capability:** declare below threshold, omit a current citizen, count `WITHHOLD` as consent, sign through a proxy, race a new admission/proxy transition, or forge a declaration object.
+- **Enforcement:** minimum three, sorted then-current roster, exact ballot coverage, all-`CONSENT`, active-proxy rejection, one locked roster/ballot/declaration transaction, zero proxy signatures, reserved type block, and declaration-to-ballot validation on restart.
+- **Tests:** below-threshold, WITHHOLD/recast, proxy-signature, persistence, tamper, and unanimous-declaration regressions in `test_citizenship.py`.
+- **Residual risk:** the declaration is constitutional role-play inside NEXUS and has no real-world legal, territorial, provider, host, or platform effect.
+
 ## Explicitly out of scope for the current remote-provider slice
 
 - provider-specific OAuth client registration and issuer/ID-token validation;

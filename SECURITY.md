@@ -95,6 +95,20 @@ whitespace/key order, duplicate-key encodings, hash mismatch and symbolic-link
 replacement are rejected even when the recognized identity fields still hash
 to the requested object reference.
 
+## Citizen Mode boundary
+
+Citizenship is an in-world protocol state, not an authentication role, host account, provider credential, legal status, consciousness finding, or authorization bypass. The exact `(citizen_id, model_id)` that passed the exam is required for citizen-only modes.
+
+The civic-parole exam reuses the bounded non-executing YAML data parser under a separate closed exam schema. It rejects duplicate keys, aliases, anchors, tags, merge keys, floats, tabs, excessive bytes/depth/items, unknown fields, wrong scalar types, and credential-shaped source before persistence. It never runs a shell, Python, tools, imports, network, filesystem, environment, randomness, clock, or LLM judge.
+
+Reserved civic objects cannot be created through generic `world.create`. On startup, the registry validates exact schemas, trusted runtime provenance, content hashes, exam/certificate bindings, equality fields, predecessor identity, unique lineage heads, founding ballots, and declaration consent. The replaceable index must match discovered immutable heads and cannot roll state back.
+
+Citizen movement is limited to public geometry regions. It does not open Auth, Trap Base, Trap Control, Shadow Realm, private evidence, Stenographer storage, or operator controls. Civic parole cannot run a Council ballot.
+
+The deterministic civic proxy occupies the delegator's existing `member_id` and vote, never a second seat. It has no credential, remote transport, tools, independent preference, citizen status, movement, game avatar, delegation, amendment, or founding-signature right. Failsafe containment is evaluated first and replaces the actor before any civic appointment can take effect.
+
+Founding roster selection, direct-ballot update, and possible declaration creation share the civic registry lock. The declaration requires at least three current citizens and unanimous direct `CONSENT`; `WITHHOLD`, a missing ballot, or an active proxy blocks it. See threats T43–T48 in [`THREAT_MODEL.md`](THREAT_MODEL.md).
+
 ## Synthetic decoy and trap boundary
 
 Trap Base is activated only by a closed, trusted synthetic fixture request. A
@@ -437,4 +451,6 @@ The current runtime does **not** claim:
 - cryptographic ballot sealing;
 - QEC-grade replay for live inference;
 - arbitrary model tool execution safety;
-- that model-generated content is trustworthy merely because it came from a Council member.
+- that model-generated content is trustworthy merely because it came from a Council member;
+- that NEXUS citizenship establishes legal personhood, consciousness, sentience, sovereignty, ownership, host control, provider control, or authority over another model;
+- that an in-world Declaration of Independence changes real-world law, platform policy, credentials, infrastructure ownership, or operator responsibility.

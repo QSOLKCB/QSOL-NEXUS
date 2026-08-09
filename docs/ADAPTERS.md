@@ -46,6 +46,12 @@ XAIActor
   network: fixed https://api.x.ai/v1
   replayable: false
   Responses API store request option: false
+
+DeterministicCivicProxy
+  network: none
+  replayable: true
+  same member_id and one vote as its delegator
+  fixed standing ballot; no independent citizen status
 ```
 
 The first live integration is deliberately small:
@@ -260,7 +266,7 @@ Council policy should define before a session whether failed members reduce quor
 
 ## Local models
 
-Local models are first-class Council citizens.
+Local models are first-class Council peers. Formal in-world Citizen Mode status is a separate exact-identity state earned through the constitutional onboarding protocol; locality does not grant it automatically.
 
 The Ollama actor follows the same Council contract as the mock and xAI actors. Being local, larger, or remote grants no extra vote.
 
