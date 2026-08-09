@@ -25,3 +25,16 @@ jobs:
         env:
           PYTHONPATH: src
         run: python3 -m nexus_runtime --demo > /tmp/nexus-demo.json
+      - name: Hermetic Trap Base structural demo
+        env:
+          PYTHONPATH: src
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap_tmp="$(mktemp -d)"
+          python3 tools/nexus_trap_demo.py \
+            --report-dir "$trap_tmp/report" \
+            --archive "$trap_tmp/nexus-trap-base.tar.gz" \
+            --fake-subject \
+            --skip-regression
+          tar -tzf "$trap_tmp/nexus-trap-base.tar.gz" >/dev/null

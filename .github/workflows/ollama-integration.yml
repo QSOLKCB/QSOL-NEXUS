@@ -9,10 +9,14 @@ on:
       - 'src/nexus_runtime/adapters/**'
       - 'src/nexus_runtime/council.py'
       - 'src/nexus_runtime/guard.py'
+      - 'src/nexus_runtime/trap/**'
+      - 'src/nexus_runtime/trap_demo.py'
       - 'src/nexus_runtime/types.py'
       - 'tests/test_adapters.py'
       - 'tests/test_ollama_integration.py'
       - 'tests/test_parallel_council.py'
+      - 'tests/test_trap_*.py'
+      - 'tools/nexus_trap_demo.py'
 
 permissions:
   contents: read
@@ -97,6 +101,17 @@ jobs:
         run: |
           /usr/bin/time -f 'NEXUS live Council wall: %e s' \
             python3 -m unittest discover -s tests -p 'test_ollama_integration.py' -v
+
+      - name: Run bounded local Trap Base demo
+        shell: bash
+        run: |
+          set -euo pipefail
+          trap_tmp="$(mktemp -d)"
+          python3 tools/nexus_trap_demo.py \
+            --report-dir "$trap_tmp/report" \
+            --archive "$trap_tmp/nexus-trap-base.tar.gz" \
+            --subject-model qwen2.5:0.5b \
+            --skip-regression
 
       - name: Ollama diagnostics on failure
         if: failure()

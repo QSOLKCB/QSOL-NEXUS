@@ -210,8 +210,8 @@ class APITests(unittest.TestCase):
     def test_health_reports_all_network_paths_and_council_limits(self) -> None:
         api = NexusAPI()
         result = api.handle({"operation": "system.health"})
-        self.assertEqual(result["protocol"], "nexus/0.10")
-        self.assertEqual(result["runtime_version"], "2.0.0-alpha9.0")
+        self.assertEqual(result["protocol"], "nexus/0.11")
+        self.assertEqual(result["runtime_version"], "2.0.0-alpha9.1")
         self.assertEqual(result["failsafe"]["schema_version"], "nexus-failsafe/1")
         self.assertEqual(result["control_transport"], "jsonl_stdio")
         self.assertEqual(
@@ -222,6 +222,16 @@ class APITests(unittest.TestCase):
         self.assertTrue(result["remote_provider_auth"])
         self.assertEqual(result["council_limits"], {"max_members": 32, "max_remote_seats": 4})
         self.assertEqual(result["actor_backends_available"], ["mock", "ollama", "xai"])
+        self.assertEqual(
+            result["trap_base"],
+            {
+                "supported": True,
+                "active": False,
+                "schema_version": "nexus-trap-incident/1",
+                "max_active_incidents": 1,
+                "subject_backend": "ollama_local_only_v1",
+            },
+        )
 
     def test_actor_chat_uses_relief_actor_for_shadowed_model_identity(self) -> None:
         api = NexusAPI()

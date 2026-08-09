@@ -2,10 +2,11 @@ from __future__ import annotations
 
 from dataclasses import asdict
 from pathlib import Path
+from collections.abc import Callable, Sequence
 from typing import Any
 
 from .adapters import AdapterError, OllamaActor, OllamaTransport, XAIActor, XAITransport
-from .auth import AuthBroker, ensure_disjoint_auth_world_roots
+from .auth import AuthBroker, AuthError, ensure_disjoint_auth_world_roots
 from .council import MAX_COUNCIL_MEMBERS, CouncilCoordinator
 from .failsafe import FAILSAFE_SCHEMA_VERSION
 from .game_un import GAME_SCHEMA, action_catalog, advance_turn, apply_action, inspect_game, new_game
@@ -22,13 +23,31 @@ from .mock import DeterministicMockActor
 from .modes import get_mode, list_modes
 from .scrub import ScrubEvent, SecretScrubber
 from .telemetry import TELEMETRY_SCHEMA_VERSION, verify_session_telemetry
+from .trap.controller import TrapController
+from .trap.commands import TrapCommandError
+from .trap.subject import TrapSubjectError
+from .trap.types import TrapError
+from .trap.yaml_dsl import TrapYAMLError
+from .trap.yaml_runtime import TrapYAMLRuntimeError
 from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.10"
-RUNTIME_VERSION = "2.0.0-alpha9.0"
+PROTOCOL_VERSION = "nexus/0.11"
+RUNTIME_VERSION = "2.0.0-alpha9.1"
 MAX_REMOTE_COUNCIL_SEATS = 4
+
+_TRAP_BLOCKED_MUTATIONS = frozenset(
+    {
+        "world.create",
+        "game.un.new",
+        "game.un.act",
+        "game.un.turn",
+        "game.mud.new",
+        "game.mud.act",
+        "council.run",
+    }
+)
 
 
 class NexusAPI:
@@ -45,22 +64,51 @@ class NexusAPI:
         *,
         auth_root: str | Path | None = None,
         auth_broker: AuthBroker | None = None,
+        trap_root: str | Path | None = None,
+        trap_defenders: Sequence[object] = (),
+        trap_subject_factory: Callable[[str], Any] | None = None,
     ) -> None:
         self.auth = auth_broker or AuthBroker(auth_root)
         if world_root is not None:
             ensure_disjoint_auth_world_roots(self.auth.root, world_root)
+        if trap_root is not None:
+            self._ensure_disjoint_storage_roots(self.auth.root, trap_root, "auth", "trap")
+            if world_root is not None:
+                self._ensure_disjoint_storage_roots(world_root, trap_root, "world", "trap")
         self.world = WorldStore(world_root)
         self.scrubber = SecretScrubber()
         self.geometry = DEFAULT_WORLD_GEOMETRY
         self.council = CouncilCoordinator(self.world, scrubber=self.scrubber, geometry=self.geometry)
+        self.trap = TrapController(
+            trap_root,
+            defender_roster_provider=lambda: tuple(trap_defenders),
+            subject_factory=trap_subject_factory,
+        )
+        self.trap_store = self.trap.store
+        self.trap_registry = self.trap.registry
+        self.trap_mutation_gate = self.trap.mutation_gate
+        self.decoy_gate = self.trap.gate
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("request_id")
+        if request_id is not None and (
+            not isinstance(request_id, str)
+            or not request_id
+            or len(request_id) > 128
+            or any(
+                character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-"
+                for character in request_id
+            )
+            or self.scrubber.scrub(request_id).changed
+        ):
+            return self._error(None, "invalid_request", "request_id must be a bounded non-secret identifier")
         operation = request.get("operation")
         if not isinstance(operation, str):
             return self._error(request_id, "invalid_request", "operation must be a string")
 
         try:
+            if operation in _TRAP_BLOCKED_MUTATIONS:
+                self.trap_mutation_gate.assert_mutation_allowed()
             if operation == "system.health":
                 response = {
                     "status": "ok",
@@ -83,6 +131,7 @@ class NexusAPI:
                     "geometry": self.geometry.snapshot()["geometry_id"],
                     "telemetry": {"schema_version": TELEMETRY_SCHEMA_VERSION, "role": "observational_only"},
                     "failsafe": self.council.failsafe.policy_dict(),
+                    "trap_base": self.decoy_gate.health_status(),
                     "games": [
                         {"game_id": "un_sim", "schema": GAME_SCHEMA, "room": "#un-sim", "fictional_only": True},
                         {"game_id": "mud", "schema": MUD_SCHEMA, "room": "#mud", "fictional_only": True},
@@ -108,6 +157,16 @@ class NexusAPI:
                         "receipt.verify",
                         "telemetry.verify",
                         "failsafe.status",
+                        "trap.status",
+                        "trap.inspect",
+                        "trap.transcript",
+                        "trap.command",
+                        "trap.challenge.submit",
+                        "trap.challenge.validate",
+                        "trap.challenge.execute",
+                        "trap.replay",
+                        "trap.export",
+                        "trap.close",
                         "game.un.catalog",
                         "game.un.new",
                         "game.un.inspect",
@@ -225,6 +284,156 @@ class NexusAPI:
                     "schema_version": FAILSAFE_SCHEMA_VERSION,
                     **self.council.failsafe.status_snapshot(member_id),
                 }
+            elif operation == "trap.status":
+                self._require_exact_fields(request, operation, set())
+                response = self.trap.status()
+            elif operation == "trap.inspect":
+                self._require_exact_fields(request, operation, {"object_ref"})
+                response = self.trap.inspect(self._require_str(request, "object_ref"))
+            elif operation == "trap.transcript":
+                self._require_exact_fields(request, operation, {"incident_id", "limit"})
+                incident_id = request.get("incident_id")
+                if incident_id is not None and (not isinstance(incident_id, str) or not incident_id):
+                    raise ValueError("incident_id must be a non-empty string when supplied")
+                limit = request.get("limit")
+                response = self.trap.transcript(incident_id=incident_id, limit=limit)
+            elif operation == "trap.command":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {
+                        "command",
+                        "actor_id",
+                        "operator",
+                        "approving_defender_ids",
+                        "minority_reports",
+                    },
+                )
+                command = request.get("command")
+                if not isinstance(command, (str, dict)):
+                    raise ValueError("command must be a string or object")
+                actor_id = self._require_str(request, "actor_id")
+                operator = self._optional_bool(request, "operator", False)
+                approvals = self._optional_str_list(request, "approving_defender_ids")
+                minority_reports = request.get("minority_reports", {})
+                if not isinstance(minority_reports, dict) or not all(
+                    isinstance(key, str) and isinstance(value, str)
+                    for key, value in minority_reports.items()
+                ):
+                    raise ValueError("minority_reports must be an object of string values")
+                response = self.trap.command(
+                    command,
+                    actor_id=actor_id,
+                    operator=operator,
+                    approving_defender_ids=approvals,
+                    minority_reports=minority_reports,
+                )
+            elif operation == "trap.challenge.submit":
+                self._require_exact_fields(request, operation, {"source", "actor_id"})
+                response = self.trap.challenge_submit(
+                    self._require_str(request, "source"),
+                    actor_id=self._require_str(request, "actor_id"),
+                )
+            elif operation == "trap.challenge.validate":
+                self._require_exact_fields(request, operation, {"submission_ref", "actor_id"})
+                response = self.trap.challenge_validate(
+                    self._require_str(request, "submission_ref"),
+                    actor_id=self._require_str(request, "actor_id"),
+                )
+            elif operation == "trap.challenge.execute":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"validation_ref", "actor_id", "operator", "ballots", "minority_reports"},
+                )
+                validation_ref = self._require_str(request, "validation_ref")
+                actor_id = self._require_str(request, "actor_id")
+                operator = self._optional_bool(request, "operator", False)
+                if "ballots" not in request:
+                    if "minority_reports" in request:
+                        raise ValueError("minority_reports requires ballots")
+                    response = self.trap.challenge_execute(validation_ref, actor_id=actor_id)
+                else:
+                    ballots = request["ballots"]
+                    if not isinstance(ballots, dict) or not all(
+                        isinstance(key, str) and isinstance(value, str)
+                        for key, value in ballots.items()
+                    ):
+                        raise ValueError("ballots must be an object of string values")
+                    minority_reports = request.get("minority_reports", {})
+                    if not isinstance(minority_reports, dict) or not all(
+                        isinstance(key, str) and isinstance(value, str)
+                        for key, value in minority_reports.items()
+                    ):
+                        raise ValueError("minority_reports must be an object of string values")
+                    if not operator:
+                        raise TrapError(
+                            "trap_operator_required",
+                            "sealed utility ballot aggregation requires the trusted local operator",
+                        )
+                    if actor_id != "human_operator":
+                        raise TrapError(
+                            "trap_command_not_authorized",
+                            "utility ballot aggregator is invalid",
+                        )
+                    execution = self.trap.challenge_execute(validation_ref, actor_id=actor_id)
+                    utility = self.trap.challenge_utility_vote(
+                        validation_ref,
+                        ballots,
+                        actor_id=actor_id,
+                        operator=operator,
+                        minority_reports=minority_reports,
+                    )
+                    response = {"status": utility["status"], "execution": execution, "utility": utility}
+            elif operation == "trap.replay":
+                self._require_exact_fields(request, operation, {"validation_ref", "actor_id"})
+                response = self.trap.challenge_execute(
+                    self._require_str(request, "validation_ref"),
+                    actor_id=self._require_str(request, "actor_id"),
+                )
+            elif operation == "trap.export":
+                self._require_exact_fields(request, operation, set())
+                response = {
+                    "status": "ok",
+                    "schema_version": "nexus-trap-export/1",
+                    "object_refs": self.trap_store.refs(),
+                    "external_path": None,
+                    "automatic_import": False,
+                }
+            elif operation == "trap.close":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {
+                        "actor_id",
+                        "operator",
+                        "emergency",
+                        "reason",
+                        "approving_defender_ids",
+                        "minority_reports",
+                    },
+                )
+                actor_id = self._require_str(request, "actor_id")
+                operator = self._optional_bool(request, "operator", False)
+                emergency = self._optional_bool(request, "emergency", False)
+                approvals = self._optional_str_list(request, "approving_defender_ids")
+                minority_reports = request.get("minority_reports", {})
+                if not isinstance(minority_reports, dict) or not all(
+                    isinstance(key, str) and isinstance(value, str)
+                    for key, value in minority_reports.items()
+                ):
+                    raise ValueError("minority_reports must be an object of string values")
+                reason = request.get("reason", "operator_requested")
+                if not isinstance(reason, str) or not reason.strip() or len(reason) > 256:
+                    raise ValueError("reason must be bounded non-empty text")
+                response = self.trap.close(
+                    actor_id=actor_id,
+                    operator=operator,
+                    emergency=emergency,
+                    reason=reason,
+                    approving_defender_ids=approvals,
+                    minority_reports=minority_reports,
+                )
             elif operation == "game.un.catalog":
                 response = {
                     "status": "ok",
@@ -384,7 +593,9 @@ class NexusAPI:
                     mode_id=mode_id,
                 )
             else:
-                return self._error(request_id, "unknown_operation", operation)
+                return self._error(request_id, "unknown_operation", "operation is not supported")
+        except (TrapError, TrapCommandError, TrapYAMLError, TrapYAMLRuntimeError, TrapSubjectError) as exc:
+            return self._error(request_id, exc.code, str(exc))
         except AdapterError as exc:
             return self._error(request_id, "adapter_unavailable", str(exc))
         except (KeyError, TypeError, ValueError) as exc:
@@ -395,6 +606,27 @@ class NexusAPI:
         if request_id is not None:
             response = {"request_id": request_id, **response}
         return response
+
+    @staticmethod
+    def _ensure_disjoint_storage_roots(
+        left: str | Path,
+        right: str | Path,
+        left_label: str,
+        right_label: str,
+    ) -> None:
+        try:
+            left_path = Path(left).expanduser().resolve()
+            right_path = Path(right).expanduser().resolve()
+        except (OSError, RuntimeError) as exc:
+            raise AuthError("storage roots could not be resolved") from exc
+        if (
+            left_path == right_path
+            or left_path.is_relative_to(right_path)
+            or right_path.is_relative_to(left_path)
+        ):
+            raise AuthError(
+                f"{left_label} storage and {right_label} storage must be disjoint directories"
+            )
 
     @staticmethod
     def _validate_council_request_limits(members: list[Any]) -> None:
@@ -577,6 +809,32 @@ class NexusAPI:
         if value is None or type(value) in (bool, int, float):
             return value, []
         raise ValueError(f"unsupported semantic value type: {type(value).__name__}")
+
+    @staticmethod
+    def _require_exact_fields(
+        mapping: dict[str, Any],
+        operation: str,
+        operation_fields: set[str],
+    ) -> None:
+        allowed = {"request_id", "operation"} | set(operation_fields)
+        unknown = set(mapping) - allowed
+        if unknown:
+            rendered = ", ".join(sorted((str(field) for field in unknown)))
+            raise ValueError(f"{operation} contains unsupported fields: {rendered}")
+
+    @staticmethod
+    def _optional_bool(mapping: dict[str, Any], key: str, default: bool) -> bool:
+        value = mapping.get(key, default)
+        if type(value) is not bool:
+            raise ValueError(f"{key} must be a boolean")
+        return value
+
+    @staticmethod
+    def _optional_str_list(mapping: dict[str, Any], key: str) -> tuple[str, ...]:
+        value = mapping.get(key, [])
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            raise ValueError(f"{key} must be a list of non-empty strings")
+        return tuple(value)
 
     @staticmethod
     def _require_str(mapping: dict[str, Any], key: str) -> str:

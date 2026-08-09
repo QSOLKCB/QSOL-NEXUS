@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.10
+nexus/0.11
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha9.0
+2.0.0-alpha9.1
 ```
 
 Current posture:
@@ -26,6 +26,7 @@ xAI actors        -> supported through a configured profile and fixed api.x.ai H
 UN simulation     -> supported as a deterministic fictional local game
 HERESY MUD        -> supported as a deterministic fictional multi-avatar local game
 Failsafe          -> bounded repeated-guard containment + deterministic relief actor
+Trap Base         -> explicit synthetic fixture, isolated store and incident controls
 remote providers  -> xAI admitted; other providers not implemented
 provider auth     -> xAI API key, environment, or external helper
 ```
@@ -52,7 +53,7 @@ An explicitly configured local Ollama actor may use the separately hardened loop
 
 ```bash
 python -m pip install -e .
-python -m nexus_runtime --world .nexus-world
+python -m nexus_runtime --world .nexus-world --trap-root .nexus-trap
 ```
 
 The installed package also exposes `nexus`. Add the optional OS-keyring integration with `python -m pip install -e '.[keyring]'`.
@@ -70,8 +71,8 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.10",
-  "runtime_version": "2.0.0-alpha9.0",
+  "protocol": "nexus/0.11",
+  "runtime_version": "2.0.0-alpha9.1",
   "control_transport": "jsonl_stdio",
   "network": "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_or_registered_auth_operations",
   "adapters": ["mock", "ollama_loopback", "xai_https"],
@@ -90,6 +91,13 @@ Current response fields include:
   "failsafe": {
     "schema_version": "nexus-failsafe/1",
     "trigger": "registered_repeated_guard_failure_after_nudge_only"
+  },
+  "trap_base": {
+    "supported": true,
+    "active": false,
+    "schema_version": "nexus-trap-incident/1",
+    "max_active_incidents": 1,
+    "subject_backend": "ollama_local_only_v1"
   },
   "games": [
     {
@@ -127,6 +135,16 @@ world.geometry.distance
 receipt.verify
 telemetry.verify
 failsafe.status
+trap.status
+trap.inspect
+trap.transcript
+trap.command
+trap.challenge.submit
+trap.challenge.validate
+trap.challenge.execute
+trap.replay
+trap.export
+trap.close
 game.un.catalog
 game.un.new
 game.un.inspect
@@ -139,6 +157,39 @@ game.mud.act
 actor.chat
 council.run
 ```
+
+## Trap Base operations
+
+Trap operations are an operator boundary over one isolated synthetic incident.
+They never accept credential material and the public API has no activation
+operation. Every request rejects fields outside its exact schema.
+
+```json
+{"operation":"trap.status"}
+{"operation":"trap.inspect","object_ref":"trap:<sha256>"}
+{"operation":"trap.transcript","incident_id":"incident-<sha256>","limit":50}
+{"operation":"trap.command","command":"/trap status","actor_id":"human_operator","operator":true}
+{"operation":"trap.challenge.submit","source":"nexus_trap_program: 1\n...","actor_id":"human_operator"}
+{"operation":"trap.challenge.validate","submission_ref":"trap:<sha256>","actor_id":"human_operator"}
+{"operation":"trap.challenge.execute","validation_ref":"trap:<sha256>","actor_id":"human_operator"}
+{"operation":"trap.replay","validation_ref":"trap:<sha256>","actor_id":"human_operator"}
+{"operation":"trap.export"}
+{"operation":"trap.close","actor_id":"human_operator","operator":true,"emergency":false}
+```
+
+When `trap.challenge.execute` also carries sealed `ballots`, it must carry
+`"actor_id":"human_operator"` and `"operator":true`; an ordinary defender
+cannot impersonate the trusted local ballot aggregator. A non-operator
+`trap.close` requires `approving_defender_ids` that reach exact two-thirds and
+may carry bounded `minority_reports`.
+
+Trap references cannot be supplied to normal WorldStore operations, and real
+`object:` references cannot be inspected through `trap.inspect`. Subject output
+never enters `NexusAPI.handle()` or the command dispatcher.
+
+While an incident is active, `world.create`, Council runs, and state-changing
+game operations return `trap_incident_active`. Read-only inspection and
+verification operations remain available. See [`TRAP_BASE.md`](TRAP_BASE.md).
 
 ## Authentication operations
 

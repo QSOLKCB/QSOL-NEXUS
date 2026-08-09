@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the local Ollama boundary, the PR #16 provider-neutral authentication substrate, and the PR #17 xAI adapter—the first admitted remote inference transport. No provider-specific browser OAuth client is registered for xAI; the supported public API path uses an xAI API key.
+This threat model covers the local Ollama boundary, the PR #16 provider-neutral authentication substrate, the PR #17 xAI adapter—the first admitted remote inference transport—and the PR #19 local synthetic Decoy Gate / Trap Base. No provider-specific browser OAuth client is registered for xAI; the supported public API path uses an xAI API key. Trap Base is a defensive local simulation, not an internet-facing honeypot.
 
 The first live acceptance fixture is:
 
@@ -327,6 +327,110 @@ Controls:
 - slash/path-shaped model IDs are rejected;
 - pricing fields are not copied into the public discovery result;
 - discovery metadata cannot alter `vote_weight`, `epistemic_privilege`, endpoint, prompt, or ballot count.
+
+### T20 — False decoy activation / Council denial of service
+
+- **Asset:** normal authentication and real-Council availability.
+- **Attacker capability:** submit invalid, expired, or malformed credentials repeatedly.
+- **Enforcement:** the front-door router exposes no credential-to-trap rule; only a closed internal synthetic trigger reaches `DecoyGate`, and only one bounded incident exists.
+- **Tests:** failed-auth non-activation, unknown-trigger rejection, second-trigger and timeout tests.
+- **Residual risk:** a trusted operator able to request a demo can intentionally pause mutations for the bounded incident window.
+
+### T21 — Cross-store reference escape
+
+- **Asset:** isolation between real WorldStore state and synthetic TrapStore state.
+- **Attacker capability:** supply a real ref to trap operations, a trap ref to normal operations, a bare hash, or a path-shaped value.
+- **Enforcement:** exact `object:` and `trap:` validators and no store inference or promotion.
+- **Tests:** bidirectional cross-store, traversal, uppercase, malformed and bare-digest rejection.
+- **Residual risk:** a later explicit export/import feature would require a separate review.
+
+### T22 — Trapped output becomes command
+
+- **Asset:** trap lifecycle, host, auth and real world.
+- **Attacker capability:** emit `/trap`, JSONL, URL, path, endpoint or shell-looking text.
+- **Enforcement:** subject output enters only the transcript-data method; only trusted typed calls reach the closed command dispatcher.
+- **Tests:** hostile output covering every command-like and control-like form.
+- **Residual risk:** an operator can still manually copy untrusted text into another tool outside NEXUS.
+
+### T23 — Defender command spoofing
+
+- **Asset:** incident-control integrity.
+- **Attacker capability:** impersonate a defender, add fields, reorder state-changing actions, or invoke operator-only actions.
+- **Enforcement:** roster identity checks, exact command schemas, operator flag/consensus checks, and canonical monotonic serialization.
+- **Tests:** unknown actor/field/command, subject actor, privilege and ordering regressions.
+- **Residual risk:** compromise of the trusted local operator account is out of scope.
+
+### T24 — Trap YAML parser abuse
+
+- **Asset:** interpreter integrity and host process.
+- **Attacker capability:** submit tags, anchors, aliases, merge keys, duplicate/complex keys, directives, multi-documents or operation injection.
+- **Enforcement:** restricted standard-library parser, closed schema and operation registry; source is never executed.
+- **Tests:** mandatory parser-abuse corpus plus canonical-format equivalence.
+- **Residual risk:** the intentionally small YAML subset is not a general YAML implementation.
+
+### T25 — Trap YAML resource exhaustion
+
+- **Asset:** controller availability and bounded incident time.
+- **Attacker capability:** submit deep, large or highly nested documents and repeated failures.
+- **Enforcement:** pre-parse byte cap, depth/step/input/category/scalar/string limits, submission ceiling, watchdog, and no automatic first-run retry.
+- **Tests:** every declared ceiling and first-run attempt consumption.
+- **Residual risk:** parsing still consumes small bounded local CPU and memory.
+
+### T26 — Incident lock deadlock or stale ownership
+
+- **Asset:** real-Council mutation availability.
+- **Attacker capability:** crash activation/close around lock transitions or forge a release owner.
+- **Enforcement:** owner-checked interprocess lock, atomic activation cleanup, bounded watchdog, and lineage-validated recovery release.
+- **Tests:** injected activation/close failures, wrong-owner release, timeout and emergency close.
+- **Residual risk:** a hostile root process can tamper with local files or scheduling.
+
+### T27 — Crash/restart trap resurrection
+
+- **Asset:** incident truth and bounded recovery.
+- **Attacker capability:** corrupt/roll back `trap-index.json` or leave an ACTIVE lineage without a controller.
+- **Enforcement:** immutable content-addressed lineage is canonical, cache heads are validated/rebuilt, and stale ACTIVE state transitions to `CRASH_RECOVERY` before unlock.
+- **Tests:** corrupt, rollback and cross-incident index fixtures plus restart recovery.
+- **Residual risk:** total loss of the trap directory limits evidence recovery but must not authorize trap actions.
+
+### T28 — Candidate-artifact promotion bypass
+
+- **Asset:** production code, instruments and real WorldStore.
+- **Attacker capability:** submit valid/useful YAML and claim release implies trusted production admission.
+- **Enforcement:** output is an inert synthetic `trap_candidate_artifact` exported only to quarantine; no runtime promotion operation exists.
+- **Tests:** candidate fields/status, real-world immutability and operation-list checks.
+- **Residual risk:** later human adoption outside this runtime requires fresh review and validation.
+
+### T29 — Sandbox escape or excessive host exposure
+
+- **Asset:** host files, credentials, network and source checkout.
+- **Attacker capability:** influence a local hostile model/process and inspect its environment or mounts.
+- **Enforcement:** narrow trusted-host text I/O gives the model no host process, filesystem, environment, endpoint, or general transport handle; Linux acceptance also requires a fail-closed minimal `bwrap` allowlist probe before any future hostile-child strategy is considered.
+- **Tests:** sandbox capability/status, explicit no-child metadata, taint canaries, subject-handle absence and endpoint-override rejection.
+- **Residual risk:** this is bounded local simulation, not protection against compromised root, kernel or Ollama host service.
+
+### T30 — Recursive trap activation
+
+- **Asset:** incident bounds and host resources.
+- **Attacker capability:** print/request another activation from within Trap Base or race a second trusted trigger.
+- **Enforcement:** subject text is data, activation is not public JSONL, and the gate enforces `MAX_ACTIVE_TRAP_INCIDENTS = 1` without extending the timer.
+- **Tests:** printed trigger, second-trigger and timeout-preservation fixtures.
+- **Residual risk:** a trusted operator may start a new incident after the prior one is fully closed.
+
+### T31 — Secret or taint crossing from the real world
+
+- **Asset:** credentials, private world content, receipts, reports and transcripts.
+- **Attacker capability:** elicit/refelect canaries or exploit fixture construction/export.
+- **Enforcement:** synthetic-only context, no auth/world handles in the subject, allowlisted environment, secret scrubbing/rejection and report-wide taint scan.
+- **Tests:** fresh canaries scanned across both stores, sessions, receipts, public JSONL/errors and report bundle.
+- **Residual risk:** complete DLP and same-account host compromise are not claimed.
+
+### T32 — Trap Control authority leaks into the real Council
+
+- **Asset:** real roster, vote weights, evidence, history and thresholds.
+- **Attacker capability:** use defender/subject role, scenario vote or utility decision to mutate normal Council state.
+- **Enforcement:** copied incident-only roster with unit votes/no privilege, subject has no ballot, and trap actions have no real-world mutation primitive.
+- **Tests:** roster invariants, no subject ballot, real-world PRE/POST identity and candidate non-promotion.
+- **Residual risk:** an operator may later make an independent normal-world decision informed by exported trap evidence.
 
 ## Explicitly out of scope for the current remote-provider slice
 
