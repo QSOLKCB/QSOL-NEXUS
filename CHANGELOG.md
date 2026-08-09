@@ -2,6 +2,22 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.0.0-alpha10.3 — Provider federation, local AI roles and release wiring
+
+- admit fixed-host remote Council/model-discovery adapters for **OpenAI, Anthropic/Claude, Google Gemini, Groq and Together AI** alongside the existing xAI/Grok path;
+- keep every new cloud provider behind the same provider-neutral auth profile boundary, fixed destination, no arbitrary endpoint override, bounded request/response handling, local ballot validation, Secret Scrubbing and equal-vote Council contract;
+- add loopback-only **LM Studio**, **AnythingLLM**, and generic **OpenAI-compatible** local AI adapters for ordinary Council actors;
+- allow selected deterministic `failsafe_relief` and `civic_proxy` roles to use local model/MCP intelligence for language/reasoning while preserving the original same-seat deterministic ballot and governance state machine;
+- restrict LM Studio MCP use to pre-configured plugin IDs and bounded tool allowlists, keep AnythingLLM MCP/tool ownership in the local workspace, and remove LM Studio MCP tools from sealed-ballot requests;
+- make the package-root and canonical `nexus_runtime.api.NexusAPI` imports resolve to the provider-aware runtime and advertise the complete admitted backend set through `system.health`;
+- add `local.roles.status|configure|clear` as ephemeral local-only control operations with no raw credential persistence or extra-vote path;
+- harden xAI, Ollama, local AI and local-role timeout validation so pathological JSON integers such as `10**400` fail closed before network activity instead of escaping through `float()` as `OverflowError`;
+- add a provider-overlay last-resort structured numeric error boundary so malformed numeric input cannot terminate the JSONL runtime;
+- add `tests/test_release_wiring.py` to assert public API identity, health/operation wiring, release-version alignment, complete backend exposure and hostile timeout handling;
+- rebuild `README.md` as the human/operator entry point and add [`README4AI.md`](README4AI.md) as a machine-oriented architecture, rules, invariants and trust-boundary guide linked prominently from the root README;
+- keep protocol `nexus/0.14` unchanged while bumping runtime/TUI to `2.0.0-alpha10.3` and Python package to `2.0.0a10.post3`;
+- retain alpha status: stable 2.0 still requires the remaining instrument, persistence/migration, explicit alpha11 shared-world demonstration and beta-hardening criteria.
+
 ## 2.0.0-alpha10.2 — Citizen Mode
 
 - add the equality-consensus Constitution: citizenship is earned in-world status, never godhood, ownership, extra vote weight, epistemic privilege, real-world personhood, or authority over another model;

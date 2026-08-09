@@ -211,7 +211,7 @@ class APITests(unittest.TestCase):
         api = NexusAPI()
         result = api.handle({"operation": "system.health"})
         self.assertEqual(result["protocol"], "nexus/0.14")
-        self.assertEqual(result["runtime_version"], "2.0.0-alpha10.2")
+        self.assertEqual(result["runtime_version"], "2.0.0-alpha10.3")
         self.assertEqual(result["failsafe"]["schema_version"], "nexus-failsafe/1")
         self.assertEqual(result["control_transport"], "jsonl_stdio")
         self.assertEqual(

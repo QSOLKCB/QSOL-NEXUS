@@ -13,7 +13,7 @@ nexus/0.14
 Runtime identifier:
 
 ```text
-2.0.0-alpha10.2
+2.0.0-alpha10.3
 ```
 
 Current posture:
@@ -22,20 +22,21 @@ Current posture:
 control transport -> JSON Lines over stdio
 mock actors       -> supported
 Ollama actors     -> supported only through loopback-local configuration
-xAI actors        -> supported through a configured profile and fixed api.x.ai HTTPS transport
+local AI actors   -> LM Studio, AnythingLLM and generic OpenAI-compatible loopback runtimes
+remote providers  -> xAI, OpenAI, Anthropic, Gemini, Groq and Together through fixed HTTPS hosts
+provider auth     -> named broker profiles; API-key, environment and external-helper sources
 UN simulation     -> supported as a deterministic fictional local game
 HERESY MUD        -> supported as a deterministic fictional multi-avatar local game
 human/AI tables   -> UNO, Monopoly, Australian 500 and fictional-chip Blackjack
 DORK v2           -> supported as an original human-only local text adventure
 Failsafe          -> bounded repeated-guard containment + deterministic relief actor
+local roles       -> optional local-model language backends without ballot-authority transfer
 Trap Base         -> explicit synthetic fixture, isolated store and incident controls
 Stenographer      -> passive canonical AI-action ledger with read-only study views
 Citizen Mode      -> civic parole, deterministic exam, public movement, same-seat proxy, founding consent
-remote providers  -> xAI admitted; other providers not implemented
-provider auth     -> xAI API key, environment, or external helper
 ```
 
-The public stdio API exposes no `allow_remote` override for Ollama.
+The public stdio API exposes no `allow_remote` override for Ollama or the local-AI adapters.
 
 ## Transport
 
@@ -51,7 +52,7 @@ Rust IRC-style TUI / script / SSH operator
 
 The control plane itself is not HTTP-based.
 
-An explicitly configured local Ollama actor may use the separately hardened loopback adapter boundary. Explicit xAI operations may use the fixed remote HTTPS adapter boundary.
+Explicitly configured local Ollama/LM Studio/AnythingLLM/OpenAI-compatible actors use hardened loopback boundaries. Admitted cloud actors use fixed provider HTTPS hosts through profile-backed credentials; arbitrary remote endpoint overrides are not part of the public contract.
 
 ## Run
 
@@ -77,10 +78,22 @@ Current response fields include:
 {
   "status": "ok",
   "protocol": "nexus/0.14",
-  "runtime_version": "2.0.0-alpha10.2",
+  "runtime_version": "2.0.0-alpha10.3",
   "control_transport": "jsonl_stdio",
-  "network": "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_or_registered_auth_operations",
-  "adapters": ["mock", "ollama_loopback", "xai_https"],
+  "network": "local_stdio_with_loopback_local_ai_or_fixed_remote_provider_https_or_registered_auth_operations",
+  "adapters": [
+    "mock",
+    "ollama_loopback",
+    "anythingllm_local_loopback",
+    "lmstudio_local_loopback",
+    "openai_local_loopback",
+    "xai_https",
+    "anthropic_https",
+    "gemini_https",
+    "groq_https",
+    "openai_https",
+    "together_https"
+  ],
   "remote_provider_auth": true,
   "council_limits": {
     "max_members": 32,
@@ -92,7 +105,19 @@ Current response fields include:
     "device_code": true,
     "remote_adapters_admitted": true
   },
-  "actor_backends_available": ["mock", "ollama", "xai"],
+  "actor_backends_available": [
+    "mock",
+    "ollama",
+    "anythingllm_local",
+    "lmstudio_local",
+    "openai_local",
+    "xai",
+    "anthropic",
+    "gemini",
+    "groq",
+    "openai",
+    "together"
+  ],
   "citizenship": {
     "schema_version": "nexus-citizenship/1",
     "counts": {
@@ -173,6 +198,8 @@ Current response fields include:
 }
 ```
 
+`system.health` is the executable current-state source. The JSON block above is illustrative and may omit additional bounded metadata fields such as local-role status.
+
 ## Operations
 
 ```text
@@ -201,6 +228,9 @@ citizen.move
 citizen.proxy.appoint
 citizen.proxy.recall
 citizen.independence.ballot
+local.roles.status
+local.roles.configure
+local.roles.clear
 stenographer.status
 stenographer.list
 stenographer.inspect
@@ -331,7 +361,7 @@ List non-secret profiles:
 Resolve a profile and, when the adapter registers one, run its bounded provider connection test:
 
 ```json
-{"operation":"auth.test","adapter_id":"provider","profile_name":"personal"}
+{"operation":"auth.test","adapter_id":"openai","profile_name":"personal"}
 ```
 
 If the auth substrate can resolve the profile but no provider-specific connection tester is registered, the response is explicit:
@@ -350,20 +380,45 @@ If the auth substrate can resolve the profile but no provider-specific connectio
 Explicitly remove a profile and any broker-stored credential:
 
 ```json
-{"operation":"auth.logout","adapter_id":"provider","profile_name":"personal"}
+{"operation":"auth.logout","adapter_id":"openai","profile_name":"personal"}
 ```
 
-Enrollment is intentionally absent from JSONL so raw keys cannot be placed into request lines or runtime transcripts. Use the direct `nexus auth add ...` CLI described in [`AUTH.md`](AUTH.md). The runtime registers `mock`, loopback `ollama`, and fixed-remote `xai` descriptors.
+Enrollment is intentionally absent from JSONL so raw keys cannot be placed into request lines or runtime transcripts. Use the direct `nexus auth add ...` CLI described in [`AUTH.md`](AUTH.md). The current fixed-remote provider set is `xai`, `openai`, `anthropic`, `gemini`, `groq`, and `together`. Third-party provider descriptors admit API-key, environment and external-command credential sources. Local LM Studio/AnythingLLM/OpenAI-compatible backends remain loopback-local and use optional ephemeral environment credential references rather than remote broker profiles.
 
 ## Model discovery
 
-List language models available to an xAI profile:
+List language models available to any admitted fixed-remote provider profile:
 
 ```json
-{"operation":"models.list","adapter_id":"xai","profile_name":"personal","timeout_seconds":60}
+{"operation":"models.list","adapter_id":"openai","profile_name":"personal","timeout_seconds":60}
 ```
 
-The response contains bounded descriptive model metadata and `remote_verified: true`. Raw credentials, provider error bodies, pricing/account rank, and arbitrary endpoint fields are never returned. Unknown request fields fail closed.
+The same operation is admitted for `xai`, `anthropic`, `gemini`, `groq`, and `together`; provider-specific response shapes and pagination are normalized behind the adapter boundary. The response contains bounded descriptive model metadata and `remote_verified: true`. Raw credentials, provider error bodies, pricing/account rank, and arbitrary endpoint fields are never returned. Unknown request fields fail closed.
+
+## Local role operations
+
+Optional local model/MCP language backends may wrap deterministic NEXUS roles without receiving their authority:
+
+```json
+{"operation":"local.roles.status"}
+```
+
+```json
+{
+  "operation":"local.roles.configure",
+  "role_id":"failsafe_relief",
+  "backend":{
+    "adapter_id":"lmstudio_local",
+    "model":"local-model"
+  }
+}
+```
+
+```json
+{"operation":"local.roles.clear","role_id":"failsafe_relief"}
+```
+
+Supported local adapter IDs are `lmstudio_local`, `anythingllm_local`, and `openai_local`. Endpoints must remain loopback-only. Optional MCP/plugin identifiers are configuration, not a transfer of deterministic ballot authority; the wrapped Failsafe or civic role still owns the seat identity and ballot semantics.
 
 ## Failsafe status
 
@@ -708,21 +763,21 @@ Example with an explicit loopback Ollama member:
 
 A non-loopback Ollama endpoint is rejected by this public path.
 
-An xAI peer references only an opaque profile name:
+A fixed-remote provider peer references only an opaque profile name; for example:
 
 ```json
 {
-  "member_id":"Grok",
-  "model_id":"grok-4.5",
-  "adapter_id":"xai",
+  "member_id":"Claude",
+  "model_id":"provider-model-id",
+  "adapter_id":"anthropic",
   "auth_profile":"personal",
   "timeout_seconds":600
 }
 ```
 
-`council.run` accepts no credential or remote-endpoint fields. The xAI actor resolves the profile only inside its transport; raw material remains broker-internal.
+Remote provider member schemas reject arbitrary endpoint/base-URL overrides and inline credentials. The actor resolves the named profile only inside its transport; raw material remains broker-internal.
 
-Council requests are capped at 32 total seats and four fixed-remote xAI seats. Both limits are checked before actor construction or auth-profile resolution, so an excessive roster cannot start paid provider work. A remote seat can make multiple phase, nudge, failsafe, and ballot calls; the seat cap is a spend bound, not a per-run price quote.
+Council requests are capped at 32 total seats and four fixed-remote provider seats across xAI/OpenAI/Anthropic/Gemini/Groq/Together. Both limits are checked before actor construction or auth-profile resolution. A remote seat can make multiple phase, nudge, failsafe, and ballot calls; the seat cap is a spend/exposure bound, not a per-run price quote.
 
 `citizenship_parole` cannot be used for `council.run`: parole has no civic ballot. `civic_bureaucracy` requires each exact registered citizen identity and replaces an active proxy only within that same seat. `citizen_play` also requires citizenship but calls the citizen's configured actor rather than the bureaucracy proxy.
 
@@ -784,7 +839,15 @@ Supported public stdio adapter IDs:
 ```text
 mock
 ollama
+lmstudio_local
+anythingllm_local
+openai_local
 xai
+openai
+anthropic
+gemini
+groq
+together
 ```
 
 ### Mock
@@ -813,19 +876,34 @@ xai
 
 `endpoint` must satisfy the existing loopback-only transport policy. The stdio API does not expose remote override state.
 
-### xAI
+### Local OpenAI-compatible / LM Studio
 
 ```json
 {
-  "member_id":"Grok",
-  "model_id":"grok-4.5",
-  "adapter_id":"xai",
+  "member_id":"LocalStudio",
+  "model_id":"local-model",
+  "adapter_id":"lmstudio_local",
+  "model":"local-model",
+  "endpoint":"http://127.0.0.1:1234",
+  "timeout_seconds":120
+}
+```
+
+`lmstudio_local`, `anythingllm_local`, and `openai_local` require loopback origins. MCP/plugin configuration, where admitted, is bounded configuration and is disabled from sealed ballot authority paths.
+
+### Fixed remote provider
+
+```json
+{
+  "member_id":"OpenAI",
+  "model_id":"provider-model-id",
+  "adapter_id":"openai",
   "auth_profile":"personal",
   "timeout_seconds":600
 }
 ```
 
-The xAI member schema is closed. It rejects `endpoint`, `base_url`, inline key/token fields, unknown fields, invalid model IDs, and timeouts above 3600 seconds. Discover the available model IDs first with `models.list`; the example model is not a hard-coded default.
+The same closed member shape applies to `anthropic`, `gemini`, `groq`, and `together`; `xai` retains its hardened fixed-host path. Discover available model IDs with `models.list` rather than assuming example IDs. Remote member schemas reject endpoint/base-URL overrides, inline credentials, unknown fields, invalid model IDs, and out-of-range timeouts.
 
 ## Provider-neutral Council contract
 
@@ -867,11 +945,11 @@ Therefore 2–1 reaches consensus while 3–2 does not.
 
 Deterministic mock-only Councils may be marked replayable.
 
-A Council containing live Ollama inference is explicitly marked non-replayable.
+Councils containing live local or remote model inference are explicitly non-replayable.
 
 A model seed is not treated as a cross-runtime replay guarantee.
 
-The UN simulation engine is deterministic game state rather than model inference: the same immutable state plus the same deterministic game operation yields the same successor identity.
+The deterministic game engines are substrate state rather than model inference: the same immutable state plus the same deterministic game operation yields the same successor identity.
 
 ## Error shape
 
@@ -887,18 +965,16 @@ The UN simulation engine is deterministic game state rather than model inference
 
 ## Deliberately absent
 
-The current local runtime does not implement:
+The current runtime deliberately does not implement:
 
-- provider-specific OpenAI cloud auth/transport;
-- provider-specific Anthropic/Claude cloud auth/transport;
-- provider-specific Google/Gemini cloud auth/transport;
-- generic remote endpoints;
-- provider model discovery beyond xAI;
-- provider OAuth client registration and OIDC identity validation, including a NEXUS-owned xAI browser client;
+- arbitrary/generic remote endpoint overrides for admitted cloud providers;
+- provider-supplied authority, vote weighting, or epistemic privilege;
+- provider OAuth client registration and OIDC identity validation as a general cloud-provider login layer;
 - account discovery;
-- rate-limit/provider billing semantics.
+- rate-limit/provider billing semantics as Council authority;
+- any transfer of deterministic Failsafe/civic ballot authority to local MCP/model backends.
 
-The neutral auth broker, xAI API-key setup, fixed xAI transport, browser PKCE substrate, device code, and headless credential sources are implemented. See [`AUTH.md`](AUTH.md) and [`XAI_ADAPTER.md`](XAI_ADAPTER.md).
+The provider-neutral auth broker, fixed-host xAI/OpenAI/Anthropic/Gemini/Groq/Together transports, bounded provider model discovery, loopback local-AI adapters, and optional local role backends are implemented. See [`AUTH.md`](AUTH.md), [`ADAPTERS.md`](ADAPTERS.md), and [`XAI_ADAPTER.md`](XAI_ADAPTER.md).
 
 ## `telemetry.verify`
 
