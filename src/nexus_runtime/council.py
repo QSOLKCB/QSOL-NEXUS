@@ -550,7 +550,7 @@ class CouncilCoordinator:
         if self.stenographer is None:
             return
         try:
-            self.stenographer.record_text(
+            self.stenographer.observe_text(
                 "council.phase_response",
                 actor,
                 content,
@@ -577,7 +577,7 @@ class CouncilCoordinator:
         if self.stenographer is None:
             return
         try:
-            self.stenographer.record_ballot(
+            self.stenographer.observe_ballot(
                 actor,
                 choice,
                 rationale,

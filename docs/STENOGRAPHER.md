@@ -16,14 +16,21 @@ output being returned to its caller.
 flowchart TD
     A[AI actor boundary] --> B[Admitted AI output]
     B --> C[Passive observer copy]
-    C --> D[Secret scrub]
+    C --> Q[Bounded nonblocking queue]
+    Q --> D[Secret scrubbed action]
     D --> E[Canonical action record]
     E --> F[Private append-only store]
-    C -. failure .-> G[Bounded gap counter]
+    Q -. full or failed .-> G[Bounded gap counter]
     B --> H[Original runtime result]
 ```
 
-Recording errors are caught at each AI call site. The original response,
+Each AI call site performs only a bounded in-memory copy/scrub and nonblocking
+handoff. A single daemon observer performs lock acquisition, full-lineage
+verification, canonical writes and fsync outside the AI response path. The
+queue holds at most 256 pending actions; saturation drops the observer copy and
+records `observer_queue_full` rather than delaying the original result.
+
+Recording errors are contained by the observer. The original response,
 Council lifecycle, ballot processing and Trap transcript continue unchanged.
 `complete_since_process_start: false` and the bounded `gap_count` make any
 observer failure visible without pretending the record is complete.
@@ -126,6 +133,10 @@ Persistent roots, object directories, index, lock and record files are private
 to the owner on POSIX (`0700` directories and `0600` files). The root must be
 disjoint from auth, WorldStore and TrapStore roots and may not traverse symbolic
 links. One interprocess lock serializes append and index replacement.
+The lock is acquired only by the background observer or an explicit read/
+verification operation, never by the AI response path. Read views wait up to a
+bounded drain interval for accepted observations and otherwise return a
+sanitized `stenographer_observer_busy` error.
 
 ## Read-only interfaces
 

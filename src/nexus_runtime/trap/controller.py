@@ -678,7 +678,7 @@ class TrapController:
         if self._stenographer is None:
             return
         try:
-            self._stenographer.record_trap_reply(
+            self._stenographer.observe_trap_reply(
                 reply,
                 message=message,
                 incident_id=active.incident_id,

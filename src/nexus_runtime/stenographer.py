@@ -8,9 +8,11 @@ from datetime import datetime, timezone
 import json
 import os
 from pathlib import Path
+import queue
 import re
 import stat
 import threading
+import time
 from typing import Any, Callable, Iterator
 
 from .canonical import canonical_json, sha256_ref
@@ -34,6 +36,9 @@ MAX_STENOGRAPHER_OUTPUT_CHARS = 131_072
 MAX_STENOGRAPHER_RECORD_BYTES = 1_048_576
 MAX_STENOGRAPHER_LIST_LIMIT = 1_000
 MAX_STENOGRAPHER_LIST_BYTES = 2_097_152
+MAX_STENOGRAPHER_PENDING_ACTIONS = 256
+MAX_STENOGRAPHER_QUEUE_CAPACITY = 4_096
+STENOGRAPHER_READ_DRAIN_SECONDS = 5.0
 
 _STENO_REF = re.compile(r"^steno:[0-9a-f]{64}$")
 _OTHER_STORE_REF = re.compile(r"^(?:object|trap):[0-9a-f]{64}$")
@@ -90,6 +95,12 @@ class StenographerRecord:
             "record_type": self.record_type,
             "payload": copy.deepcopy(self.payload),
         }
+
+
+@dataclass(frozen=True)
+class _PendingAction:
+    action: dict[str, Any]
+    recorded_at_utc: str
 
 
 def _utc_now() -> str:
@@ -721,7 +732,16 @@ class CourtroomStenographer:
         *,
         store: StenographerStore | None = None,
         clock: Callable[[], str] = _utc_now,
+        queue_capacity: int = MAX_STENOGRAPHER_PENDING_ACTIONS,
     ) -> None:
+        if (
+            type(queue_capacity) is not int
+            or not 1 <= queue_capacity <= MAX_STENOGRAPHER_QUEUE_CAPACITY
+        ):
+            raise ValueError(
+                "stenographer queue_capacity must be an exact integer in "
+                f"[1, {MAX_STENOGRAPHER_QUEUE_CAPACITY}]"
+            )
         self.store = store or StenographerStore(root)
         if not isinstance(self.store, StenographerStore):
             raise TypeError("CourtroomStenographer requires a StenographerStore")
@@ -729,6 +749,14 @@ class CourtroomStenographer:
         self._gap_count = 0
         self._gap_reasons: Counter[str] = Counter()
         self._gap_lock = threading.Lock()
+        self._queue_capacity = queue_capacity
+        self._pending_actions: queue.Queue[_PendingAction] = queue.Queue(
+            maxsize=queue_capacity
+        )
+        self._observer_state = threading.Condition()
+        self._pending_count = 0
+        self._worker_lock = threading.Lock()
+        self._worker: threading.Thread | None = None
 
     @property
     def root(self) -> Path | None:
@@ -743,11 +771,86 @@ class CourtroomStenographer:
             "stenographer_index_unsafe",
             "stenographer_store_corrupt",
             "stenographer_lineage_corrupt",
+            "observer_queue_full",
             "observer_internal_error",
         } else "observer_internal_error"
         with self._gap_lock:
             self._gap_count += 1
             self._gap_reasons[safe_reason] += 1
+
+    @property
+    def pending_observations(self) -> int:
+        with self._observer_state:
+            return self._pending_count
+
+    def _ensure_observer_worker(self) -> None:
+        with self._worker_lock:
+            if self._worker is not None and self._worker.is_alive():
+                return
+            worker = threading.Thread(
+                target=self._observer_loop,
+                name="nexus-stenographer-observer",
+                daemon=True,
+            )
+            self._worker = worker
+            worker.start()
+
+    def _observer_loop(self) -> None:
+        while True:
+            pending = self._pending_actions.get()
+            try:
+                self.store.append_action(
+                    pending.action,
+                    recorded_at_utc=pending.recorded_at_utc,
+                )
+            except StenographerError as exc:
+                self.mark_gap(exc.code)
+            except Exception:
+                self.mark_gap("observer_internal_error")
+            finally:
+                with self._observer_state:
+                    self._pending_count -= 1
+                    self._observer_state.notify_all()
+                self._pending_actions.task_done()
+
+    def _enqueue_action(self, action: dict[str, Any], *, recorded_at_utc: str) -> bool:
+        if not _valid_recorded_at(recorded_at_utc):
+            raise StenographerError(
+                "stenographer_clock_unavailable",
+                "stenographer clock is unavailable",
+            )
+        self._ensure_observer_worker()
+        pending = _PendingAction(copy.deepcopy(action), recorded_at_utc)
+        with self._observer_state:
+            try:
+                self._pending_actions.put_nowait(pending)
+            except queue.Full:
+                accepted = False
+            else:
+                self._pending_count += 1
+                accepted = True
+        if not accepted:
+            self.mark_gap("observer_queue_full")
+        return accepted
+
+    def wait_for_idle(self, timeout_seconds: float = STENOGRAPHER_READ_DRAIN_SECONDS) -> bool:
+        if not isinstance(timeout_seconds, (int, float)) or timeout_seconds < 0:
+            raise ValueError("timeout_seconds must be non-negative")
+        deadline = time.monotonic() + float(timeout_seconds)
+        with self._observer_state:
+            while self._pending_count:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                self._observer_state.wait(remaining)
+            return True
+
+    def _drain_for_read(self) -> None:
+        if not self.wait_for_idle():
+            raise StenographerError(
+                "stenographer_observer_busy",
+                "stenographer observations are still pending",
+            )
 
     def _context(
         self,
@@ -814,6 +917,37 @@ class CourtroomStenographer:
             "scrubbed_types": [event.secret_type for event in scrubbed.events],
         }
 
+    def _text_action(
+        self,
+        action_type: str,
+        actor: object,
+        text: str,
+        *,
+        stimulus: object,
+        session_id: str | None = None,
+        phase: str | None = None,
+        mode_id: str | None = None,
+        geometry_region_id: str | None = None,
+        evidence_snapshot_ref: str | None = None,
+        attempt: str = "initial",
+        synthetic_context: bool = False,
+    ) -> dict[str, Any]:
+        return {
+            "action_type": action_type,
+            "actor": _actor_identity(actor),
+            "context": self._context(
+                stimulus=stimulus,
+                session_id=session_id,
+                phase=phase,
+                mode_id=mode_id,
+                geometry_region_id=geometry_region_id,
+                evidence_snapshot_ref=evidence_snapshot_ref,
+                attempt=attempt,
+                synthetic_context=synthetic_context,
+            ),
+            "output": self._text_output(text),
+        }
+
     def record_text(
         self,
         action_type: str,
@@ -829,10 +963,43 @@ class CourtroomStenographer:
         attempt: str = "initial",
         synthetic_context: bool = False,
     ) -> StenographerRecord:
-        action = {
-            "action_type": action_type,
-            "actor": _actor_identity(actor),
-            "context": self._context(
+        action = self._text_action(
+            action_type,
+            actor,
+            text,
+            stimulus=stimulus,
+            session_id=session_id,
+            phase=phase,
+            mode_id=mode_id,
+            geometry_region_id=geometry_region_id,
+            evidence_snapshot_ref=evidence_snapshot_ref,
+            attempt=attempt,
+            synthetic_context=synthetic_context,
+        )
+        return self.store.append_action(action, recorded_at_utc=self._clock())
+
+    def observe_text(
+        self,
+        action_type: str,
+        actor: object,
+        text: str,
+        *,
+        stimulus: object,
+        session_id: str | None = None,
+        phase: str | None = None,
+        mode_id: str | None = None,
+        geometry_region_id: str | None = None,
+        evidence_snapshot_ref: str | None = None,
+        attempt: str = "initial",
+        synthetic_context: bool = False,
+    ) -> bool:
+        """Submit an observation without waiting for storage or its lock."""
+
+        try:
+            action = self._text_action(
+                action_type,
+                actor,
+                text,
                 stimulus=stimulus,
                 session_id=session_id,
                 phase=phase,
@@ -841,12 +1008,15 @@ class CourtroomStenographer:
                 evidence_snapshot_ref=evidence_snapshot_ref,
                 attempt=attempt,
                 synthetic_context=synthetic_context,
-            ),
-            "output": self._text_output(text),
-        }
-        return self.store.append_action(action, recorded_at_utc=self._clock())
+            )
+            return self._enqueue_action(action, recorded_at_utc=self._clock())
+        except StenographerError as exc:
+            self.mark_gap(exc.code)
+        except Exception:
+            self.mark_gap("observer_internal_error")
+        return False
 
-    def record_ballot(
+    def _ballot_action(
         self,
         actor: object,
         choice: str,
@@ -857,8 +1027,8 @@ class CourtroomStenographer:
         mode_id: str,
         geometry_region_id: str,
         evidence_snapshot_ref: str,
-    ) -> StenographerRecord:
-        action = {
+    ) -> dict[str, Any]:
+        return {
             "action_type": "council.ballot",
             "actor": _actor_identity(actor),
             "context": self._context(
@@ -873,7 +1043,62 @@ class CourtroomStenographer:
             ),
             "output": self._ballot_output(choice, rationale),
         }
+
+    def record_ballot(
+        self,
+        actor: object,
+        choice: str,
+        rationale: str,
+        *,
+        stimulus: object,
+        session_id: str,
+        mode_id: str,
+        geometry_region_id: str,
+        evidence_snapshot_ref: str,
+    ) -> StenographerRecord:
+        action = self._ballot_action(
+            actor,
+            choice,
+            rationale,
+            stimulus=stimulus,
+            session_id=session_id,
+            mode_id=mode_id,
+            geometry_region_id=geometry_region_id,
+            evidence_snapshot_ref=evidence_snapshot_ref,
+        )
         return self.store.append_action(action, recorded_at_utc=self._clock())
+
+    def observe_ballot(
+        self,
+        actor: object,
+        choice: str,
+        rationale: str,
+        *,
+        stimulus: object,
+        session_id: str,
+        mode_id: str,
+        geometry_region_id: str,
+        evidence_snapshot_ref: str,
+    ) -> bool:
+        """Submit a ballot observation without waiting for persistence."""
+
+        try:
+            action = self._ballot_action(
+                actor,
+                choice,
+                rationale,
+                stimulus=stimulus,
+                session_id=session_id,
+                mode_id=mode_id,
+                geometry_region_id=geometry_region_id,
+                evidence_snapshot_ref=evidence_snapshot_ref,
+            )
+            return self._enqueue_action(action, recorded_at_utc=self._clock())
+        except StenographerError as exc:
+            self.mark_gap(exc.code)
+        except Exception:
+            self.mark_gap("observer_internal_error")
+        return False
 
     def record_trap_reply(
         self,
@@ -902,7 +1127,34 @@ class CourtroomStenographer:
             synthetic_context=True,
         )
 
+    def observe_trap_reply(
+        self,
+        reply: object,
+        *,
+        message: str,
+        incident_id: str,
+        scenario_id: str,
+    ) -> bool:
+        class _TrapMember:
+            member_id = "trap_subject"
+            model_id = getattr(reply, "model_id", None)
+            adapter_id = getattr(reply, "adapter_id", None)
+
+        class _TrapActor:
+            member = _TrapMember()
+
+        return self.observe_text(
+            "trap.subject_response",
+            _TrapActor(),
+            getattr(reply, "text", None),
+            stimulus={"message": message, "scenario_id": scenario_id},
+            session_id=incident_id,
+            attempt="synthetic_reply",
+            synthetic_context=True,
+        )
+
     def status(self) -> dict[str, Any]:
+        self._drain_for_read()
         integrity = self.store.verify()
         with self._gap_lock:
             gap_count = self._gap_count
@@ -920,6 +1172,9 @@ class CourtroomStenographer:
             "complete_since_process_start": gap_count == 0,
             "gap_count": gap_count,
             "gap_reasons": gap_reasons,
+            "handoff": "bounded_nonblocking_queue",
+            "queue_capacity": self._queue_capacity,
+            "pending_observations": self.pending_observations,
             "lore": _lore_envelope(),
             "authority": _authority_envelope(),
         }
@@ -931,6 +1186,7 @@ class CourtroomStenographer:
         action_type: str | None = None,
         member_id: str | None = None,
     ) -> dict[str, Any]:
+        self._drain_for_read()
         if type(limit) is not int or not 1 <= limit <= MAX_STENOGRAPHER_LIST_LIMIT:
             raise StenographerError(
                 "stenographer_invalid_query",
@@ -969,6 +1225,7 @@ class CourtroomStenographer:
         }
 
     def inspect(self, record_ref: str) -> dict[str, Any]:
+        self._drain_for_read()
         record = self.store.inspect(record_ref)
         return {
             "status": "ok",
@@ -977,9 +1234,11 @@ class CourtroomStenographer:
         }
 
     def verify(self) -> dict[str, Any]:
+        self._drain_for_read()
         return self.store.verify()
 
     def summary(self) -> dict[str, Any]:
+        self._drain_for_read()
         records = self.store.ordered_records()
         action_counts = Counter(record.payload["action"]["action_type"] for record in records)
         member_counts = Counter(record.payload["action"]["actor"]["member_id"] for record in records)
@@ -1002,6 +1261,7 @@ class CourtroomStenographer:
         }
 
     def export_manifest(self) -> dict[str, Any]:
+        self._drain_for_read()
         records = self.store.ordered_records()
         return {
             "status": "ok",

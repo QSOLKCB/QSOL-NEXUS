@@ -444,10 +444,10 @@ Controls:
 ### T34 — Silent omission or false completeness
 
 - **Asset:** honest later analysis of AI actions.
-- **Attacker capability:** cause disk, schema, clock or observer failures while AI output continues.
-- **Enforcement:** each AI call site catches observer failures after actor return, increments a bounded categorized gap counter, and sets `complete_since_process_start: false` without changing the original result.
-- **Tests:** injected append failure plus unchanged direct-output and visible-gap assertions.
-- **Residual risk:** process death before a gap can be counted and actions outside NEXUS cannot be represented.
+- **Attacker capability:** cause disk, schema, clock or observer failures, hold the interprocess lock, or exhaust the pending-observation queue while AI output continues.
+- **Enforcement:** each AI call site performs a bounded nonblocking handoff after actor return; a daemon observer performs lock/lineage/write/fsync work. Failure or queue saturation increments a categorized gap counter and sets `complete_since_process_start: false` without changing or delaying the original result.
+- **Tests:** blocked persistence with timely Council completion, queue-saturation gap, injected append failure, unchanged direct output and visible-gap assertions.
+- **Residual risk:** process death before a queued copy is persisted or a gap can be counted, queue saturation under sustained storage failure, and actions outside NEXUS cannot be represented.
 
 ### T35 — Record tamper, deletion, rollback or fork
 

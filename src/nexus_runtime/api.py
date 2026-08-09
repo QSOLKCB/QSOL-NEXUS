@@ -623,7 +623,7 @@ class NexusAPI:
                     evidence_context=evidence_context,
                 )
                 try:
-                    self.stenographer.record_text(
+                    self.stenographer.observe_text(
                         "actor.direct_response",
                         actor,
                         text,

@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 import stat
 import tempfile
+import threading
 import unittest
 
 from nexus_runtime.api import NexusAPI
@@ -215,6 +216,100 @@ class CourtroomStenographerTests(unittest.TestCase):
         status = api.handle({"operation": "stenographer.status"})
         self.assertFalse(status["complete_since_process_start"])
         self.assertEqual(status["gap_count"], 1)
+
+    def test_council_never_waits_for_blocked_stenographer_persistence(self) -> None:
+        stenographer = CourtroomStenographer(clock=lambda: FIXED_TIME)
+        original_append = stenographer.store.append_action
+        persistence_entered = threading.Event()
+        release_persistence = threading.Event()
+
+        def blocked_append(*args: object, **kwargs: object) -> object:
+            persistence_entered.set()
+            if not release_persistence.wait(5):
+                raise RuntimeError("test persistence release timed out")
+            return original_append(*args, **kwargs)
+
+        stenographer.store.append_action = blocked_append  # type: ignore[method-assign]
+        council = CouncilCoordinator(
+            WorldStore(),
+            stenographer=stenographer,
+            max_parallel_workers=1,
+        )
+        result: list[dict] = []
+        errors: list[BaseException] = []
+
+        def run_council() -> None:
+            try:
+                result.append(council.run("question", [actor("A"), actor("B"), actor("C")]))
+            except BaseException as exc:  # pragma: no cover - assertion reports the exception
+                errors.append(exc)
+
+        thread = threading.Thread(target=run_council, daemon=True)
+        thread.start()
+        try:
+            self.assertTrue(persistence_entered.wait(1), "observer worker did not receive an action")
+            thread.join(0.5)
+            self.assertFalse(thread.is_alive(), "Council waited for Stenographer persistence")
+            self.assertFalse(errors)
+            self.assertEqual(result[0]["status"], "ok")
+        finally:
+            release_persistence.set()
+            thread.join(2)
+
+        self.assertTrue(stenographer.wait_for_idle(2))
+        self.assertEqual(stenographer.status()["record_count"], 21)
+
+    def test_full_observer_queue_marks_an_explicit_gap_without_blocking(self) -> None:
+        stenographer = CourtroomStenographer(
+            clock=lambda: FIXED_TIME,
+            queue_capacity=1,
+        )
+        original_append = stenographer.store.append_action
+        persistence_entered = threading.Event()
+        release_persistence = threading.Event()
+
+        def blocked_append(*args: object, **kwargs: object) -> object:
+            persistence_entered.set()
+            if not release_persistence.wait(5):
+                raise RuntimeError("test persistence release timed out")
+            return original_append(*args, **kwargs)
+
+        stenographer.store.append_action = blocked_append  # type: ignore[method-assign]
+        self.assertTrue(
+            stenographer.observe_text(
+                "actor.direct_response",
+                actor(),
+                "first",
+                stimulus={},
+                attempt="direct_response",
+            )
+        )
+        self.assertTrue(persistence_entered.wait(1))
+        self.assertTrue(
+            stenographer.observe_text(
+                "actor.direct_response",
+                actor(),
+                "second",
+                stimulus={},
+                attempt="direct_response",
+            )
+        )
+        self.assertFalse(
+            stenographer.observe_text(
+                "actor.direct_response",
+                actor(),
+                "third",
+                stimulus={},
+                attempt="direct_response",
+            )
+        )
+        release_persistence.set()
+        self.assertTrue(stenographer.wait_for_idle(2))
+        status = stenographer.status()
+        self.assertEqual(status["record_count"], 2)
+        self.assertEqual(status["gap_reasons"], {"observer_queue_full": 1})
+        self.assertEqual(status["handoff"], "bounded_nonblocking_queue")
+        self.assertEqual(status["pending_observations"], 0)
 
     def test_non_ai_operations_do_not_create_records(self) -> None:
         api = NexusAPI()

@@ -700,7 +700,7 @@ class ActorFailsafe:
             self.stenographer.mark_gap("stenographer_invalid_action")
             return
         try:
-            self.stenographer.record_text(
+            self.stenographer.observe_text(
                 "failsafe.rehabilitation_response",
                 actor,
                 response,

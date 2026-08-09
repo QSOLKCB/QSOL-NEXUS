@@ -88,6 +88,71 @@ class StenographerCLITests(unittest.TestCase):
             )
             self.assertNotIn(str(root), result.stdout + result.stderr)
 
+    def test_jsonl_startup_overlap_is_a_bounded_json_error(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(ROOT / "src")
+            environment["PYTHONDONTWRITEBYTECODE"] = "1"
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "nexus_runtime",
+                    "--world",
+                    str(base / "world"),
+                    "--auth-root",
+                    str(base / "auth"),
+                    "--stenographer-root",
+                    str(base / "world" / "stenographer"),
+                ],
+                cwd=ROOT,
+                env=environment,
+                text=True,
+                input="",
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["error"]["code"], "auth_error")
+            self.assertIn("disjoint", payload["error"]["message"])
+            self.assertNotIn("Traceback", result.stdout + result.stderr)
+
+    def test_stenographer_cli_resolves_environment_default_trap_root(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            shared_root = base / "shared-trap-stenographer"
+            environment = os.environ.copy()
+            environment["PYTHONPATH"] = str(ROOT / "src")
+            environment["PYTHONDONTWRITEBYTECODE"] = "1"
+            environment["NEXUS_TRAP_ROOT"] = str(shared_root)
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "nexus_runtime",
+                    "--auth-root",
+                    str(base / "auth"),
+                    "--stenographer-root",
+                    str(shared_root),
+                    "stenographer",
+                    "status",
+                ],
+                cwd=ROOT,
+                env=environment,
+                text=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 2)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["error"]["code"], "auth_error")
+            self.assertIn("trap storage and stenographer storage", payload["error"]["message"])
+            self.assertNotIn("Traceback", result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

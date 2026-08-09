@@ -123,10 +123,12 @@ AI actor result -----> normal Council/direct/Trap consumer
        |
        +-------------> passive observer copy
                               |
-                        secret scrubbing
+                     bounded nonblocking queue
                               |
-                        steno:<sha256>
-                        canonical lineage
+                     background lock/write/fsync
+                              |
+                         steno:<sha256>
+                         canonical lineage
 ```
 
 It records admitted direct replies, every Council phase attempt and sealed
@@ -137,8 +139,10 @@ world/game/auth actions and control-plane decisions are outside its scope.
 Every record carries an explicit zero-authority envelope. The Stenographer owns
 no actor, prompt, Council roster, vote, command dispatcher, WorldStore,
 TrapStore or AuthBroker handle. Observation failures are caught after the actor
-boundary, increment a bounded gap counter, and cannot change the original AI
-result. Its owner-only store is disjoint from all other persistence roots and
+boundary; storage work is handed to a bounded nonblocking daemon observer, so
+lock contention and lineage scans cannot delay the original AI result. Queue
+saturation increments a bounded gap counter. Its owner-only store is disjoint
+from all other persistence roots and
 uses a linear immutable previous-record chain; the replaceable index is rebuilt
 from lineage.
 

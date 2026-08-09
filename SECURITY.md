@@ -141,12 +141,15 @@ depth, not complete DLP: model prose may contain sensitive material that no
 pattern recognizes. Protect and retain the Stenographer root as sensitive
 study data.
 
-Recording errors increment a bounded in-process gap counter and do not reject
-or alter the AI output. `complete_since_process_start` is false after any such
-gap. Adapter exceptions that return no AI output are not fabricated as model
-actions. The record therefore claims coverage of admitted NEXUS actor-boundary
-outputs, not hidden model reasoning, provider-side activity or actions outside
-this runtime.
+AI call sites hand observer copies to a bounded nonblocking queue. The daemon
+observer alone acquires the record lock, reconstructs lineage, writes and
+fsyncs, so a slow filesystem or another process holding the lock cannot delay
+the AI result. Queue saturation or recording failure increments a bounded
+categorized gap counter and does not reject or alter the AI output.
+`complete_since_process_start` is false after any such gap. Adapter exceptions
+that return no AI output are not fabricated as model actions. The record
+therefore claims coverage of admitted NEXUS actor-boundary outputs, not hidden
+model reasoning, provider-side activity or actions outside this runtime.
 
 The public API and CLI provide status, list, inspect, verify, summary and
 reference-manifest export only. No record/edit/clear/delete operation exists.
