@@ -100,6 +100,8 @@ The model ID is operator-selected from discovery. `grok-4.5` is only an example,
 
 The remote actor receives the same phase prompt, guard/nudge lifecycle, strict ballot parser, one ballot, `vote_weight = 1`, and `epistemic_privilege = none` as every other actor. Live xAI inference is marked non-replayable.
 
+A Council request permits at most 32 total seats and four xAI seats. NEXUS checks both limits before constructing actors or resolving an xAI credential. One remote seat can still make multiple phase, nudge, failsafe, and ballot calls, so operators must retain provider-side budgets and alerts.
+
 ## Fixed transport boundary
 
 The xAI member schema is closed. It does not accept `endpoint`, `base_url`, `api_key`, other unregistered fields, or credential-shaped identity/metadata text. The transport:
@@ -112,11 +114,13 @@ The xAI member schema is closed. It does not accept `endpoint`, `base_url`, `api
 - enables no provider-side tools;
 - performs no automatic inference retry, avoiding hidden duplicate spend;
 - bounds request size, response size, model count, model identifiers, JSON shape, output items, and timeout;
+- rejects the configured bearer token and any recognized credential-shaped text anywhere in a decoded successful response before model metadata or generated text can be returned or persisted;
 - rejects credential-shaped `xai-...` values as model identifiers and scrubs that key form from semantic operator text;
 - discards provider error bodies and exposes only sanitized adapter errors;
+- converts HTTP protocol disconnects and incomplete reads to the same sanitized unavailable state;
 - excludes reasoning items and returns only typed `output_text` content.
 
-`store: false` disables retrieval storage for the Responses API; it is not a claim of Zero Data Retention, provider non-observation, or absence of billing/abuse logs. Operators remain responsible for xAI account ACLs, budget, data policy, and model availability.
+Actor identity receipts expose this request option as `responses_api_store: false`. `store: false` disables retrieval storage for the Responses API; it is not a claim of Zero Data Retention, provider non-observation, or absence of billing/abuse logs. Operators remain responsible for xAI account ACLs, budget, data policy, and model availability.
 
 ## Official contract references
 

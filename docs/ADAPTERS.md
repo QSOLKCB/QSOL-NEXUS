@@ -45,7 +45,7 @@ OllamaActor
 XAIActor
   network: fixed https://api.x.ai/v1
   replayable: false
-  provider response storage: disabled per request
+  Responses API store request option: false
 ```
 
 The first live integration is deliberately small:

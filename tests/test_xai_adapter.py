@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import redirect_stderr, redirect_stdout
+from http.client import IncompleteRead, RemoteDisconnected
 import io
 import json
 import os
@@ -68,6 +69,15 @@ class _FakeOpener:
         if isinstance(value, BaseException):
             raise value
         return _FakeResponse(value)
+
+
+class _ReadErrorResponse(_FakeResponse):
+    def __init__(self, error: BaseException) -> None:
+        super().__init__({})
+        self.error = error
+
+    def read(self, maximum: int = -1) -> bytes:
+        raise self.error
 
 
 class _StubTransport:
@@ -146,6 +156,57 @@ class XAITransportTests(unittest.TestCase):
         malformed._opener.open.return_value = _FakeResponse({}, raw=b"not json")
         with self.assertRaisesRegex(AdapterProtocolError, "invalid JSON"):
             malformed.probe()
+
+    def test_http_protocol_failures_are_sanitized_during_open_and_read(self) -> None:
+        open_failure = XAITransport(
+            self.material(),
+            _opener=_FakeOpener(RemoteDisconnected("provider closed /private/operator/path")),
+        )
+        with self.assertRaises(AdapterError) as opened:
+            open_failure.probe()
+        self.assertEqual(str(opened.exception), "xAI inference API is unavailable")
+
+        read_opener = mock.Mock()
+        read_opener.open.return_value = _ReadErrorResponse(IncompleteRead(b"partial-secret", 100))
+        read_failure = XAITransport(self.material(), _opener=read_opener)
+        with self.assertRaises(AdapterError) as read:
+            read_failure.probe()
+        self.assertEqual(str(read.exception), "xAI inference API is unavailable")
+
+    def test_successful_responses_reject_reflected_and_credential_shaped_text(self) -> None:
+        github_token = "ghp_" + "Z" * 32
+        for leaked in (FAKE_XAI_KEY, github_token):
+            with self.subTest(leaked=leaked[:4]):
+                transport = XAITransport(
+                    self.material(),
+                    _opener=_FakeOpener(response_payload(f"provider reflected {leaked}")),
+                )
+                with self.assertRaises(AdapterProtocolError) as raised:
+                    transport.generate("grok-4.5", "prompt", max_output_tokens=64)
+                self.assertNotIn(leaked, str(raised.exception))
+
+        model_response = {
+            "models": [
+                {
+                    "id": "grok-4.5",
+                    "aliases": [],
+                    "input_modalities": ["text"],
+                    "output_modalities": ["text"],
+                    "owned_by": f"xAI {FAKE_XAI_KEY}",
+                }
+            ]
+        }
+        transport = XAITransport(self.material(), _opener=_FakeOpener(model_response))
+        with self.assertRaises(AdapterProtocolError) as raised:
+            transport.list_language_models()
+        self.assertNotIn(FAKE_XAI_KEY, str(raised.exception))
+
+    def test_rate_limit_error_describes_the_request(self) -> None:
+        error = HTTPError(f"{XAI_API_BASE_URL}/models", 429, "fixture", {}, io.BytesIO())
+        transport = XAITransport(self.material(), _opener=_FakeOpener(error))
+        with self.assertRaises(AdapterError) as raised:
+            transport.probe()
+        self.assertEqual(str(raised.exception), "xAI request was rate-limited")
 
     def test_incomplete_phase_can_be_used_but_incomplete_ballot_cannot(self) -> None:
         first = response_payload("bounded partial contribution", status="incomplete")
@@ -272,7 +333,8 @@ class XAIActorTests(unittest.TestCase):
         self.assertTrue(transport.calls[1][3])
         self.assertFalse(actor.replayable)
         self.assertEqual(actor.identity_metadata()["remote_host"], "api.x.ai")
-        self.assertFalse(actor.identity_metadata()["provider_response_storage"])
+        self.assertFalse(actor.identity_metadata()["responses_api_store"])
+        self.assertNotIn("provider_response_storage", actor.identity_metadata())
 
     def test_actor_rejects_invalid_ballot_shape(self) -> None:
         actor = XAIActor(
@@ -352,6 +414,54 @@ class XAIAPIAndCLITests(unittest.TestCase):
             self.assertEqual(response["status"], "error")
             self.assertEqual(response["error"]["code"], "invalid_request")
             generate.assert_not_called()
+
+    def test_council_rejects_excess_remote_seats_before_resolving_credentials(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            api = NexusAPI(Path(directory) / "world", auth_broker=self.broker(Path(directory) / "auth"))
+            members = [
+                {
+                    "member_id": f"Grok{index}",
+                    "model_id": f"grok-{index}",
+                    "adapter_id": "xai",
+                }
+                for index in range(5)
+            ]
+            with (
+                mock.patch.object(api.auth, "resolve") as resolve,
+                mock.patch.object(XAITransport, "generate") as generate,
+            ):
+                response = api.handle(
+                    {"operation": "council.run", "question": "bounded spend", "members": members}
+                )
+            self.assertEqual(response["status"], "error")
+            self.assertEqual(response["error"]["code"], "invalid_request")
+            self.assertIn("at most 4 remote xAI seats", response["error"]["message"])
+            resolve.assert_not_called()
+            generate.assert_not_called()
+
+    def test_council_rejects_credential_shaped_provider_output_before_persistence(self) -> None:
+        leaked = "ghp_" + "R" * 32
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            api = NexusAPI(base / "world", auth_broker=self.broker(base / "auth"))
+            opener = _FakeOpener(response_payload(f"malicious provider output {leaked}"))
+            with mock.patch("nexus_runtime.adapters.xai.build_opener", return_value=opener):
+                response = api.handle(
+                    {
+                        "operation": "council.run",
+                        "question": "inspect the evidence",
+                        "members": [
+                            {"member_id": "LocalA", "model_id": "mock-a", "adapter_id": "mock"},
+                            {"member_id": "LocalB", "model_id": "mock-b", "adapter_id": "mock"},
+                            {"member_id": "Grok", "model_id": "grok-4.5", "adapter_id": "xai"},
+                        ],
+                    }
+                )
+            self.assertEqual(response["status"], "error")
+            self.assertEqual(response["error"]["code"], "adapter_unavailable")
+            self.assertNotIn(leaked, json.dumps(response, sort_keys=True))
+            world_bytes = b"".join(path.read_bytes() for path in (base / "world").rglob("*") if path.is_file())
+            self.assertNotIn(leaked.encode("utf-8"), world_bytes)
 
     def test_mixed_local_and_remote_council_preserves_equal_vote_and_scrubs_secrets(self) -> None:
         secret = FAKE_XAI_KEY

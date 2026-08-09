@@ -6,7 +6,7 @@ from typing import Any
 
 from .adapters import AdapterError, OllamaActor, OllamaTransport, XAIActor, XAITransport
 from .auth import AuthBroker, ensure_disjoint_auth_world_roots
-from .council import CouncilCoordinator
+from .council import MAX_COUNCIL_MEMBERS, CouncilCoordinator
 from .failsafe import FAILSAFE_SCHEMA_VERSION
 from .game_un import GAME_SCHEMA, action_catalog, advance_turn, apply_action, inspect_game, new_game
 from .game_mud import (
@@ -28,6 +28,7 @@ from .world import WorldStore
 
 PROTOCOL_VERSION = "nexus/0.10"
 RUNTIME_VERSION = "2.0.0-alpha9.0"
+MAX_REMOTE_COUNCIL_SEATS = 4
 
 
 class NexusAPI:
@@ -66,9 +67,16 @@ class NexusAPI:
                     "protocol": PROTOCOL_VERSION,
                     "runtime_version": RUNTIME_VERSION,
                     "control_transport": "jsonl_stdio",
-                    "network": "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https",
+                    "network": (
+                        "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_"
+                        "or_registered_auth_operations"
+                    ),
                     "adapters": ["mock", "ollama_loopback", "xai_https"],
                     "remote_provider_auth": True,
+                    "council_limits": {
+                        "max_members": MAX_COUNCIL_MEMBERS,
+                        "max_remote_seats": MAX_REMOTE_COUNCIL_SEATS,
+                    },
                     "auth_broker": self.auth.status(),
                     "actor_backends_available": ["mock", "ollama", "xai"],
                     "world_modes": [mode.mode_id for mode in list_modes()],
@@ -356,6 +364,7 @@ class NexusAPI:
                 members = request.get("members")
                 if not isinstance(members, list):
                     raise ValueError("members must be a list")
+                self._validate_council_request_limits(members)
                 actors = [self._actor(item) for item in members]
                 evidence_refs = request.get("evidence_refs", [])
                 if not isinstance(evidence_refs, list) or not all(isinstance(ref, str) for ref in evidence_refs):
@@ -386,6 +395,18 @@ class NexusAPI:
         if request_id is not None:
             response = {"request_id": request_id, **response}
         return response
+
+    @staticmethod
+    def _validate_council_request_limits(members: list[Any]) -> None:
+        """Reject excessive total and billable seats before actor construction."""
+
+        if len(members) > MAX_COUNCIL_MEMBERS:
+            raise ValueError(f"Council permits at most {MAX_COUNCIL_MEMBERS} members")
+        remote_seats = sum(
+            1 for item in members if isinstance(item, dict) and item.get("adapter_id", "mock") == "xai"
+        )
+        if remote_seats > MAX_REMOTE_COUNCIL_SEATS:
+            raise ValueError(f"Council permits at most {MAX_REMOTE_COUNCIL_SEATS} remote xAI seats")
 
     def _actor(self, item: Any) -> DeterministicMockActor | OllamaActor | XAIActor:
         if not isinstance(item, dict):

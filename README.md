@@ -431,7 +431,7 @@ actor.chat
 council.run
 ```
 
-`council.run` can instantiate deterministic mock actors, explicit loopback-local Ollama actors, and xAI actors that reference a configured auth profile. xAI endpoints and inline credentials remain rejected.
+`council.run` can instantiate deterministic mock actors, explicit loopback-local Ollama actors, and xAI actors that reference a configured auth profile. Rosters are capped at 32 total seats and four xAI seats before credential resolution. xAI endpoints and inline credentials remain rejected.
 
 See [`docs/API.md`](docs/API.md).
 

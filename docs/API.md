@@ -73,9 +73,13 @@ Current response fields include:
   "protocol": "nexus/0.10",
   "runtime_version": "2.0.0-alpha9.0",
   "control_transport": "jsonl_stdio",
-  "network": "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https",
+  "network": "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_or_registered_auth_operations",
   "adapters": ["mock", "ollama_loopback", "xai_https"],
   "remote_provider_auth": true,
+  "council_limits": {
+    "max_members": 32,
+    "max_remote_seats": 4
+  },
   "auth_broker": {
     "schema_version": "nexus-auth/1",
     "browser_pkce": true,
@@ -455,6 +459,8 @@ An xAI peer references only an opaque profile name:
 ```
 
 `council.run` accepts no credential or remote-endpoint fields. The xAI actor resolves the profile only inside its transport; raw material remains broker-internal.
+
+Council requests are capped at 32 total seats and four fixed-remote xAI seats. Both limits are checked before actor construction or auth-profile resolution, so an excessive roster cannot start paid provider work. A remote seat can make multiple phase, nudge, failsafe, and ballot calls; the seat cap is a spend bound, not a per-run price quote.
 
 ## `actor.chat`
 

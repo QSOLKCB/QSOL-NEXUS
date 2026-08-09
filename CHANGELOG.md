@@ -8,9 +8,10 @@ All notable changes to QSOL NEXUS are documented here.
 - add `browser-key` enrollment that opens xAI's fixed official key page and reads the result through a hidden prompt without importing Grok Build sessions;
 - add bounded authenticated connection testing through `GET https://api.x.ai/v1/models`;
 - add `nexus models list xai` and JSONL `models.list` through the authenticated `/language-models` endpoint;
-- add a fixed-host, redirect-free, environment-proxy-free Responses API transport with `store: false`, bounded requests/responses, sanitized error bodies, and no automatic inference retry;
+- add a fixed-host, redirect-free, environment-proxy-free Responses API transport with `store: false`, bounded requests/responses, sanitized HTTP/error failures, reflected-secret rejection, and no automatic inference retry;
 - add `XAIActor` for direct messages and equal-vote Councils using the same prompts, guard/nudge lifecycle, strict ballot parser, and non-replayable receipt status as other live actors;
-- reject xAI endpoint overrides, inline or metadata-smuggled credentials, malformed model identifiers, unknown member fields, oversized responses, and truncated ballots;
+- reject xAI endpoint overrides, inline or metadata-smuggled credentials, reflected or credential-shaped provider output, malformed model identifiers, unknown member fields, oversized responses, and truncated ballots;
+- cap Councils at 32 total seats and four xAI seats before actor construction or credential resolution, and report the limits in health metadata;
 - add `xai-...` key scrubbing plus mixed local/remote equality, secret-boundary, browser-setup, discovery, transport, and adversarial regressions;
 - bump the control API to `nexus/0.10` and Python runtime to `2.0.0-alpha9.0`; the Rust TUI remains `2.0.0-alpha6.6` and does not yet expose xAI roster commands.
 

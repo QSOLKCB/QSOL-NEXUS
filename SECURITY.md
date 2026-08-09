@@ -198,9 +198,9 @@ This is an initial local safety boundary, not a substitute for process identity 
 
 `XAITransport` uses only the fixed `api.x.ai` HTTPS origin and the `/models`, `/language-models`, and `/responses` paths. The member schema rejects endpoint overrides, unknown fields, and inline credentials. Environment proxies and HTTP redirects are disabled so a bearer credential cannot silently move to another destination.
 
-Every inference request sets `store: false`, supplies no provider tools or prior response ID, and returns only typed `output_text`. Requests, responses, model catalogues, identifiers, timeouts, and output budgets are bounded. Provider error bodies are discarded. There is no automatic inference retry.
+Every inference request sets `store: false`, supplies no provider tools or prior response ID, and returns only typed `output_text`. Requests, responses, model catalogues, identifiers, timeouts, and output budgets are bounded. Successful bodies are rejected before projection if they contain the configured bearer token or other recognized credential-shaped text. Provider error bodies and HTTP protocol diagnostics are discarded. There is no automatic inference retry.
 
-These controls do not make xAI local or private: xAI receives the scrubbed Council prompt, provider billing and rate limits apply, and `store: false` is not a Zero Data Retention guarantee. See [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md).
+Council requests are capped at 32 total seats and four xAI seats before actor construction and credential resolution. These controls do not make xAI local or private: xAI receives the scrubbed Council prompt, each remote seat can make multiple calls, provider billing and rate limits apply, and `store: false` is not a Zero Data Retention guarantee. See [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md).
 
 ## Equality Guard security role
 
@@ -260,7 +260,7 @@ xAI adapter              fixed api.x.ai HTTPS, explicit profile only
 other remote providers   not implemented
 ```
 
-The JSONL control transport itself remains stdio. `auth.list` is local-only. `auth.test xai`, `models.list` for xAI, and an explicitly configured xAI actor can perform fixed-destination network I/O. Enrollment remains a direct `nexus auth add` action rather than a raw-secret JSONL operation.
+The JSONL control transport itself remains stdio. `auth.list` is local-only. `auth.test xai`, `models.list` for xAI, and an explicitly configured xAI actor can perform fixed-destination network I/O. A custom broker can also perform registered auth operations against descriptor-allowlisted endpoints. `system.health` reports that category even when the stock xAI descriptor is the only configured remote provider. Enrollment remains a direct `nexus auth add` action rather than a raw-secret JSONL operation.
 
 ## Logging
 

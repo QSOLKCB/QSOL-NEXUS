@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from http.client import HTTPException
 import json
 import math
 import re
@@ -9,6 +10,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from ..auth.types import AdapterAuthDescriptor, AuthFlow, AuthMethod, SecretMaterial
+from ..scrub import SecretScrubber
 from ..types import Ballot, CouncilMember, PhaseContext
 from .base import (
     AdapterAuthenticationError,
@@ -196,7 +198,7 @@ class XAITransport:
                 raw = response.read(maximum_bytes + 1)
         except HTTPError as exc:
             self._raise_http_error(exc.code)
-        except (URLError, TimeoutError, OSError) as exc:
+        except (URLError, TimeoutError, OSError, HTTPException) as exc:
             raise AdapterError("xAI inference API is unavailable") from exc
         if len(raw) > maximum_bytes:
             raise AdapterProtocolError("xAI response exceeded the adapter size limit")
@@ -206,7 +208,31 @@ class XAITransport:
             raise AdapterProtocolError("xAI returned an invalid JSON response") from exc
         if not isinstance(value, dict):
             raise AdapterProtocolError("xAI returned an invalid JSON response")
+        credential_kind = self._credential_kind(value)
+        if credential_kind == "configured":
+            raise AdapterProtocolError("xAI response contained configured credential material")
+        if credential_kind == "shaped":
+            raise AdapterProtocolError("xAI response contained credential-shaped text")
         return value
+
+    def _credential_kind(self, value: object) -> str | None:
+        """Classify secret material anywhere in a bounded provider response."""
+
+        scrubber = SecretScrubber()
+        pending = [value]
+        while pending:
+            item = pending.pop()
+            if isinstance(item, str):
+                if self.credential.access_token in item:
+                    return "configured"
+                if scrubber.scrub(item).changed:
+                    return "shaped"
+            elif isinstance(item, dict):
+                pending.extend(item.keys())
+                pending.extend(item.values())
+            elif isinstance(item, list):
+                pending.extend(item)
+        return None
 
     @staticmethod
     def _raise_http_error(status: int) -> None:
@@ -215,7 +241,7 @@ class XAITransport:
         if 300 <= status < 400:
             raise AdapterProtocolError("xAI redirected a fixed adapter request")
         if status == 429:
-            raise AdapterError("xAI rate limit is currently unavailable")
+            raise AdapterError("xAI request was rate-limited")
         if status in {400, 404, 409, 422}:
             raise AdapterError("xAI rejected the adapter request")
         raise AdapterError("xAI inference API is unavailable")
@@ -336,7 +362,7 @@ class XAIActor:
             "provider_model_id": self.model,
             "network_scope": "fixed_remote_https",
             "remote_host": XAI_API_HOST,
-            "provider_response_storage": False,
+            "responses_api_store": False,
         }
 
     def respond(self, context: PhaseContext) -> str:

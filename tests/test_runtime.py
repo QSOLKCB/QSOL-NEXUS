@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from nexus_runtime.api import NexusAPI
 from nexus_runtime.canonical import canonical_json, sha256_ref
-from nexus_runtime.council import CouncilCoordinator, MAX_EVIDENCE_CONTEXT_CHARS
+from nexus_runtime.council import CouncilCoordinator, MAX_COUNCIL_MEMBERS, MAX_EVIDENCE_CONTEXT_CHARS
 from nexus_runtime.mock import DeterministicMockActor
 from nexus_runtime.scrub import SecretScrubber
 from nexus_runtime.types import CouncilMember, CouncilPolicy
@@ -100,6 +100,12 @@ class SecretScrubberTests(unittest.TestCase):
 
 
 class CouncilTests(unittest.TestCase):
+    def test_roster_size_is_bounded_before_phase_execution(self) -> None:
+        council = CouncilCoordinator(WorldStore())
+        actors = [actor(f"M{index}") for index in range(MAX_COUNCIL_MEMBERS + 1)]
+        with self.assertRaisesRegex(ValueError, f"at most {MAX_COUNCIL_MEMBERS} members"):
+            council.run("question", actors)
+
     def test_two_of_three_is_consensus(self) -> None:
         council = CouncilCoordinator(WorldStore())
         result = council.run("question", [actor("A"), actor("B"), actor("C", "supportive")])
@@ -201,7 +207,7 @@ class CouncilTests(unittest.TestCase):
 
 
 class APITests(unittest.TestCase):
-    def test_health_reports_local_stdio_loopback_ollama_and_fixed_xai(self) -> None:
+    def test_health_reports_all_network_paths_and_council_limits(self) -> None:
         api = NexusAPI()
         result = api.handle({"operation": "system.health"})
         self.assertEqual(result["protocol"], "nexus/0.10")
@@ -210,10 +216,11 @@ class APITests(unittest.TestCase):
         self.assertEqual(result["control_transport"], "jsonl_stdio")
         self.assertEqual(
             result["network"],
-            "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https",
+            "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_or_registered_auth_operations",
         )
         self.assertEqual(result["adapters"], ["mock", "ollama_loopback", "xai_https"])
         self.assertTrue(result["remote_provider_auth"])
+        self.assertEqual(result["council_limits"], {"max_members": 32, "max_remote_seats": 4})
         self.assertEqual(result["actor_backends_available"], ["mock", "ollama", "xai"])
 
     def test_actor_chat_uses_relief_actor_for_shadowed_model_identity(self) -> None:
