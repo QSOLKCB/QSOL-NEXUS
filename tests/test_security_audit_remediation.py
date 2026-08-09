@@ -9,8 +9,13 @@ import unittest
 from unittest.mock import patch
 from urllib.request import ProxyHandler
 
+from nexus_runtime.adapters.ollama import OllamaTransport
 from nexus_runtime.auth.broker import _external_helper_environment
 from nexus_runtime.auth.oauth import OAuthHTTPClient
+from nexus_runtime.canonical import canonical_json
+from nexus_runtime.council import CouncilCoordinator
+from nexus_runtime.types import Ballot, CouncilMember
+from nexus_runtime.version import PROTOCOL_VERSION
 from nexus_runtime.world import WorldStore
 
 
@@ -23,6 +28,25 @@ class _JSONResponse:
 
     def read(self, limit: int = -1) -> bytes:
         return b"{}"
+
+
+class _SecretEmittingActor:
+    def __init__(self, member_id: str, canary: str) -> None:
+        self.member = CouncilMember(member_id, f"model-{member_id}", "mock")
+        self.canary = canary
+
+    @property
+    def replayable(self) -> bool:
+        return True
+
+    def identity_metadata(self) -> dict[str, object]:
+        return {"actor_kind": "audit-secret-fixture"}
+
+    def respond(self, context) -> str:
+        return f"phase fixture {self.canary}"
+
+    def ballot(self, context) -> tuple[Ballot, str]:
+        return Ballot.TEST_FURTHER, f"ballot fixture {self.canary}"
 
 
 class SecurityAuditRemediationTests(unittest.TestCase):
@@ -99,6 +123,35 @@ class SecurityAuditRemediationTests(unittest.TestCase):
         self.assertNotIn("GITHUB_TOKEN", clean)
         self.assertNotIn("AWS_SECRET_ACCESS_KEY", clean)
         self.assertNotIn("CUSTOM_NON_SECRET", clean)
+
+    def test_remote_ollama_retains_no_proxy_no_redirect_opener(self) -> None:
+        captured_handlers: list[object] = []
+
+        class Opener:
+            def open(self, request, timeout):
+                return _JSONResponse()
+
+        def fake_build_opener(*handlers):
+            captured_handlers.extend(handlers)
+            return Opener()
+
+        with patch("nexus_runtime.adapters.ollama.build_opener", side_effect=fake_build_opener):
+            OllamaTransport("https://ollama.example", allow_remote=True)
+
+        proxies = [handler.proxies for handler in captured_handlers if isinstance(handler, ProxyHandler)]
+        self.assertEqual(proxies, [{}])
+        self.assertTrue(any(type(handler).__name__ == "_NoRedirectHandler" for handler in captured_handlers))
+
+    def test_council_scrubs_model_output_before_world_persistence_and_stamps_protocol(self) -> None:
+        canary = "xai-" + "A" * 48
+        world = WorldStore()
+        actors = tuple(_SecretEmittingActor(member_id, canary) for member_id in ("alpha", "beta", "gamma"))
+        result = CouncilCoordinator(world).run("audit question", actors)
+
+        session = world.inspect(result["session_ref"])
+        receipt = world.inspect(result["receipt_ref"])
+        self.assertNotIn(canary, canonical_json(session.as_dict()))
+        self.assertEqual(receipt.payload["protocol"], PROTOCOL_VERSION)
 
 
 if __name__ == "__main__":
