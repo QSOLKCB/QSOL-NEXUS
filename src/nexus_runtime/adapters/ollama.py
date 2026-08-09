@@ -12,6 +12,8 @@ from .base import BALLOT_SCHEMA, build_ballot_prompt, build_direct_prompt, build
 
 _PHASE_OPTIONS = {"num_predict": 192}
 _DIRECT_OPTIONS = {"num_predict": 256}
+_ROMAN_ORATOR_PHASE_OPTIONS = {"num_predict": 768}
+_ROMAN_ORATOR_DIRECT_OPTIONS = {"num_predict": 1536}
 _BALLOT_OPTIONS = {"num_predict": 256, "temperature": 0}
 
 
@@ -109,10 +111,11 @@ class OllamaActor:
         }
 
     def respond(self, context: PhaseContext) -> str:
+        options = _ROMAN_ORATOR_PHASE_OPTIONS if context.mode_id == "roman_orator" else _PHASE_OPTIONS
         return self.transport.generate(
             self.model,
             build_phase_prompt(context),
-            options=_PHASE_OPTIONS,
+            options=options,
             require_complete=False,
         )
 
@@ -130,6 +133,7 @@ class OllamaActor:
         This path confers no vote, Council phase, or evidence privilege. It is
         used by the Rust TUI's explicit private Direct Cognitive Channel view.
         """
+        options = _ROMAN_ORATOR_DIRECT_OPTIONS if mode_id == "roman_orator" else _DIRECT_OPTIONS
         return self.transport.generate(
             self.model,
             build_direct_prompt(
@@ -139,7 +143,7 @@ class OllamaActor:
                 geometry_region_id=geometry_region_id,
                 evidence_context=evidence_context,
             ),
-            options=_DIRECT_OPTIONS,
+            options=options,
             require_complete=False,
         )
 

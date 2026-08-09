@@ -34,8 +34,8 @@ from .types import CouncilMember
 from .world import WorldStore
 
 
-PROTOCOL_VERSION = "nexus/0.12"
-RUNTIME_VERSION = "2.0.0-alpha9.2"
+PROTOCOL_VERSION = "nexus/0.13"
+RUNTIME_VERSION = "2.0.0-alpha9.3"
 MAX_REMOTE_COUNCIL_SEATS = 4
 
 _TRAP_BLOCKED_MUTATIONS = frozenset(

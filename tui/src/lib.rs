@@ -20,7 +20,7 @@ pub struct RoomSpec {
     pub label: &'static str,
 }
 
-pub const ROOMS: [RoomSpec; 10] = [
+pub const ROOMS: [RoomSpec; 16] = [
     RoomSpec {
         channel: "#observatory",
         mode_id: "analytical",
@@ -50,6 +50,42 @@ pub const ROOMS: [RoomSpec; 10] = [
         mode_id: "meme_casual",
         region_id: "commons",
         label: "Commons / Meme-Casual",
+    },
+    RoomSpec {
+        channel: "#differential-clinic",
+        mode_id: "clinical_differential",
+        region_id: "observatory",
+        label: "Observatory / House-Style Differential Clinic",
+    },
+    RoomSpec {
+        channel: "#house-fun",
+        mode_id: "house_fun",
+        region_id: "commons",
+        label: "Commons / House-Style Diagnostic Fun",
+    },
+    RoomSpec {
+        channel: "#cbt-workshop",
+        mode_id: "cbt_learning",
+        region_id: "observatory",
+        label: "Observatory / CBT Learning Workshop",
+    },
+    RoomSpec {
+        channel: "#roman-forum",
+        mode_id: "roman_orator",
+        region_id: "agora",
+        label: "Agora / Roman Orator",
+    },
+    RoomSpec {
+        channel: "#house-of-wisdom",
+        mode_id: "house_of_wisdom",
+        region_id: "archive",
+        label: "Archive / House of Wisdom",
+    },
+    RoomSpec {
+        channel: "#deep-thought",
+        mode_id: "ultimate_questions",
+        region_id: "observatory",
+        label: "Observatory / Life, the Universe and Everything",
     },
     RoomSpec {
         channel: "#un-sim",
@@ -909,6 +945,21 @@ mod tests {
         assert_eq!(
             room_from_name("courtroom").unwrap().channel,
             "#stenographer"
+        );
+        assert_eq!(
+            room_from_name("clinical_differential").unwrap().channel,
+            "#differential-clinic"
+        );
+        assert_eq!(room_from_name("house-fun").unwrap().mode_id, "house_fun");
+        assert_eq!(room_from_name("cbt_learning").unwrap().channel, "#cbt-workshop");
+        assert_eq!(room_from_name("roman-forum").unwrap().mode_id, "roman_orator");
+        assert_eq!(
+            room_from_name("house_of_wisdom").unwrap().channel,
+            "#house-of-wisdom"
+        );
+        assert_eq!(
+            room_from_name("deep-thought").unwrap().mode_id,
+            "ultimate_questions"
         );
     }
 

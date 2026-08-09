@@ -53,6 +53,12 @@ class DeterministicMockActor:
             "pure_history": "Mode note: separate source attestation, chronology, later interpretation, modern retelling, and speculation.",
             "cultural": "Mode note: preserve context, ambiguity, norms, and insider/outsider distinctions.",
             "meme_casual": "Mode note: playful framing is welcome, but jokes do not become evidence.",
+            "clinical_differential": "Mode note: rank educational differentials, missing evidence, red flags, and uncertainty; never diagnose.",
+            "house_fun": "Mode note: use an original fictional diagnostic-drama puzzle; real symptoms end the comedy bit.",
+            "cbt_learning": "Mode note: teach collaborative CBT concepts and low-risk skills without presenting this as therapy.",
+            "roman_orator": "Mode note: develop the phase as expansive original oratory; rhetoric does not become evidence.",
+            "house_of_wisdom": "Mode note: preserve translation, attribution, transmission, source plurality, and cross-disciplinary synthesis.",
+            "ultimate_questions": "Mode note: separate empirical, philosophical, spiritual, literary, and speculative lenses.",
         }
         evidence_note = " Attached evidence is available." if context.evidence_context else ""
         return f"{prefix} {mode_notes.get(context.mode_id, '')} {templates[context.phase]}{evidence_note}".strip()

@@ -447,6 +447,24 @@ anchoring, retention automation, legal-record claims and generalized DLP remain
 deferred. The recorder is for later study and analysis; it is never a Council
 participant or enforcement oracle.
 
+## 2.0-alpha9.3 — Cognitive Rooms
+
+Implemented for PR #23:
+
+- [x] add an educational `clinical_differential` mode with explicit non-diagnostic, non-prescriptive, red-flag and professional-care boundaries;
+- [x] separate fictional `house_fun` diagnostic drama from real-symptom handling;
+- [x] add a collaborative `cbt_learning` mode for concepts and low-risk skills without claiming a therapist relationship or crisis service;
+- [x] add `roman_orator` with a deliberately larger but bounded phase/direct generation budget and unchanged ballots;
+- [x] add `house_of_wisdom` for multilingual provenance, attribution, transmission and synthesis;
+- [x] add `ultimate_questions` for deep empirical/philosophical/spiritual/literary dialogue with explicit lens separation;
+- [x] expose all six through dedicated Rust-TUI rooms;
+- [x] reuse the existing connected regions and retain `named-regions-v3`;
+- [x] preserve equal votes, evidence state, verification, Equality Guard and Secret Scrubber behavior in every mode.
+
+Automated clinical diagnosis, individualized treatment, crisis intervention,
+medical-device claims, autonomous exposure exercises, and any authority based
+on theatrical or rhetorical confidence remain outside the NEXUS contract.
+
 ## 2.0-alpha10 — Three minds, one world demo
 
 Reference demonstration:

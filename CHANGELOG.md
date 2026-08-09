@@ -2,6 +2,20 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.0.0-alpha9.3 — Cognitive Rooms
+
+- add `clinical_differential` / `#differential-clinic` for educational, safety-first differential reasoning with ranked candidates, discriminators, explicit uncertainty, red flags, and urgent-care escalation boundaries;
+- add `house_fun` / `#house-fun` for original fictional diagnostic-drama puzzles, zebras and snark, with an automatic instruction to end the comedy framing when real symptoms appear;
+- add `cbt_learning` / `#cbt-workshop` for collaborative CBT concepts, guided discovery and low-risk practical skills without claiming to provide therapy, diagnosis, crisis care, individualized high-risk exposure, or treatment planning;
+- add `roman_orator` / `#roman-forum` for deliberately expansive original oratory, with larger but bounded Ollama phase/direct generation budgets and unchanged concise sealed ballots;
+- add `house_of_wisdom` / `#house-of-wisdom` for translation, provenance, transmission layers, attribution, source plurality and cross-disciplinary synthesis;
+- add `ultimate_questions` / `#deep-thought` for life, consciousness, meaning, reality, the universe and everything, while separating empirical, philosophical, spiritual, literary, personal and speculative lenses;
+- reuse Observatory, Commons, Agora and Archive rather than changing `named-regions-v3` solely to add new reasoning postures;
+- add focused Python/Rust tests and `docs/COGNITIVE_MODES.md` covering the new room mappings, safety boundaries and response-budget behavior;
+- bump the control protocol to `nexus/0.13`, runtime/TUI to `2.0.0-alpha9.3`, and Python package to `2.0.0a9.post3`.
+
+> **The room may contain a diagnosis, a diatribe, or the answer 42. None of them gets an extra vote.**
+
 ## 2.0.0-alpha9.2 — Courtroom Stenographer
 
 - add the passive Courtroom Stenographer with Sky-Earth Lord, Divine Dragon-House and Knowledge-Watchman lore plus an exact zero-authority boundary;

@@ -50,15 +50,24 @@ There is no IRC daemon or network connection.
 
 ## Rooms and world state
 
-```text
-#observatory   -> analytical  -> Observatory
-#archive       -> historical  -> Archive
-#agora         -> cultural    -> Agora
-#commons       -> meme_casual -> Commons
-#trap-control  -> operator-only incident control (not a World Mode)
-#trap-base     -> synthetic subject room (not a World Mode)
-#stenographer  -> read-only Knowledge-Watchman ledger (not a World Mode)
-```
+| Room | Mode / role | Region |
+|---|---|---|
+| `#observatory` | `analytical` | Observatory |
+| `#archive` | `historical` | Archive |
+| `#pure-history` | `pure_history` | Archive |
+| `#agora` | `cultural` | Agora |
+| `#commons` | `meme_casual` | Commons |
+| `#differential-clinic` | `clinical_differential` | Observatory |
+| `#house-fun` | `house_fun` | Commons |
+| `#cbt-workshop` | `cbt_learning` | Observatory |
+| `#roman-forum` | `roman_orator` | Agora |
+| `#house-of-wisdom` | `house_of_wisdom` | Archive |
+| `#deep-thought` | `ultimate_questions` | Observatory |
+| `#un-sim` | `game_un` | Assembly Hall |
+| `#mud` | `game_mud` | Dungeon |
+| `#trap-control` | operator-only incident control | Trap Base |
+| `#trap-base` | synthetic subject view | Trap Base |
+| `#stenographer` | read-only Knowledge-Watchman ledger | Courtroom |
 
 Examples:
 
@@ -66,11 +75,15 @@ Examples:
 /join #agora
 /mode meme_casual
 /topic Why does this joke travel badly?
+/join #roman-forum
+/topic O package manager, what hast thou done to the republic?
 ```
 
 The room/mode selection affects framing but not Council authority.
 
 > **The mode can change the vibe. It cannot change the vote.**
+
+See [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the six cognitive-room contracts.
 
 Trap rooms are views over the separate TrapStore, not normal WorldStore rooms.
 The operator can see both. The hostile subject receives only synthetic

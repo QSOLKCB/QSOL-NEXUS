@@ -179,13 +179,22 @@ Initial map:
                          (2,1)
 ```
 
-Built-in modes:
+Selected built-in mappings (multiple modes intentionally share regions):
 
 ```text
 analytical  -> Observatory
 historical  -> Archive
+pure_history -> Archive
 cultural    -> Agora
 meme_casual -> Commons
+clinical_differential -> Observatory
+house_fun -> Commons
+cbt_learning -> Observatory
+roman_orator -> Agora
+house_of_wisdom -> Archive
+ultimate_questions -> Observatory
+game_un -> Assembly Hall
+game_mud -> Dungeon
 ```
 
 The geometry is deliberately an **operational topology**, not a claim that cognition, history, culture, or humor literally occupy Euclidean coordinates.
@@ -196,6 +205,7 @@ Mode invariants:
 mode may change framing
 mode may change tone
 mode may change contextual instructions
+mode may select a bounded generation-length preference
 
 mode may NOT change vote_weight
 mode may NOT change epistemic_privilege

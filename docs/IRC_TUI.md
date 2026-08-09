@@ -86,17 +86,25 @@ unless `--state PATH` is supplied.
 
 ## Rooms are World Modes
 
-NEXUS rooms map directly to the built-in world geometry:
+NEXUS rooms map directly to built-in World Modes and geometry regions:
 
-```text
-#observatory   -> analytical  -> Observatory
-#archive       -> historical   -> Archive
-#pure-history -> pure_history -> Archive
-#agora         -> cultural    -> Agora
-#commons       -> meme_casual -> Commons
-#un-sim        -> game_un     -> Assembly Hall
-#stenographer  -> watch-only canonical AI-action record (not a World Mode)
-```
+| Room | Mode | Region |
+|---|---|---|
+| `#observatory` | `analytical` | Observatory |
+| `#archive` | `historical` | Archive |
+| `#pure-history` | `pure_history` | Archive |
+| `#agora` | `cultural` | Agora |
+| `#commons` | `meme_casual` | Commons |
+| `#differential-clinic` | `clinical_differential` | Observatory |
+| `#house-fun` | `house_fun` | Commons |
+| `#cbt-workshop` | `cbt_learning` | Observatory |
+| `#roman-forum` | `roman_orator` | Agora |
+| `#house-of-wisdom` | `house_of_wisdom` | Archive |
+| `#deep-thought` | `ultimate_questions` | Observatory |
+| `#un-sim` | `game_un` | Assembly Hall |
+| `#mud` | `game_mud` | Dungeon |
+
+`#trap-control`, `#trap-base`, and the watch-only `#stenographer` are specialized control/study views rather than ordinary World Modes.
 
 Examples:
 
@@ -106,12 +114,19 @@ Examples:
 /join #pure-history
 /mode pure_history
 /mode meme_casual
+/join #differential-clinic
+/join #cbt-workshop
+/join #roman-forum
+/join #house-of-wisdom
+/join #deep-thought
 /join #un-sim
 ```
 
 Changing room changes mode and world region. It does not change evidence rules, vote weights, verification, the Secret Scrubber, or the Equality Guard.
 
 > **The mode can change the vibe. It cannot change the vote.**
+
+See [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the six cognitive-room contracts, including the medical and CBT boundaries.
 
 ## `#stenographer` and `/steno`
 

@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.12
+nexus/0.13
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha9.2
+2.0.0-alpha9.3
 ```
 
 Current posture:
@@ -73,8 +73,8 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.12",
-  "runtime_version": "2.0.0-alpha9.2",
+  "protocol": "nexus/0.13",
+  "runtime_version": "2.0.0-alpha9.3",
   "control_transport": "jsonl_stdio",
   "network": "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_or_registered_auth_operations",
   "adapters": ["mock", "ollama_loopback", "xai_https"],
@@ -420,13 +420,19 @@ historical   -> Archive / #archive
 pure_history -> Archive / #pure-history
 cultural    -> Agora
 meme_casual -> Commons
+clinical_differential -> Observatory / #differential-clinic
+house_fun -> Commons / #house-fun
+cbt_learning -> Observatory / #cbt-workshop
+roman_orator -> Agora / #roman-forum
+house_of_wisdom -> Archive / #house-of-wisdom
+ultimate_questions -> Observatory / #deep-thought
 game_un     -> Assembly Hall / #un-sim
 game_mud    -> Dungeon / #mud
 ```
 
-A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds. `pure_history` additionally applies a narrow retry guard only to chatbot-autobiography/media-habit evasions; it does not adjudicate historical truth.
+A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds. `pure_history` additionally applies a narrow retry guard only to chatbot-autobiography/media-habit evasions; it does not adjudicate historical truth. `roman_orator` selects a bounded larger generation budget for phase/direct output but leaves sealed ballots and every authority rule unchanged.
 
-See [`PURE_HISTORY.md`](PURE_HISTORY.md) for the source-discipline contract.
+See [`PURE_HISTORY.md`](PURE_HISTORY.md) for the source-discipline contract and [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the six cognitive-room contracts.
 
 ## Geometry
 

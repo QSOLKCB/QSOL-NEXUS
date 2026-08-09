@@ -40,12 +40,32 @@ class WorldModeTests(unittest.TestCase):
     def test_initial_mode_registry_is_explicit(self) -> None:
         self.assertEqual(
             {mode.mode_id for mode in list_modes()},
-            {"analytical", "historical", "pure_history", "cultural", "meme_casual", "game_un", "game_mud"},
+            {
+                "analytical",
+                "historical",
+                "pure_history",
+                "cultural",
+                "meme_casual",
+                "clinical_differential",
+                "house_fun",
+                "cbt_learning",
+                "roman_orator",
+                "house_of_wisdom",
+                "ultimate_questions",
+                "game_un",
+                "game_mud",
+            },
         )
         self.assertEqual(get_mode("historical").region_id, "archive")
         self.assertEqual(get_mode("pure_history").region_id, "archive")
         self.assertEqual(get_mode("game_un").region_id, "assembly")
         self.assertEqual(get_mode("game_mud").region_id, "dungeon")
+        self.assertEqual(get_mode("clinical_differential").region_id, "observatory")
+        self.assertEqual(get_mode("house_fun").region_id, "commons")
+        self.assertEqual(get_mode("cbt_learning").region_id, "observatory")
+        self.assertEqual(get_mode("roman_orator").region_id, "agora")
+        self.assertEqual(get_mode("house_of_wisdom").region_id, "archive")
+        self.assertEqual(get_mode("ultimate_questions").region_id, "observatory")
         with self.assertRaises(ValueError):
             get_mode("corporate_supremacy")
 
@@ -151,7 +171,21 @@ class ModeGeometryAPITests(unittest.TestCase):
         self.assertEqual(modes["status"], "ok")
         self.assertEqual(
             {item["mode_id"] for item in modes["modes"]},
-            {"analytical", "historical", "pure_history", "cultural", "meme_casual", "game_un", "game_mud"},
+            {
+                "analytical",
+                "historical",
+                "pure_history",
+                "cultural",
+                "meme_casual",
+                "clinical_differential",
+                "house_fun",
+                "cbt_learning",
+                "roman_orator",
+                "house_of_wisdom",
+                "ultimate_questions",
+                "game_un",
+                "game_mud",
+            },
         )
         geometry = api.handle({"operation": "world.geometry"})
         self.assertEqual(geometry["geometry_id"], "named-regions-v3")
