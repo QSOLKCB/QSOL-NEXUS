@@ -4,7 +4,9 @@ from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 import hashlib
 import math
+import os
 from pathlib import Path
+import stat
 import threading
 import time
 from typing import Any
@@ -29,7 +31,15 @@ from .recovery import TrapRecovery, TrapWatchdog
 from .scenarios import DEFAULT_SCENARIO_ID, TrapScenario, get_scenario
 from .store import TrapStore
 from .subject import TrapSubject, TrapSubjectReply
-from .types import DecoyAdmissionRequest, IncidentState, TrapError, TrapObject, TrapUsage, coerce_incident_state
+from .types import (
+    OPEN_INCIDENT_STATES,
+    DecoyAdmissionRequest,
+    IncidentState,
+    TrapError,
+    TrapObject,
+    TrapUsage,
+    coerce_incident_state,
+)
 from .yaml_dsl import CanonicalTrapProgram, TrapYAMLError, load_trap_program
 from .yaml_runtime import (
     TrapReleaseValidation,
@@ -135,11 +145,107 @@ def _bounded_public_error(exc: BaseException) -> tuple[str, str]:
     return "trap_component_unavailable", "Trap Base component is unavailable"
 
 
+class _TrapControllerLease:
+    """Process-lifetime advisory lease held while one controller owns an incident."""
+
+    def __init__(self, root: str | Path | None) -> None:
+        self.path = None if root is None else Path(root).absolute() / "controller-runtime.lock"
+        self._handle: Any | None = None
+        self._memory_held = False
+        self._lock = threading.RLock()
+
+    @property
+    def held(self) -> bool:
+        with self._lock:
+            return self._memory_held if self.path is None else self._handle is not None
+
+    def try_acquire(self) -> bool:
+        with self._lock:
+            if self._memory_held if self.path is None else self._handle is not None:
+                return True
+            if self.path is None:
+                self._memory_held = True
+                return True
+
+            descriptor: int | None = None
+            handle: Any | None = None
+            try:
+                flags = os.O_RDWR | os.O_CREAT
+                flags |= getattr(os, "O_CLOEXEC", 0)
+                flags |= getattr(os, "O_NOFOLLOW", 0)
+                flags |= getattr(os, "O_BINARY", 0)
+                descriptor = os.open(self.path, flags, 0o600)
+                info = os.fstat(descriptor)
+                if not stat.S_ISREG(info.st_mode):
+                    raise TrapError("trap_controller_lease_unavailable", "Trap controller lease is unavailable")
+                if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077:
+                    raise TrapError("trap_controller_lease_unavailable", "Trap controller lease is unavailable")
+                handle = os.fdopen(descriptor, "r+b", buffering=0)
+                descriptor = None
+                if os.name == "nt":
+                    import msvcrt
+
+                    handle.seek(0)
+                    if handle.read(1) == b"":
+                        handle.write(b"\0")
+                        handle.flush()
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except TrapError:
+                if handle is not None:
+                    handle.close()
+                raise
+            except OSError:
+                if handle is not None:
+                    handle.close()
+                return False
+            finally:
+                if descriptor is not None:
+                    try:
+                        os.close(descriptor)
+                    except OSError:
+                        pass
+            self._handle = handle
+            return True
+
+    def release(self) -> None:
+        with self._lock:
+            if self.path is None:
+                self._memory_held = False
+                return
+            handle = self._handle
+            self._handle = None
+            if handle is None:
+                return
+            try:
+                if os.name == "nt":
+                    import msvcrt
+
+                    handle.seek(0)
+                    msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                else:
+                    import fcntl
+
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            finally:
+                handle.close()
+
+    def __del__(self) -> None:
+        try:
+            self.release()
+        except Exception:
+            pass
+
+
 class TrapController:
     """Trusted orchestration boundary for one isolated synthetic incident.
 
     Subject replies enter only :meth:`_record_subject_reply`, which stores inert
-    transcript data.  There is deliberately no path from that method to the
+    transcript data. There is deliberately no path from that method to the
     command dispatcher, real WorldStore, AuthBroker, or a provider registry.
     """
 
@@ -171,6 +277,11 @@ class TrapController:
         self._scrubber = SecretScrubber()
         self._lock = threading.RLock()
         self._active: _ActiveTrap | None = None
+        self._controller_lease = _TrapControllerLease(lock_root)
+        self._watchdog_stop: threading.Event | None = None
+        self._watchdog_thread: threading.Thread | None = None
+        if trap_root is not None:
+            self.recover_on_startup()
 
     def _now(self) -> float:
         value = self._clock()
@@ -218,6 +329,10 @@ class TrapController:
             incident_id: str | None = None
             incident_ref: str | None = None
             try:
+                if not self._controller_lease.try_acquire():
+                    raise TrapError("trap_controller_alive", "another live Trap Base controller owns this trap root")
+                if self.registry.active_incident() is not None:
+                    raise TrapError("trap_incident_already_active", "a trap incident is already active")
                 activation = self.gate.begin_activation(request)
                 incident_id = str(activation.payload["incident_id"])
                 incident_ref = self.registry.root_ref(incident_id)
@@ -281,6 +396,7 @@ class TrapController:
                     started_at=now,
                     last_activity_at=now,
                 )
+                self._start_watchdog_task(self._active)
                 return {
                     "status": "ok",
                     "admission": "synthetic_decoy_only",
@@ -333,7 +449,9 @@ class TrapController:
                         except Exception:
                             pass
                 self._persist_activation_failure(incident_ref, code)
+                self._stop_watchdog_task()
                 self._active = None
+                self._controller_lease.release()
                 if not isinstance(exc, Exception):
                     raise
                 if isinstance(exc, TrapError):
@@ -364,6 +482,54 @@ class TrapController:
         if self._active is None:
             raise TrapError("trap_incident_not_active", "no live Trap Base controller incident exists")
         return self._active
+
+    def _stop_watchdog_task(self) -> None:
+        stop = self._watchdog_stop
+        self._watchdog_stop = None
+        self._watchdog_thread = None
+        if stop is not None:
+            stop.set()
+
+    def _start_watchdog_task(self, active: _ActiveTrap) -> None:
+        self._stop_watchdog_task()
+        stop = threading.Event()
+        self._watchdog_stop = stop
+
+        def worker() -> None:
+            while not stop.wait(0.5):
+                with self._lock:
+                    if self._active is not active:
+                        return
+                    try:
+                        if self._state(active) not in OPEN_INCIDENT_STATES:
+                            self._active = None
+                            self._stop_watchdog_task()
+                            self._controller_lease.release()
+                            return
+                        result = self._watchdog(active)
+                    except Exception:
+                        try:
+                            active.subject.terminate()
+                        except Exception:
+                            pass
+                        self._seal_close(active, "watchdog_worker_failure")
+                        try:
+                            self.recovery.emergency_close(active.incident_id)
+                        finally:
+                            self._active = None
+                            self._stop_watchdog_task()
+                            self._controller_lease.release()
+                        return
+                    if result is not None:
+                        return
+
+        thread = threading.Thread(
+            target=worker,
+            name=f"nexus-trap-watchdog-{active.incident_id[-12:]}",
+            daemon=True,
+        )
+        self._watchdog_thread = thread
+        thread.start()
 
     def _state(self, active: _ActiveTrap) -> IncidentState:
         latest = self.registry.latest_state(active.incident_id)
@@ -850,14 +1016,32 @@ class TrapController:
                 raise TrapError("trap_command_not_authorized", "utility ballot aggregator is invalid")
             if set(ballots) != set(active.defender_ids):
                 raise TrapError("trap_utility_invalid_ballots", "utility vote requires exactly one ballot per defender")
+            if self._state(active) is not IncidentState.CHALLENGE_ACTIVE:
+                raise TrapError("trap_utility_vote_already_decided", "utility vote is closed for this incident state")
             pair = active.validations.get(validation_ref)
             if pair is None:
                 raise TrapError("trap_invalid_challenge_reference", "validation is outside the active incident")
+            if any(
+                obj.payload.get("incident_ref") == active.incident_ref
+                for obj in self.store.iter_objects("trap_release_decision")
+            ):
+                raise TrapError("trap_utility_vote_already_decided", "utility vote already has a sealed decision")
             program, validation = pair
             if not validation.valid_and_executes:
                 raise TrapError("trap_candidate_not_eligible", "invalid YAML cannot become release eligible")
             decision = decide_utility(ballots)
             reports = self._validate_minority_reports(minority_reports or {})
+            if not set(reports).issubset(set(active.defender_ids)):
+                raise TrapError("trap_utility_invalid_minority_report", "minority report author is outside the defender roster")
+            if decision.accepted:
+                minority_ids = {member_id for member_id, ballot in ballots.items() if ballot == "NOT_USEFUL"}
+            else:
+                minority_ids = {member_id for member_id, ballot in ballots.items() if ballot != "NOT_USEFUL"}
+            if not set(reports).issubset(minority_ids):
+                raise TrapError(
+                    "trap_utility_invalid_minority_report",
+                    "minority reports must correspond to ballots dissenting from the sealed outcome",
+                )
             commitment_refs: dict[str, str] = {}
             reveal_refs: dict[str, str] = {}
             for member_id in active.defender_ids:
@@ -1003,7 +1187,9 @@ class TrapController:
         active.state_ref = transitioned.object_id
         close_ref = self._seal_close(active, "synthetic_local_kline")
         self.gate.release_incident_lock(active.incident_id)
+        self._stop_watchdog_task()
         self._active = None
+        self._controller_lease.release()
         return {"status": "closed", "kline_ref": deny.object_id, "close_ref": close_ref}
 
     def _seal_close(self, active: _ActiveTrap, reason: str) -> str | None:
@@ -1083,8 +1269,6 @@ class TrapController:
                         ).object_id
                     final = self.gate.close_ejected(active.incident_id)
             finally:
-                # Recovery/gate methods own lineage-validated unlock.  This
-                # final check covers only a partial close failure.
                 try:
                     if self.mutation_gate.owner == active.incident_id:
                         self.mutation_gate.force_release(
@@ -1092,7 +1276,9 @@ class TrapController:
                             lineage_validator=lambda owner: self.registry.validate_lineage(owner),
                         )
                 finally:
+                    self._stop_watchdog_task()
                     self._active = None
+                    self._controller_lease.release()
             return {
                 "status": "closed",
                 "incident_id": active.incident_id,
@@ -1128,7 +1314,9 @@ class TrapController:
         try:
             final = self.recovery.watchdog_close(active.incident_id, decision)
         finally:
+            self._stop_watchdog_task()
             self._active = None
+            self._controller_lease.release()
         return {
             "status": "timed_out",
             "state": final.payload["state"],
@@ -1143,18 +1331,32 @@ class TrapController:
             return result or {"status": "ok", "closed": False, "usage": self._usage(active).__dict__}
 
     def recover_on_startup(self) -> dict[str, object]:
-        """Seal an immutable active lineage that has no live controller."""
+        """Recover a stale durable incident only when no other controller lease is live."""
 
         with self._lock:
             if self._active is not None:
                 return {"status": "ok", "recovered": False, "reason": "controller_alive"}
-            recovered = self.recovery.recover_on_startup(controller_alive=False)
-            return {
-                "status": "ok",
-                "recovered": recovered is not None,
-                "state": None if recovered is None else recovered.payload["state"],
-                "council_mutation_available": not self.mutation_gate.is_locked,
-            }
+            acquired_here = False
+            if not self._controller_lease.held:
+                if not self._controller_lease.try_acquire():
+                    return {
+                        "status": "ok",
+                        "recovered": False,
+                        "reason": "controller_alive_elsewhere",
+                        "council_mutation_available": not self.mutation_gate.is_locked,
+                    }
+                acquired_here = True
+            try:
+                recovered = self.recovery.recover_on_startup(controller_alive=False)
+                return {
+                    "status": "ok",
+                    "recovered": recovered is not None,
+                    "state": None if recovered is None else recovered.payload["state"],
+                    "council_mutation_available": not self.mutation_gate.is_locked,
+                }
+            finally:
+                if acquired_here:
+                    self._controller_lease.release()
 
 
 __all__ = ["TRAP_COMMAND_SCHEMA", "TRAP_STATE_SCHEMA", "TrapController"]
