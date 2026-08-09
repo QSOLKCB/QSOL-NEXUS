@@ -3,7 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 import unittest
 
-from nexus_runtime.provider_api import _ModeAwareThirdPartyActor
+from nexus_runtime.adapters.third_party import ThirdPartyActor
 from nexus_runtime.types import CouncilMember, Phase, PhaseContext
 
 
@@ -27,9 +27,9 @@ class _RecordingTransport:
 
 
 class ThirdPartyModeBudgetTests(unittest.TestCase):
-    def _actor(self) -> tuple[_ModeAwareThirdPartyActor, _RecordingTransport]:
+    def _actor(self) -> tuple[ThirdPartyActor, _RecordingTransport]:
         transport = _RecordingTransport()
-        actor = _ModeAwareThirdPartyActor(
+        actor = ThirdPartyActor(
             member=CouncilMember("openai-seat", "fixture-model", adapter_id="openai"),
             model="fixture-model",
             transport=transport,  # type: ignore[arg-type]

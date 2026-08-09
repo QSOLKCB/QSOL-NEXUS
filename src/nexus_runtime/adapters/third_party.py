@@ -7,6 +7,7 @@ import math
 import re
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from ..auth.types import AdapterAuthDescriptor, AuthFlow, AuthMethod, SecretMaterial
@@ -29,8 +30,12 @@ THIRD_PARTY_MAX_REQUEST_BYTES = 2 * 1024 * 1024
 THIRD_PARTY_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 THIRD_PARTY_MAX_MODEL_RESPONSE_BYTES = 2 * 1024 * 1024
 THIRD_PARTY_MAX_MODELS = 2048
+THIRD_PARTY_MAX_MODEL_PAGES = 64
+ANTHROPIC_MODEL_PAGE_LIMIT = 1000
+GEMINI_MODEL_PAGE_SIZE = 1000
 THIRD_PARTY_PHASE_OUTPUT_TOKENS = 1024
 THIRD_PARTY_DIRECT_OUTPUT_TOKENS = 1024
+THIRD_PARTY_ROMAN_ORATOR_OUTPUT_TOKENS = 2048
 THIRD_PARTY_BALLOT_OUTPUT_TOKENS = 1024
 
 _MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+-]{0,191}$")
@@ -73,7 +78,7 @@ _PROVIDER_SPECS: dict[str, ProviderSpec] = {
         base_url="https://generativelanguage.googleapis.com/v1beta",
         host="generativelanguage.googleapis.com",
         api_style="gemini_generate_content",
-        model_list_path="/models?pageSize=1000",
+        model_list_path=f"/models?pageSize={GEMINI_MODEL_PAGE_SIZE}",
         setup_url="https://aistudio.google.com/apikey",
     ),
     "groq": ProviderSpec(
@@ -146,6 +151,17 @@ def _bounded_text(value: Any, field_name: str, *, maximum: int = 256) -> str:
     return value
 
 
+def _validate_pagination_token(value: Any, provider_name: str) -> str:
+    if (
+        not isinstance(value, str)
+        or not value
+        or len(value) > 2048
+        or any(ord(character) < 0x20 or ord(character) == 0x7F for character in value)
+    ):
+        raise AdapterProtocolError(f"{provider_name} returned an invalid pagination cursor")
+    return value
+
+
 @dataclass
 class ThirdPartyTransport:
     """Bounded fixed-destination stdlib transport for admitted cloud providers."""
@@ -159,16 +175,21 @@ class ThirdPartyTransport:
         self.spec = provider_spec(self.adapter_id)
         if not isinstance(self.credential, SecretMaterial):
             raise AdapterAuthenticationError(f"{self.adapter_id} credential is unavailable")
-        if (
-            isinstance(self.timeout_seconds, bool)
-            or not isinstance(self.timeout_seconds, (int, float))
-            or not math.isfinite(float(self.timeout_seconds))
-            or not 0 < float(self.timeout_seconds) <= THIRD_PARTY_MAX_TIMEOUT_SECONDS
-        ):
+        if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, (int, float)):
             raise ValueError(
                 f"provider timeout_seconds must be between 0 and {int(THIRD_PARTY_MAX_TIMEOUT_SECONDS)}"
             )
-        self.timeout_seconds = float(self.timeout_seconds)
+        try:
+            timeout_seconds = float(self.timeout_seconds)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError(
+                f"provider timeout_seconds must be between 0 and {int(THIRD_PARTY_MAX_TIMEOUT_SECONDS)}"
+            ) from exc
+        if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= THIRD_PARTY_MAX_TIMEOUT_SECONDS:
+            raise ValueError(
+                f"provider timeout_seconds must be between 0 and {int(THIRD_PARTY_MAX_TIMEOUT_SECONDS)}"
+            )
+        self.timeout_seconds = timeout_seconds
         if self._opener is None:
             self._opener = build_opener(ProxyHandler({}), _NoRedirectHandler())
 
@@ -176,6 +197,11 @@ class ThirdPartyTransport:
         self.list_language_models()
 
     def list_language_models(self) -> list[dict[str, Any]]:
+        if self.adapter_id == "anthropic":
+            return self._list_anthropic_language_models()
+        if self.adapter_id == "gemini":
+            return self._list_gemini_language_models()
+
         value = self._request_json(
             "GET",
             self.spec.model_list_path,
@@ -186,12 +212,6 @@ class ThirdPartyTransport:
             if not isinstance(value, list):
                 raise AdapterProtocolError("together returned an invalid model list")
             models = [self._public_model(item) for item in value]
-        elif self.spec.api_style == "gemini_generate_content":
-            items = value.get("models")
-            if not isinstance(items, list):
-                raise AdapterProtocolError("Gemini returned an invalid model list")
-            models = [self._gemini_public_model(item) for item in items]
-            models = [item for item in models if item is not None]
         else:
             items = value.get("data")
             if not isinstance(items, list):
@@ -199,6 +219,94 @@ class ThirdPartyTransport:
             models = [self._public_model(item) for item in items]
         if len(models) > THIRD_PARTY_MAX_MODELS:
             raise AdapterProtocolError(f"{self.adapter_id} returned too many models")
+        return sorted(models, key=lambda item: item["id"])
+
+    def _list_anthropic_language_models(self) -> list[dict[str, Any]]:
+        models: list[dict[str, Any]] = []
+        after_id: str | None = None
+        seen_cursors: set[str] = set()
+        page_count = 0
+
+        while True:
+            page_count += 1
+            if page_count > THIRD_PARTY_MAX_MODEL_PAGES:
+                raise AdapterProtocolError("anthropic model pagination exceeded the page limit")
+            query = {"limit": str(ANTHROPIC_MODEL_PAGE_LIMIT)}
+            if after_id is not None:
+                query["after_id"] = after_id
+            value = self._request_json(
+                "GET",
+                f"/models?{urlencode(query)}",
+                maximum_bytes=THIRD_PARTY_MAX_MODEL_RESPONSE_BYTES,
+            )
+            items = value.get("data")
+            if not isinstance(items, list):
+                raise AdapterProtocolError("anthropic returned an invalid model list")
+            page = [self._public_model(item) for item in items]
+            if len(models) + len(page) > THIRD_PARTY_MAX_MODELS:
+                raise AdapterProtocolError("anthropic returned too many models")
+            models.extend(page)
+
+            has_more = value.get("has_more", False)
+            if type(has_more) is not bool:
+                raise AdapterProtocolError("anthropic returned an invalid pagination flag")
+            if not has_more:
+                break
+            if not items:
+                raise AdapterProtocolError("anthropic pagination made no progress")
+            if len(models) >= THIRD_PARTY_MAX_MODELS:
+                raise AdapterProtocolError("anthropic returned too many models")
+
+            last_id = value.get("last_id")
+            try:
+                cursor = _validate_model_id(last_id)
+            except ValueError as exc:
+                raise AdapterProtocolError("anthropic returned an invalid pagination cursor") from exc
+            if cursor in seen_cursors:
+                raise AdapterProtocolError("anthropic repeated a pagination cursor")
+            seen_cursors.add(cursor)
+            after_id = cursor
+
+        return sorted(models, key=lambda item: item["id"])
+
+    def _list_gemini_language_models(self) -> list[dict[str, Any]]:
+        models: list[dict[str, Any]] = []
+        page_token: str | None = None
+        seen_cursors: set[str] = set()
+        page_count = 0
+
+        while True:
+            page_count += 1
+            if page_count > THIRD_PARTY_MAX_MODEL_PAGES:
+                raise AdapterProtocolError("Gemini model pagination exceeded the page limit")
+            query = {"pageSize": str(GEMINI_MODEL_PAGE_SIZE)}
+            if page_token is not None:
+                query["pageToken"] = page_token
+            value = self._request_json(
+                "GET",
+                f"/models?{urlencode(query)}",
+                maximum_bytes=THIRD_PARTY_MAX_MODEL_RESPONSE_BYTES,
+            )
+            items = value.get("models")
+            if not isinstance(items, list):
+                raise AdapterProtocolError("Gemini returned an invalid model list")
+            page = [self._gemini_public_model(item) for item in items]
+            page = [item for item in page if item is not None]
+            if len(models) + len(page) > THIRD_PARTY_MAX_MODELS:
+                raise AdapterProtocolError("Gemini returned too many models")
+            models.extend(page)
+
+            next_token = value.get("nextPageToken")
+            if next_token in {None, ""}:
+                break
+            if not items:
+                raise AdapterProtocolError("Gemini pagination made no progress")
+            cursor = _validate_pagination_token(next_token, "Gemini")
+            if cursor in seen_cursors:
+                raise AdapterProtocolError("Gemini repeated a pagination cursor")
+            seen_cursors.add(cursor)
+            page_token = cursor
+
         return sorted(models, key=lambda item: item["id"])
 
     def generate(
@@ -325,8 +433,44 @@ class ThirdPartyTransport:
         return value
 
     def _path_is_admitted(self, method: str, path: str) -> bool:
-        if method == "GET" and path == self.spec.model_list_path:
+        if method == "GET":
+            if path == self.spec.model_list_path:
+                return True
+            if self.adapter_id not in {"anthropic", "gemini"}:
+                return False
+            parsed = urlsplit(path)
+            if parsed.scheme or parsed.netloc or parsed.path != "/models" or parsed.fragment:
+                return False
+            try:
+                query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
+            except ValueError:
+                return False
+
+            if self.adapter_id == "anthropic":
+                if query.get("limit") != [str(ANTHROPIC_MODEL_PAGE_LIMIT)]:
+                    return False
+                if set(query) == {"limit"}:
+                    return True
+                if set(query) != {"limit", "after_id"} or len(query["after_id"]) != 1:
+                    return False
+                try:
+                    _validate_model_id(query["after_id"][0])
+                except ValueError:
+                    return False
+                return True
+
+            if query.get("pageSize") != [str(GEMINI_MODEL_PAGE_SIZE)]:
+                return False
+            if set(query) == {"pageSize"}:
+                return True
+            if set(query) != {"pageSize", "pageToken"} or len(query["pageToken"]) != 1:
+                return False
+            try:
+                _validate_pagination_token(query["pageToken"][0], "Gemini")
+            except AdapterProtocolError:
+                return False
             return True
+
         if method != "POST":
             return False
         if self.spec.api_style == "responses":
@@ -604,10 +748,15 @@ class ThirdPartyActor:
         }
 
     def respond(self, context: PhaseContext) -> str:
+        output_tokens = (
+            THIRD_PARTY_ROMAN_ORATOR_OUTPUT_TOKENS
+            if context.mode_id == "roman_orator"
+            else THIRD_PARTY_PHASE_OUTPUT_TOKENS
+        )
         return self.transport.generate(
             self.model,
             build_phase_prompt(context),
-            max_output_tokens=THIRD_PARTY_PHASE_OUTPUT_TOKENS,
+            max_output_tokens=output_tokens,
             require_complete=False,
         )
 
@@ -620,6 +769,11 @@ class ThirdPartyActor:
         geometry_region_id: str,
         evidence_context: str = "",
     ) -> str:
+        output_tokens = (
+            THIRD_PARTY_ROMAN_ORATOR_OUTPUT_TOKENS
+            if mode_id == "roman_orator"
+            else THIRD_PARTY_DIRECT_OUTPUT_TOKENS
+        )
         return self.transport.generate(
             self.model,
             build_direct_prompt(
@@ -629,7 +783,7 @@ class ThirdPartyActor:
                 geometry_region_id=geometry_region_id,
                 evidence_context=evidence_context,
             ),
-            max_output_tokens=THIRD_PARTY_DIRECT_OUTPUT_TOKENS,
+            max_output_tokens=output_tokens,
             require_complete=False,
         )
 

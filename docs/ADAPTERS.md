@@ -157,7 +157,7 @@ NEXUS exposes operator commands such as:
 ```text
 nexus auth adapters
 nexus auth add <adapter> --method api-key
-nexus auth add <adapter> --method environment --env NAME
+nexus auth add <adapter> --method env --env NAME
 nexus auth list
 nexus auth test <adapter>
 nexus auth logout <adapter>
