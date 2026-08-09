@@ -4,7 +4,7 @@ import argparse
 import json
 from typing import Any
 
-from .adapters import AdapterError, XAITransport
+from .adapters import AdapterError, THIRD_PARTY_PROVIDER_IDS, ThirdPartyTransport, XAITransport
 from .auth import AuthBroker, AuthError
 
 
@@ -21,12 +21,19 @@ def run_models_command(args: argparse.Namespace, broker: AuthBroker) -> int:
     try:
         if args.models_action != "list":
             raise ValueError("unknown models command")
-        if args.adapter_id != "xai":
-            raise ValueError("model discovery currently supports only the xai adapter")
+        if args.adapter_id not in {"xai", *THIRD_PARTY_PROVIDER_IDS}:
+            raise ValueError("model discovery requires an admitted remote provider adapter")
         material = broker.resolve(args.adapter_id, args.profile)
         if material is None:
-            raise AuthError("xAI auth profile did not resolve a credential")
-        models = XAITransport(material, timeout_seconds=args.timeout).list_language_models()
+            raise AuthError(f"{args.adapter_id} auth profile did not resolve a credential")
+        if args.adapter_id == "xai":
+            models = XAITransport(material, timeout_seconds=args.timeout).list_language_models()
+        else:
+            models = ThirdPartyTransport(
+                args.adapter_id,
+                material,
+                timeout_seconds=args.timeout,
+            ).list_language_models()
         result = {
             "status": "ok",
             "adapter_id": args.adapter_id,
