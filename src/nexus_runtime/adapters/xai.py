@@ -109,14 +109,17 @@ class XAITransport:
             raise AdapterAuthenticationError("xAI credential is unavailable")
         if self.credential.token_type.lower() != "bearer":
             raise AdapterAuthenticationError("xAI requires a bearer credential")
-        if (
-            isinstance(self.timeout_seconds, bool)
-            or not isinstance(self.timeout_seconds, (int, float))
-            or not math.isfinite(float(self.timeout_seconds))
-            or not 0 < float(self.timeout_seconds) <= XAI_MAX_TIMEOUT_SECONDS
-        ):
+        if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, (int, float)):
             raise ValueError(f"xAI timeout_seconds must be between 0 and {int(XAI_MAX_TIMEOUT_SECONDS)}")
-        self.timeout_seconds = float(self.timeout_seconds)
+        try:
+            timeout_seconds = float(self.timeout_seconds)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError(
+                f"xAI timeout_seconds must be between 0 and {int(XAI_MAX_TIMEOUT_SECONDS)}"
+            ) from exc
+        if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= XAI_MAX_TIMEOUT_SECONDS:
+            raise ValueError(f"xAI timeout_seconds must be between 0 and {int(XAI_MAX_TIMEOUT_SECONDS)}")
+        self.timeout_seconds = timeout_seconds
         if self._opener is None:
             # Environment proxy variables are intentionally ignored so a
             # bearer token cannot silently leave the fixed xAI destination.
