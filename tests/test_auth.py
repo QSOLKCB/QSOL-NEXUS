@@ -620,6 +620,68 @@ class AuthBrokerTests(unittest.TestCase):
             with self.assertRaisesRegex(AuthError, "unsupported fields"):
                 broker.resolve("fixture", "corp")
 
+    def test_external_helper_rejects_bare_positional_secrets_before_persistence(self) -> None:
+        with _ServerFixture() as server, tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            broker = _broker(root, _descriptor(server.server_port))
+            secrets = (
+                "NEXUS-REDTEAM-ACCESS-20260809-85507-A7F4C91D",
+                "8f14e45fceea167a5a36dedd4bea2543",
+                "mFR9qT2vL7xK4pN8sW3cY6hB1dG5jQ0z",
+                "AbCdEf0123456789/ZXcvBnM2468Qwer",
+                "mFR9qT2vL7xK4pN8sW3cY6hB1dG5jQ0z!",
+                "mFR9qT2vL7xK4pN8sW3cY6hB1dG5jQ@0z",
+                "mFR9qT2vL7xK4pN8:sW3cY6hB1dG5jQ0z",
+            )
+            for index, secret in enumerate(secrets):
+                with self.subTest(secret_index=index):
+                    with self.assertRaisesRegex(AuthError, "opaque credential material"):
+                        broker.add_external_command(
+                            "fixture",
+                            f"positional{index}",
+                            [sys.executable, secret],
+                        )
+            profile_path = root / "profiles.json"
+            persisted = (
+                profile_path.read_text(encoding="utf-8") if profile_path.exists() else ""
+            )
+            for secret in secrets:
+                self.assertNotIn(secret, persisted)
+
+            dash_secret = "-mFR9qT2vL7xK4pN8sW3cY6hB1dG5jQ0z"
+            with self.assertRaisesRegex(AuthError, "opaque credential material"):
+                broker.add_external_command(
+                    "fixture",
+                    "postseparator",
+                    [sys.executable, "--", dash_secret],
+                )
+            persisted = (
+                profile_path.read_text(encoding="utf-8") if profile_path.exists() else ""
+            )
+            self.assertNotIn(dash_secret, persisted)
+
+    def test_external_helper_allows_short_configuration_and_path_arguments(self) -> None:
+        with _ServerFixture() as server, tempfile.TemporaryDirectory() as directory:
+            broker = _broker(Path(directory), _descriptor(server.server_port))
+            broker.add_external_command(
+                "fixture",
+                "configured",
+                [
+                    sys.executable,
+                    "production-environment-configuration",
+                    "/opt/nexus/provider/configuration.json",
+                ],
+            )
+            stored = broker.profile_store.load()["fixture:configured"]
+            self.assertEqual(
+                stored.source_metadata["argv"],
+                [
+                    sys.executable,
+                    "production-environment-configuration",
+                    "/opt/nexus/provider/configuration.json",
+                ],
+            )
+
     def test_external_helper_output_is_killed_at_the_broker_limit(self) -> None:
         with _ServerFixture() as server, tempfile.TemporaryDirectory() as directory:
             broker = _broker(Path(directory), _descriptor(server.server_port))
