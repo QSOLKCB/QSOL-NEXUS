@@ -10,63 +10,16 @@ from .adapters import (
     ThirdPartyActor,
     ThirdPartyTransport,
 )
-from .adapters.base import build_direct_prompt, build_phase_prompt
-from .adapters.third_party import THIRD_PARTY_DIRECT_OUTPUT_TOKENS, THIRD_PARTY_PHASE_OUTPUT_TOKENS
 from .api import MAX_REMOTE_COUNCIL_SEATS, NexusAPI as CoreNexusAPI
 from .local_role_runtime import LocalAwareCitizenship, LocalAwareFailsafe
 from .local_roles import LocalRoleBackendConfig, LocalRoleRegistry
-from .types import CouncilMember, PhaseContext
+from .types import CouncilMember
 
 
 REMOTE_PROVIDER_IDS = frozenset({"xai", *THIRD_PARTY_PROVIDER_IDS})
-THIRD_PARTY_ROMAN_ORATOR_OUTPUT_TOKENS = 2048
 _LOCAL_ROLE_OPERATIONS = frozenset(
     {"local.roles.status", "local.roles.configure", "local.roles.clear"}
 )
-
-
-class _ModeAwareThirdPartyActor(ThirdPartyActor):
-    """Third-party actor that honors the bounded Roman Orator output budget."""
-
-    def respond(self, context: PhaseContext) -> str:
-        output_tokens = (
-            THIRD_PARTY_ROMAN_ORATOR_OUTPUT_TOKENS
-            if context.mode_id == "roman_orator"
-            else THIRD_PARTY_PHASE_OUTPUT_TOKENS
-        )
-        return self.transport.generate(
-            self.model,
-            build_phase_prompt(context),
-            max_output_tokens=output_tokens,
-            require_complete=False,
-        )
-
-    def direct_message(
-        self,
-        message: str,
-        *,
-        mode_id: str,
-        mode_instruction: str,
-        geometry_region_id: str,
-        evidence_context: str = "",
-    ) -> str:
-        output_tokens = (
-            THIRD_PARTY_ROMAN_ORATOR_OUTPUT_TOKENS
-            if mode_id == "roman_orator"
-            else THIRD_PARTY_DIRECT_OUTPUT_TOKENS
-        )
-        return self.transport.generate(
-            self.model,
-            build_direct_prompt(
-                message,
-                mode_id=mode_id,
-                mode_instruction=mode_instruction,
-                geometry_region_id=geometry_region_id,
-                evidence_context=evidence_context,
-            ),
-            max_output_tokens=output_tokens,
-            require_complete=False,
-        )
 
 
 class ProviderNexusAPI(CoreNexusAPI):
@@ -87,7 +40,10 @@ class ProviderNexusAPI(CoreNexusAPI):
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation")
-        if operation in _LOCAL_ROLE_OPERATIONS:
+        # CoreNexusAPI owns malformed/unknown operation validation. Guard the
+        # provider-specific membership test so unhashable JSON shapes (arrays,
+        # objects) cannot escape the structured error boundary as TypeError.
+        if isinstance(operation, str) and operation in _LOCAL_ROLE_OPERATIONS:
             response = self._handle_local_role_operation(request)
         else:
             response = super().handle(request)
@@ -213,7 +169,7 @@ class ProviderNexusAPI(CoreNexusAPI):
         material = self.auth.resolve(adapter_id, profile_name)
         if material is None:
             raise ValueError(f"{adapter_id} auth profile did not resolve a credential")
-        return _ModeAwareThirdPartyActor(
+        return ThirdPartyActor(
             member=member,
             model=member.model_id,
             transport=ThirdPartyTransport(
