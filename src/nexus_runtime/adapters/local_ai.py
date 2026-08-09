@@ -146,14 +146,15 @@ class LocalAITransport:
         )
         if self.credential is not None and not isinstance(self.credential, SecretMaterial):
             raise AdapterAuthenticationError("local AI credential is invalid")
-        if (
-            isinstance(self.timeout_seconds, bool)
-            or not isinstance(self.timeout_seconds, (int, float))
-            or not math.isfinite(float(self.timeout_seconds))
-            or not 0 < float(self.timeout_seconds) <= LOCAL_AI_MAX_TIMEOUT_SECONDS
-        ):
+        if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, (int, float)):
             raise ValueError("local AI timeout_seconds is outside the admitted range")
-        self.timeout_seconds = float(self.timeout_seconds)
+        try:
+            timeout_seconds = float(self.timeout_seconds)
+        except (OverflowError, ValueError) as exc:
+            raise ValueError("local AI timeout_seconds is outside the admitted range") from exc
+        if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= LOCAL_AI_MAX_TIMEOUT_SECONDS:
+            raise ValueError("local AI timeout_seconds is outside the admitted range")
+        self.timeout_seconds = timeout_seconds
         if self._opener is None:
             self._opener = build_opener(ProxyHandler({}), _NoRedirectHandler())
 
