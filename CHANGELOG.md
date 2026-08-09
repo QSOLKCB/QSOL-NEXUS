@@ -14,7 +14,7 @@ All notable changes to QSOL NEXUS are documented here.
 - add focused Python/Rust tests and `docs/COGNITIVE_MODES.md` covering the new room mappings, safety boundaries and response-budget behavior;
 - bump the control protocol to `nexus/0.13`, runtime/TUI to `2.0.0-alpha9.3`, and Python package to `2.0.0a9.post3`.
 
-> **The room may contain a diagnosis, a diatribe, or the answer 42. None of them gets an extra vote.**
+> **The room may contain a differential, a diatribe, or the answer 42. None of them gets an extra vote.**
 
 ## 2.0.0-alpha9.2 — Courtroom Stenographer
 

@@ -181,21 +181,21 @@ Initial map:
 
 Selected built-in mappings (multiple modes intentionally share regions):
 
-```text
-analytical  -> Observatory
-historical  -> Archive
-pure_history -> Archive
-cultural    -> Agora
-meme_casual -> Commons
-clinical_differential -> Observatory
-house_fun -> Commons
-cbt_learning -> Observatory
-roman_orator -> Agora
-house_of_wisdom -> Archive
-ultimate_questions -> Observatory
-game_un -> Assembly Hall
-game_mud -> Dungeon
-```
+| Mode | Region |
+|---|---|
+| `analytical` | Observatory |
+| `historical` | Archive |
+| `pure_history` | Archive |
+| `cultural` | Agora |
+| `meme_casual` | Commons |
+| `clinical_differential` | Observatory |
+| `house_fun` | Commons |
+| `cbt_learning` | Observatory |
+| `roman_orator` | Agora |
+| `house_of_wisdom` | Archive |
+| `ultimate_questions` | Observatory |
+| `game_un` | Assembly Hall |
+| `game_mud` | Dungeon |
 
 The geometry is deliberately an **operational topology**, not a claim that cognition, history, culture, or humor literally occupy Euclidean coordinates.
 

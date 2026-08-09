@@ -414,21 +414,21 @@ See [`MUD.md`](MUD.md).
 
 Built-in modes:
 
-```text
-analytical  -> Observatory
-historical   -> Archive / #archive
-pure_history -> Archive / #pure-history
-cultural    -> Agora
-meme_casual -> Commons
-clinical_differential -> Observatory / #differential-clinic
-house_fun -> Commons / #house-fun
-cbt_learning -> Observatory / #cbt-workshop
-roman_orator -> Agora / #roman-forum
-house_of_wisdom -> Archive / #house-of-wisdom
-ultimate_questions -> Observatory / #deep-thought
-game_un     -> Assembly Hall / #un-sim
-game_mud    -> Dungeon / #mud
-```
+| Mode | Region | TUI room |
+|---|---|---|
+| `analytical` | Observatory | `#observatory` |
+| `historical` | Archive | `#archive` |
+| `pure_history` | Archive | `#pure-history` |
+| `cultural` | Agora | `#agora` |
+| `meme_casual` | Commons | `#commons` |
+| `clinical_differential` | Observatory | `#differential-clinic` |
+| `house_fun` | Commons | `#house-fun` |
+| `cbt_learning` | Observatory | `#cbt-workshop` |
+| `roman_orator` | Agora | `#roman-forum` |
+| `house_of_wisdom` | Archive | `#house-of-wisdom` |
+| `ultimate_questions` | Observatory | `#deep-thought` |
+| `game_un` | Assembly Hall | `#un-sim` |
+| `game_mud` | Dungeon | `#mud` |
 
 A mode changes framing/context only. It does not change vote weight, evidence state, verification, secret handling, Equality Guard behavior, or consensus thresholds. `pure_history` additionally applies a narrow retry guard only to chatbot-autobiography/media-habit evasions; it does not adjudicate historical truth. `roman_orator` selects a bounded larger generation budget for phase/direct output but leaves sealed ballots and every authority rule unchanged.
 
