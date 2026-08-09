@@ -1,6 +1,7 @@
 """QSOL NEXUS model-neutral reference runtime."""
 
-from .api import NexusAPI, PROTOCOL_VERSION, RUNTIME_VERSION
+from .api import PROTOCOL_VERSION, RUNTIME_VERSION
+from .provider_api import ProviderNexusAPI, ProviderNexusAPI as NexusAPI
 from .council import CouncilCoordinator
 from .guard import EqualityGuard
 from .scrub import SecretScrubber
@@ -21,6 +22,7 @@ __all__ = [
     "NexusAPI",
     "PROTOCOL_VERSION",
     "Phase",
+    "ProviderNexusAPI",
     "RUNTIME_VERSION",
     "SecretScrubber",
     "StenographerRecord",
