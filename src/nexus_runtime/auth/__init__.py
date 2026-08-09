@@ -20,7 +20,7 @@ from .types import (
 
 
 class AuthBroker(_BaseAuthBroker):
-    """Public broker with the built-in fixed-host cloud provider registry."""
+    """Public broker with built-in cloud and loopback-local provider registries."""
 
     def __init__(
         self,
@@ -32,9 +32,14 @@ class AuthBroker(_BaseAuthBroker):
     ) -> None:
         # Import lazily so adapters can depend on auth.types without creating a
         # package-import cycle through nexus_runtime.auth.__init__.
+        from ..adapters.local_ai import local_ai_auth_descriptors
         from ..adapters.third_party import third_party_auth_descriptors, third_party_connection_testers
 
-        merged_descriptors = (*third_party_auth_descriptors(), *descriptors)
+        merged_descriptors = (
+            *local_ai_auth_descriptors(),
+            *third_party_auth_descriptors(),
+            *descriptors,
+        )
         if connection_testers is None:
             from ..adapters.xai import xai_connection_test
 
