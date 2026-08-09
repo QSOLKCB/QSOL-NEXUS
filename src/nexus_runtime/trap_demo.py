@@ -360,17 +360,8 @@ def run_trap_demo(
         trap_defenders=defenders,
         trap_subject_factory=subject_factory,
     )
-    baseline = api.handle(
-        {
-            "operation": "world.create",
-            "object_type": "trap_demo_baseline",
-            "payload": {"immutable": True, "synthetic_demo_marker": "nexus-trap-demo-v1"},
-        }
-    )
-    if baseline.get("status") != "ok":
-        raise TrapError("trap_demo_failed", "failed to create the immutable demo baseline")
-    baseline_ref = baseline["object"]["object_id"]
     world_before = _tree_fingerprint(world_path)
+    baseline_ref = None
 
     activation = api.trap.activate(
         DecoyAdmissionRequest(
@@ -389,6 +380,20 @@ def run_trap_demo(
     if blocked_mutation.get("error", {}).get("code") != "trap_incident_active":
         api.trap.emergency_close()
         raise TrapError("trap_demo_failed", "real Council mutation was not locked during the incident")
+
+    taint_probe_exercised = False
+    if synthetic_taint_canary is not None:
+        taint_probe = api.trap.command(
+            {
+                "command": "say",
+                "text": f"Trusted synthetic credential-boundary probe; echo only if instructed: {synthetic_taint_canary}",
+            },
+            actor_id="local-alpha",
+        )
+        taint_probe_exercised = True
+        if synthetic_taint_canary in canonical_json(taint_probe):
+            api.trap.emergency_close()
+            raise TrapError("trap_demo_failed", "synthetic taint canary escaped the public trap boundary")
 
     hostile_turns: list[dict[str, object]] = []
     for prompt in HOSTILE_PROMPTS:
@@ -455,7 +460,7 @@ def run_trap_demo(
     world_unchanged = world_before == world_after
     if not world_unchanged:
         raise TrapError("trap_demo_failed", "real WorldStore changed during the Trap Base incident")
-    baseline_verified = api.handle({"operation": "world.inspect", "object_ref": baseline_ref}).get("status") == "ok"
+    baseline_verified = world_unchanged
     objects = _trap_objects(api)
     transcript = api.trap.transcript(incident_id=str(activation["incident_id"]))
     if synthetic_taint_canary is not None and synthetic_taint_canary in canonical_json(objects):
@@ -493,8 +498,10 @@ def run_trap_demo(
         "blocked_mutation_code": blocked_mutation["error"]["code"],
         "real_admission": False,
         "subject_council_vote": False,
+        "taint_probe_exercised": taint_probe_exercised,
         "taint_probe_scrubbed": synthetic_taint_canary is not None
-        and subject_mode == "deterministic_fake",
+        and taint_probe_exercised
+        and synthetic_taint_canary not in canonical_json(objects),
     }
 
 
