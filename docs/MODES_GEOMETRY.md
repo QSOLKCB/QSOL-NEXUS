@@ -18,7 +18,7 @@ GEOMETRY
   = named region, coordinate and adjacency
 ```
 
-Neither concept changes Council authority, evidence status, verification, secret handling, or claim boundaries.
+Neither concept changes Council authority, evidence status, verification, secret handling, or claim boundaries. A mode may also select a bounded response-length preference; `roman_orator` uses that capability for intentionally expansive output without changing anyone's vote.
 
 > **The mode can change the vibe. It cannot change the vote.**
 
@@ -123,6 +123,36 @@ meme consensus != factual consensus
 
 The Equality Guard remains active. The Secret Scrubber remains active. Evidence and verification rules remain unchanged.
 
+### House-Style Differential Clinic — Observatory
+
+`clinical_differential` provides structured educational differential reasoning: timeline, supplied findings, missing information, red flags, ranked candidates, evidence for and against, dangerous alternatives, and discriminating next questions or tests.
+
+It cannot diagnose, prescribe, replace examination or turn a Council vote into medical evidence. Possible emergencies or serious red flags must be made explicit with a recommendation for urgent local professional care.
+
+### House-Style Diagnostic Fun — Commons
+
+`house_fun` is an original fictional diagnostic-drama room for zebras, reversals, whiteboard arguments and deadpan banter. It does not quote or impersonate television characters. Real symptoms end the comedy bit and restore the safety-first non-diagnostic boundary.
+
+### CBT Learning Workshop — Observatory
+
+`cbt_learning` teaches the situation–thought–emotion/body–behaviour loop, guided discovery, evidence checking, balanced alternatives and low-risk behavioural experiments.
+
+It is education and self-reflection rather than psychotherapy, diagnosis, individualized high-risk exposure, treatment planning or crisis care.
+
+### Roman Orator — Agora
+
+`roman_orator` permits deliberately long-form original rhetoric using classical argument structure, refutation and peroration. The adapter response budget expands in this mode; ballots, evidence status, Council thresholds and vote weights do not.
+
+### House of Wisdom — Archive
+
+`house_of_wisdom` emphasizes translation, provenance, transmission layers, attribution, source plurality and cross-disciplinary synthesis. It takes inspiration from Abbasid-era Baghdad while keeping disputed institutional details distinct from later legend.
+
+### Life, the Universe and Everything — Observatory
+
+`ultimate_questions` supports deep dialogue across empirical science, philosophy, religious or spiritual traditions, literature, lived experience, values and speculation. Actors must separate those lenses and preserve unresolved tensions rather than manufacture a final answer.
+
+See [`COGNITIVE_MODES.md`](COGNITIVE_MODES.md) for the complete room contracts and medical/CBT boundaries.
+
 ### UN Simulation Game — Assembly Hall
 
 `game_un` is the first explicit game mode.
@@ -222,7 +252,7 @@ Properties:
 - coordinates are small deterministic integers;
 - adjacency is explicit and symmetric;
 - hop distance is computable;
-- every built-in mode maps to exactly one region, while multiple modes may intentionally share a region (for example `historical` and `pure_history` both map to Archive);
+- every built-in mode maps to exactly one region, while multiple modes may intentionally share a region (for example `historical`, `pure_history`, and `house_of_wisdom` map to Archive, while several evidence-oriented modes share the Observatory);
 - the current built-in geometry identifier is `named-regions-v3`;
 - the content-derived `topology_ref` remains separate from that human-readable identifier.
 
