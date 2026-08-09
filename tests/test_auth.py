@@ -1072,7 +1072,7 @@ class AuthAPITests(unittest.TestCase):
             self.assertNotIn(FAKE_REFRESH_TOKEN, encoded)
             self.assertIn("auth.list", operations["operations"])
             self.assertTrue(health["remote_provider_auth"])
-            self.assertEqual(health["auth_broker"]["remote_auth_descriptor_count"], 2)
+            self.assertEqual(health["auth_broker"]["remote_auth_descriptor_count"], 7)
             self.assertTrue(health["auth_broker"]["remote_adapters_admitted"])
             if world_root.exists():
                 world_bytes = b"".join(path.read_bytes() for path in world_root.rglob("*") if path.is_file())
@@ -1092,7 +1092,10 @@ class AuthAPITests(unittest.TestCase):
                 exit_code = main(["--auth-root", directory, "auth", "adapters"])
             self.assertEqual(exit_code, 0)
             value = json.loads(output.getvalue())
-            self.assertEqual([row["adapter_id"] for row in value["adapters"]], ["mock", "ollama", "xai"])
+            self.assertEqual(
+                [row["adapter_id"] for row in value["adapters"]],
+                ["anthropic", "gemini", "groq", "mock", "ollama", "openai", "together", "xai"],
+            )
             for forbidden in ("access_token", "refresh_token", "credential_handle"):
                 self.assertNotIn(forbidden, output.getvalue())
 
