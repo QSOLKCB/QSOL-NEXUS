@@ -6,7 +6,7 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
-from .api import NexusAPI
+from .provider_api import ProviderNexusAPI as NexusAPI
 from .auth import AuthBroker, AuthError, ensure_disjoint_auth_world_roots
 from .auth.storage import default_auth_root
 from .auth_cli import configure_auth_parser, emit_auth_error, run_auth_command
