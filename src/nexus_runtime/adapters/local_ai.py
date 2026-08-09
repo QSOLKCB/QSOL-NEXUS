@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from http.client import HTTPException
+import hashlib
 import ipaddress
 import json
 import math
@@ -12,7 +13,16 @@ from urllib.parse import quote, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from ..auth.types import AdapterAuthDescriptor, AuthFlow, AuthMethod, SecretMaterial
-from .base import AdapterAuthenticationError, AdapterError, AdapterProtocolError
+from ..types import Ballot, CouncilMember, PhaseContext
+from .base import (
+    AdapterAuthenticationError,
+    AdapterError,
+    AdapterProtocolError,
+    build_ballot_prompt,
+    build_direct_prompt,
+    build_phase_prompt,
+    parse_ballot_response,
+)
 
 
 LOCAL_AI_ADAPTER_IDS = frozenset({"lmstudio_local", "anythingllm_local", "openai_local"})
@@ -21,6 +31,10 @@ LOCAL_AI_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 LOCAL_AI_MAX_OUTPUT_TOKENS = 4096
 LOCAL_AI_DEFAULT_TIMEOUT_SECONDS = 180.0
 LOCAL_AI_MAX_TIMEOUT_SECONDS = 1800.0
+LOCAL_AI_PHASE_OUTPUT_TOKENS = 768
+LOCAL_AI_DIRECT_OUTPUT_TOKENS = 1024
+LOCAL_AI_ROMAN_ORATOR_OUTPUT_TOKENS = 2048
+LOCAL_AI_BALLOT_OUTPUT_TOKENS = 512
 
 _DEFAULT_ENDPOINTS = {
     "lmstudio_local": "http://127.0.0.1:1234",
@@ -105,12 +119,11 @@ def validate_local_ai_endpoint(value: str) -> str:
     host = parsed.hostname.lower()
     if host != "localhost":
         try:
-            if not ipaddress.ip_address(host).is_loopback:
-                raise ValueError("local AI endpoint must resolve to a loopback address")
+            address = ipaddress.ip_address(host)
         except ValueError as exc:
-            if "loopback" in str(exc):
-                raise
             raise ValueError("local AI endpoint must use localhost or a loopback IP literal") from exc
+        if not address.is_loopback:
+            raise ValueError("local AI endpoint must resolve to a loopback address")
     return value.rstrip("/")
 
 
@@ -355,10 +368,122 @@ class LocalAITransport:
         return text.strip()
 
 
+@dataclass
+class LocalAIActor:
+    """One equal-vote Council actor backed by a loopback-local model host."""
+
+    member: CouncilMember
+    transport: LocalAITransport
+    model: str | None = None
+    workspace: str | None = None
+    mcp_plugins: tuple[LocalMCPPlugin, ...] = ()
+    max_output_tokens: int = LOCAL_AI_PHASE_OUTPUT_TOKENS
+
+    def __post_init__(self) -> None:
+        if self.member.adapter_id != self.transport.adapter_id:
+            raise ValueError("local AI member adapter does not match transport")
+        if self.transport.adapter_id == "anythingllm_local":
+            if self.workspace is None or self.model is not None:
+                raise ValueError("AnythingLLM actor requires workspace and no model override")
+            _validate_workspace(self.workspace)
+        else:
+            if self.model is None or self.workspace is not None:
+                raise ValueError("local AI actor requires model and no workspace")
+            _validate_model(self.model)
+        if not isinstance(self.mcp_plugins, tuple) or not all(
+            isinstance(item, LocalMCPPlugin) for item in self.mcp_plugins
+        ):
+            raise ValueError("local AI actor MCP plugins are invalid")
+        if self.mcp_plugins and self.transport.adapter_id != "lmstudio_local":
+            raise ValueError("only LM Studio local actors accept NEXUS-selected MCP plugins")
+
+    @property
+    def replayable(self) -> bool:
+        return False
+
+    def identity_metadata(self) -> dict[str, Any]:
+        return {
+            "actor_kind": self.transport.adapter_id,
+            "network_scope": "loopback_only",
+            "local_model_id": self.model,
+            "anythingllm_workspace": self.workspace,
+            "mcp_plugin_ids": [item.plugin_id for item in self.mcp_plugins],
+            "mcp_ephemeral_urls_allowed": False,
+            "mcp_tools_enabled_for_ballot": False,
+            "automatic_tools": bool(self.mcp_plugins),
+        }
+
+    def _session_key(self, value: str) -> str:
+        digest = hashlib.sha256(value.encode("utf-8")).hexdigest()[:24]
+        return f"nexus-{self.member.member_id}-{digest}"[:128]
+
+    def respond(self, context: PhaseContext) -> str:
+        output_tokens = (
+            LOCAL_AI_ROMAN_ORATOR_OUTPUT_TOKENS
+            if context.mode_id == "roman_orator"
+            else self.max_output_tokens
+        )
+        return self.transport.generate(
+            build_phase_prompt(context),
+            model=self.model,
+            workspace=self.workspace,
+            mcp_plugins=self.mcp_plugins,
+            session_key=self._session_key(
+                f"phase:{context.session_id}:{context.phase.value}:{self.member.member_id}"
+            ),
+            max_output_tokens=output_tokens,
+        )
+
+    def direct_message(
+        self,
+        message: str,
+        *,
+        mode_id: str,
+        mode_instruction: str,
+        geometry_region_id: str,
+        evidence_context: str = "",
+    ) -> str:
+        output_tokens = (
+            LOCAL_AI_ROMAN_ORATOR_OUTPUT_TOKENS
+            if mode_id == "roman_orator"
+            else LOCAL_AI_DIRECT_OUTPUT_TOKENS
+        )
+        prompt = build_direct_prompt(
+            message,
+            mode_id=mode_id,
+            mode_instruction=mode_instruction,
+            geometry_region_id=geometry_region_id,
+            evidence_context=evidence_context,
+        )
+        return self.transport.generate(
+            prompt,
+            model=self.model,
+            workspace=self.workspace,
+            mcp_plugins=self.mcp_plugins,
+            session_key=self._session_key(f"direct:{mode_id}:{geometry_region_id}:{message}"),
+            max_output_tokens=output_tokens,
+        )
+
+    def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
+        # MCP integrations are intentionally absent from sealed-ballot calls.
+        raw = self.transport.generate(
+            build_ballot_prompt(context),
+            model=self.model,
+            workspace=self.workspace,
+            mcp_plugins=(),
+            session_key=self._session_key(
+                f"ballot:{context.session_id}:{self.member.member_id}"
+            ),
+            max_output_tokens=LOCAL_AI_BALLOT_OUTPUT_TOKENS,
+        )
+        return parse_ballot_response(raw, self.transport.adapter_id)
+
+
 __all__ = [
     "LOCAL_AI_ADAPTER_IDS",
     "LOCAL_AI_DEFAULT_TIMEOUT_SECONDS",
     "LOCAL_AI_MAX_OUTPUT_TOKENS",
+    "LocalAIActor",
     "LocalAITransport",
     "LocalMCPPlugin",
     "default_local_ai_endpoint",
