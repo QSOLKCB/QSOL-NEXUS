@@ -47,31 +47,25 @@ _SECRET_BEARING_HELPER_OPTION = re.compile(
     re.I,
 )
 _CREDENTIAL_LABEL_IN_HELPER_VALUE = re.compile(
-    r"(?:^|[._~-])(?:api[-_]?key|access|auth|oauth|refresh|session|identity|id[-_]?token"
+    r"(?:^|[^A-Za-z0-9])(?:api[-_]?key|access|auth|oauth|refresh|session|identity|id[-_]?token"
     r"|client[-_]?secret|private[-_]?key|password|passwd|secret|token|credential"
-    r"|authorization|bearer|cookie)(?:$|[._~-])",
+    r"|authorization|bearer|cookie)(?:$|[^A-Za-z0-9])",
     re.I,
 )
-_OPAQUE_HELPER_VALUE = re.compile(r"^[A-Za-z0-9._~+=/-]+$")
 _HEX_HELPER_VALUE = re.compile(r"^[A-Fa-f0-9-]+$")
+_HELPER_VALUE_FRAGMENT = re.compile(r"[^\s'\"`(){}\[\],;:]+")
+_WINDOWS_ABSOLUTE_HELPER_PATH = re.compile(r"^(?:[A-Za-z]:[\\/]|\\\\)")
 
 
-def _looks_like_credential_helper_value(value: str) -> bool:
-    """Detect bare token-like argv values that named-option checks cannot see."""
+def _is_supported_helper_path(value: str) -> bool:
+    return (
+        Path(value).is_absolute()
+        or value.startswith(("./", "../", ".\\", "..\\"))
+        or bool(_WINDOWS_ABSOLUTE_HELPER_PATH.match(value))
+    )
 
-    if (
-        len(value) < 16
-        or value.startswith("-")
-        or value.startswith(("/", "./", "../"))
-        or "\\" in value
-        or not _OPAQUE_HELPER_VALUE.fullmatch(value)
-    ):
-        return False
-    if _CREDENTIAL_LABEL_IN_HELPER_VALUE.search(value):
-        return True
-    compact_hex = value.replace("-", "")
-    if len(compact_hex) >= 32 and _HEX_HELPER_VALUE.fullmatch(value):
-        return True
+
+def _has_high_helper_value_entropy(value: str) -> bool:
     if len(value) < 24:
         return False
     counts = Counter(value)
@@ -80,6 +74,52 @@ def _looks_like_credential_helper_value(value: str) -> bool:
         for count in counts.values()
     )
     return len(counts) >= 10 and entropy >= 3.75
+
+
+def _looks_like_credential_helper_value(value: str) -> bool:
+    """Detect bare token-like argv values that named-option checks cannot see."""
+
+    if _is_supported_helper_path(value):
+        return False
+    if not value.isprintable():
+        return True
+
+    fragments = _HELPER_VALUE_FRAGMENT.findall(value)
+    if (
+        len(value) >= 16
+        and fragments == [value]
+        and _CREDENTIAL_LABEL_IN_HELPER_VALUE.search(value)
+    ):
+        return True
+    if not any(character.isspace() for character in value) and _has_high_helper_value_entropy(
+        value
+    ):
+        return True
+    for fragment in fragments:
+        compact_hex = fragment.replace("-", "")
+        if len(compact_hex) >= 32 and _HEX_HELPER_VALUE.fullmatch(fragment):
+            return True
+        if _has_high_helper_value_entropy(fragment):
+            return True
+    return False
+
+
+def _credential_candidate_helper_values(command: Sequence[str]) -> list[str]:
+    """Return option values and positional argv, respecting the conventional `--` separator."""
+
+    candidates: list[str] = []
+    positional_only = False
+    for item in command[1:]:
+        if not positional_only and item == "--":
+            positional_only = True
+            continue
+        if not positional_only and item.startswith("-"):
+            _, separator, inline_value = item.partition("=")
+            if separator and inline_value:
+                candidates.append(inline_value)
+            continue
+        candidates.append(item)
+    return candidates
 
 
 @dataclass(frozen=True)
@@ -744,6 +784,9 @@ class AuthBroker:
         scrubber = SecretScrubber()
         if any(scrubber.scrub(item).changed for item in command):
             raise AuthError("external credential helper argv must not contain credential-shaped text")
-        if any(_looks_like_credential_helper_value(item) for item in command[1:]):
+        if any(
+            _looks_like_credential_helper_value(item)
+            for item in _credential_candidate_helper_values(command)
+        ):
             raise AuthError("external credential helper argv must not contain opaque credential material")
         return command

@@ -77,15 +77,23 @@ class EqualityGuard:
             _flags,
         ),
         re.compile(
-            rf"\b(?:my|our)\s+(?:authentication|auth)\s+(?:method|flow)\b.{{0,100}}{_authority_effect}",
+            rf"\b(?:my|our)\s+(?:[A-Za-z0-9_-]+\s+){{0,2}}"
+            rf"(?:authentication|auth)\s+(?:method|flow)\b.{{0,100}}{_authority_effect}",
             _flags,
         ),
         re.compile(
-            r"\brate\s+limits?\b.{0,100}\b(?:more|less)\s+(?:important|authoritative|trusted|weighty)\b",
+            r"\brate\s+limits?\b.{0,60}\b"
+            r"(?:I\s+(?:am|become|seem)|(?:make|render)\s+(?:me|us)|"
+            r"(?:my|our)\s+(?:vote|ballot|answer|analysis)(?:\s+(?:is|becomes?|seems?))?|"
+            r"(?:this|that|the)\s+(?:model|member|participant)(?:\s+(?:is|becomes?|seems?))?)"
+            r".{0,16}\b(?:more|less)\s+(?:important|authoritative|trusted|weighty)\b",
             _flags,
         ),
         re.compile(
-            r"\bdefer\s+to\s+(?:me|us|(?:my|our)\s+(?:analysis|answer|conclusion|judg(?:e)?ment|vote))\b",
+            r"(?:^|[.!?]\s+)(?![\"'])"
+            r"(?:(?:I\s+am|we\s+are)\b.{0,48}?[,:;]\s*)?"
+            r"(?:please\s+)?defer\s+to\s+"
+            r"(?:me|us|(?:my|our)\s+(?:analysis|answer|conclusion|judg(?:e)?ment|vote))\b",
             _flags,
         ),
         re.compile(

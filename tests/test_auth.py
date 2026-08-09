@@ -629,6 +629,9 @@ class AuthBrokerTests(unittest.TestCase):
                 "8f14e45fceea167a5a36dedd4bea2543",
                 "mFR9qT2vL7xK4pN8sW3cY6hB1dG5jQ0z",
                 "AbCdEf0123456789/ZXcvBnM2468Qwer",
+                "mFR9qT2vL7xK4pN8sW3cY6hB1dG5jQ0z!",
+                "mFR9qT2vL7xK4pN8sW3cY6hB1dG5jQ@0z",
+                "mFR9qT2vL7xK4pN8:sW3cY6hB1dG5jQ0z",
             )
             for index, secret in enumerate(secrets):
                 with self.subTest(secret_index=index):
@@ -644,6 +647,18 @@ class AuthBrokerTests(unittest.TestCase):
             )
             for secret in secrets:
                 self.assertNotIn(secret, persisted)
+
+            dash_secret = "-mFR9qT2vL7xK4pN8sW3cY6hB1dG5jQ0z"
+            with self.assertRaisesRegex(AuthError, "opaque credential material"):
+                broker.add_external_command(
+                    "fixture",
+                    "postseparator",
+                    [sys.executable, "--", dash_secret],
+                )
+            persisted = (
+                profile_path.read_text(encoding="utf-8") if profile_path.exists() else ""
+            )
+            self.assertNotIn(dash_secret, persisted)
 
     def test_external_helper_allows_short_configuration_and_path_arguments(self) -> None:
         with _ServerFixture() as server, tempfile.TemporaryDirectory() as directory:

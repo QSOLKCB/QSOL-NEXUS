@@ -181,7 +181,7 @@ Environment profiles persist only the variable name. External-command profiles p
 }
 ```
 
-Raw tokens must never be placed in helper arguments. Credential-bearing options such as `--token`, `--api-key`, `--password`, and their inline-value forms are rejected before argv is persisted. Credential-labelled, long opaque, high-entropy and hash-like bare positional values are also rejected. Put non-public helper inputs in the helper's own secure store or an environment reference; do not route them through argv. Ordinary short configuration labels, scripts, and absolute or dot-relative filesystem paths remain supported. Helper stdout is parsed as secret material and never copied into normal output; stderr is suppressed at the broker boundary.
+Raw tokens must never be placed in helper arguments. Credential-bearing options such as `--token`, `--api-key`, `--password`, and their inline-value forms are rejected before argv is persisted. Credential-labelled, punctuation-rich, long opaque, high-entropy and hash-like bare positional values are also rejected, including dash-prefixed positional values after `--`. Put non-public helper inputs in the helper's own secure store or an environment reference; do not route them through argv. Ordinary low-entropy configuration labels, scripts, and absolute or dot-relative filesystem paths remain supported. Helper stdout is parsed as secret material and never copied into normal output; stderr is suppressed at the broker boundary.
 
 ## Grok Build relationship
 
