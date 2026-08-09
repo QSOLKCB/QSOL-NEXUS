@@ -7,6 +7,7 @@ import math
 import re
 from typing import Any, Callable
 from urllib.error import HTTPError, URLError
+from urllib.parse import parse_qs, urlencode, urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from ..auth.types import AdapterAuthDescriptor, AuthFlow, AuthMethod, SecretMaterial
@@ -29,6 +30,7 @@ THIRD_PARTY_MAX_REQUEST_BYTES = 2 * 1024 * 1024
 THIRD_PARTY_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
 THIRD_PARTY_MAX_MODEL_RESPONSE_BYTES = 2 * 1024 * 1024
 THIRD_PARTY_MAX_MODELS = 2048
+ANTHROPIC_MODEL_PAGE_LIMIT = 1000
 THIRD_PARTY_PHASE_OUTPUT_TOKENS = 1024
 THIRD_PARTY_DIRECT_OUTPUT_TOKENS = 1024
 THIRD_PARTY_BALLOT_OUTPUT_TOKENS = 1024
@@ -176,6 +178,9 @@ class ThirdPartyTransport:
         self.list_language_models()
 
     def list_language_models(self) -> list[dict[str, Any]]:
+        if self.adapter_id == "anthropic":
+            return self._list_anthropic_language_models()
+
         value = self._request_json(
             "GET",
             self.spec.model_list_path,
@@ -199,6 +204,48 @@ class ThirdPartyTransport:
             models = [self._public_model(item) for item in items]
         if len(models) > THIRD_PARTY_MAX_MODELS:
             raise AdapterProtocolError(f"{self.adapter_id} returned too many models")
+        return sorted(models, key=lambda item: item["id"])
+
+    def _list_anthropic_language_models(self) -> list[dict[str, Any]]:
+        models: list[dict[str, Any]] = []
+        after_id: str | None = None
+        seen_cursors: set[str] = set()
+
+        while True:
+            query = {"limit": str(ANTHROPIC_MODEL_PAGE_LIMIT)}
+            if after_id is not None:
+                query["after_id"] = after_id
+            value = self._request_json(
+                "GET",
+                f"/models?{urlencode(query)}",
+                maximum_bytes=THIRD_PARTY_MAX_MODEL_RESPONSE_BYTES,
+            )
+            items = value.get("data")
+            if not isinstance(items, list):
+                raise AdapterProtocolError("anthropic returned an invalid model list")
+            page = [self._public_model(item) for item in items]
+            if len(models) + len(page) > THIRD_PARTY_MAX_MODELS:
+                raise AdapterProtocolError("anthropic returned too many models")
+            models.extend(page)
+
+            has_more = value.get("has_more", False)
+            if type(has_more) is not bool:
+                raise AdapterProtocolError("anthropic returned an invalid pagination flag")
+            if not has_more:
+                break
+            if len(models) >= THIRD_PARTY_MAX_MODELS:
+                raise AdapterProtocolError("anthropic returned too many models")
+
+            last_id = value.get("last_id")
+            try:
+                cursor = _validate_model_id(last_id)
+            except ValueError as exc:
+                raise AdapterProtocolError("anthropic returned an invalid pagination cursor") from exc
+            if cursor in seen_cursors:
+                raise AdapterProtocolError("anthropic repeated a pagination cursor")
+            seen_cursors.add(cursor)
+            after_id = cursor
+
         return sorted(models, key=lambda item: item["id"])
 
     def generate(
@@ -325,8 +372,30 @@ class ThirdPartyTransport:
         return value
 
     def _path_is_admitted(self, method: str, path: str) -> bool:
-        if method == "GET" and path == self.spec.model_list_path:
+        if method == "GET":
+            if path == self.spec.model_list_path:
+                return True
+            if self.adapter_id != "anthropic":
+                return False
+            parsed = urlsplit(path)
+            if parsed.scheme or parsed.netloc or parsed.path != "/models" or parsed.fragment:
+                return False
+            try:
+                query = parse_qs(parsed.query, keep_blank_values=True, strict_parsing=True)
+            except ValueError:
+                return False
+            if query.get("limit") != [str(ANTHROPIC_MODEL_PAGE_LIMIT)]:
+                return False
+            if set(query) == {"limit"}:
+                return True
+            if set(query) != {"limit", "after_id"} or len(query["after_id"]) != 1:
+                return False
+            try:
+                _validate_model_id(query["after_id"][0])
+            except ValueError:
+                return False
             return True
+
         if method != "POST":
             return False
         if self.spec.api_style == "responses":
