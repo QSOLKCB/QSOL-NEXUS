@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the local Ollama boundary, the PR #16 provider-neutral authentication substrate, the PR #17 xAI adapter—the first admitted remote inference transport—and the PR #19 local synthetic Decoy Gate / Trap Base. No provider-specific browser OAuth client is registered for xAI; the supported public API path uses an xAI API key. Trap Base is a defensive local simulation, not an internet-facing honeypot.
+This threat model covers the local Ollama boundary, the PR #16 provider-neutral authentication substrate, the PR #17 xAI adapter—the first admitted remote inference transport—the PR #19 local synthetic Decoy Gate / Trap Base, and the PR #20 Courtroom Stenographer. No provider-specific browser OAuth client is registered for xAI; the supported public API path uses an xAI API key. Trap Base is a defensive local simulation, not an internet-facing honeypot, and the Stenographer is a local study ledger rather than a provider or legal audit log.
 
 The first live acceptance fixture is:
 
@@ -26,6 +26,7 @@ The hermetic xAI conformance fixture adds one remote Grok-shaped seat to local m
 - raw operator secrets;
 - canonical question and evidence state;
 - Council roster and one-member/one-vote invariant;
+- Stenographer completeness, canonical lineage and zero-authority boundary;
 - blind phase boundaries;
 - sealed ballot boundary;
 - durable world objects and receipts;
@@ -431,6 +432,54 @@ Controls:
 - **Enforcement:** copied incident-only roster with unit votes/no privilege, subject has no ballot, and trap actions have no real-world mutation primitive.
 - **Tests:** roster invariants, no subject ballot, real-world PRE/POST identity and candidate non-promotion.
 - **Residual risk:** an operator may later make an independent normal-world decision informed by exported trap evidence.
+
+### T33 — Observation becomes authority or feedback
+
+- **Asset:** AI output, Council procedure, votes and authoritative state.
+- **Attacker capability:** place command-like text in a record/lore reveal or use an observer failure to steer the normal result.
+- **Enforcement:** the Stenographer is copy-out only, owns no actor/prompt/vote/decision/command/store mutation handle, exposes read operations only, and every record carries an exact zero-authority envelope.
+- **Tests:** authority-map, no-mutation-operation, non-AI-operation and Trap command-text regressions.
+- **Residual risk:** a human may later make an independent decision after studying a record.
+
+### T34 — Silent omission or false completeness
+
+- **Asset:** honest later analysis of AI actions.
+- **Attacker capability:** cause disk, schema, clock or observer failures, hold the interprocess lock, or exhaust the pending-observation queue while AI output continues.
+- **Enforcement:** each AI call site performs a bounded nonblocking handoff after actor return; a daemon observer performs lock/lineage/write/fsync work. Failure or queue saturation increments a categorized gap counter and sets `complete_since_process_start: false` without changing or delaying the original result.
+- **Tests:** blocked persistence with timely Council completion, queue-saturation gap, injected append failure, unchanged direct output and visible-gap assertions.
+- **Residual risk:** process death before a queued copy is persisted or a gap can be counted, queue saturation under sustained storage failure, and actions outside NEXUS cannot be represented.
+
+### T35 — Record tamper, deletion, rollback or fork
+
+- **Asset:** canonical chronology and content integrity.
+- **Attacker capability:** edit/remove an object, roll back the index, create duplicate sequences or break previous-record links.
+- **Enforcement:** immutable `steno:<sha256>` objects, full-payload hash verification, contiguous sequence and previous-record validation; the index is a rebuildable cache rather than authority.
+- **Tests:** live/restart tamper rejection, rolled-back-index repair and concurrent-store linear-chain regressions.
+- **Residual risk:** an attacker able to delete the entire private store can destroy availability; no external transparency log is claimed.
+
+### T36 — Secret reflection into the study ledger
+
+- **Asset:** credentials and other sensitive operator/provider material.
+- **Attacker capability:** make a model reproduce a bearer credential or embed secret-shaped text in identity/context/output fields.
+- **Enforcement:** output/rationale scrubbing before persistence, prompt content replaced by a stimulus binding, identity/context secret-shape rejection, and owner-only files in a separate root.
+- **Tests:** reflected-secret redaction, prompt-text absence, private modes and disjoint-root regressions.
+- **Residual risk:** high-confidence scrubbing is not general DLP; unknown sensitive prose may remain in full AI output.
+
+### T37 — Store/reference confusion
+
+- **Asset:** isolation of Stenographer, real world, Trap and auth data.
+- **Attacker capability:** inspect `object:`/`trap:` through Stenographer, nest roots, use a bare hash, traversal or symlink.
+- **Enforcement:** exact `steno:` scope, no bare digest inference, resolved disjoint-root checks, owner-only directories and symbolic-link rejection.
+- **Tests:** bidirectional reference-scope, nested-root, broad-mode and symlink fixtures.
+- **Residual risk:** a privileged or same-account hostile process can still read or remove files according to OS authority.
+
+### T38 — Concurrent writers or cache corruption
+
+- **Asset:** one ordered append-only record across CLI/runtime processes.
+- **Attacker capability:** race two appends or replace/loosen the lock and index.
+- **Enforcement:** owner-only interprocess lock around reconstruct-read-append-index replacement, immutable file creation, strict lock/index file checks and lineage reconstruction.
+- **Tests:** two-instance append ordering, symlink-lock rejection, index repair and canonical restart verification.
+- **Residual risk:** network filesystems with broken local-lock semantics and hostile kernel/filesystem behavior are out of scope.
 
 ## Explicitly out of scope for the current remote-provider slice
 

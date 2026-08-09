@@ -12,6 +12,7 @@ local Secret Scrubber
 trusted NEXUS control plane
 provider/local-model adapters
 persistent world
+passive Stenographer store
 scientific / deterministic instruments
 ```
 
@@ -118,6 +119,44 @@ authorizes production code admission.
 
 See [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md) and threats T20–T32 in
 [`THREAT_MODEL.md`](THREAT_MODEL.md).
+
+## Courtroom Stenographer boundary
+
+The Stenographer is a passive copy-out boundary for later study, not an input
+or enforcement mechanism. It receives a successful AI result only after the
+actor call returns. It cannot supply prompts, change a roster or ballot, decide
+an outcome, dispatch a command, mutate world/trap/auth state, or rewrite the
+result returned to the normal caller.
+
+Its persistent store is separate from WorldStore, TrapStore and auth state.
+Records use owner-only files, canonical JSON, content-addressed
+`steno:<sha256>` identity, monotonically linked sequence numbers and a
+rebuildable index under an interprocess lock. Symlink traversal, broad POSIX
+permissions, malformed objects, hash changes, lineage forks/gaps and
+`object:`/`trap:` reference confusion fail closed at the record boundary.
+
+The observer secret-scrubs returned AI text before its copy is persisted and
+stores only a hash binding for prompt/stimulus content. This is defence in
+depth, not complete DLP: model prose may contain sensitive material that no
+pattern recognizes. Protect and retain the Stenographer root as sensitive
+study data.
+
+AI call sites hand observer copies to a bounded nonblocking queue. The daemon
+observer alone acquires the record lock, reconstructs lineage, writes and
+fsyncs, so a slow filesystem or another process holding the lock cannot delay
+the AI result. Queue saturation or recording failure increments a bounded
+categorized gap counter and does not reject or alter the AI output.
+`complete_since_process_start` is false after any such gap. Adapter exceptions
+that return no AI output are not fabricated as model actions. The record
+therefore claims coverage of admitted NEXUS actor-boundary outputs, not hidden
+model reasoning, provider-side activity or actions outside this runtime.
+
+The public API and CLI provide status, list, inspect, verify, summary and
+reference-manifest export only. No record/edit/clear/delete operation exists.
+The hidden lore reveal is display-only, is not authentication, is absent from
+the advertised operation catalogue, and carries exactly zero runtime
+authority. See [`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md) and threats
+T33–T38 in [`THREAT_MODEL.md`](THREAT_MODEL.md).
 
 Ollama requires no provider credential. xAI credentials are resolved only inside `XAITransport`.
 

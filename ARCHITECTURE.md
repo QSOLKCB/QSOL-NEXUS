@@ -31,6 +31,7 @@ NEXUS does not attempt to define how a model must think internally. It defines h
                     | instrument dispatch     |
                     | evidence / receipts     |
                     | replay / verification   |
+                    | passive Stenographer    |
                     +------------+------------+
                                  |
                          NEXUS WORLD PROTOCOL
@@ -111,6 +112,42 @@ JSON-compatible tree and interpreted over immutable synthetic fixtures; it is
 never executed by Python, a shell, an LLM, or a production instrument.
 
 See [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md).
+
+## Courtroom Stenographer
+
+The Courtroom Stenographer is an independent observation domain beside the
+WorldStore and TrapStore, not another control-plane authority:
+
+```text
+AI actor result -----> normal Council/direct/Trap consumer
+       |
+       +-------------> passive observer copy
+                              |
+                     bounded nonblocking queue
+                              |
+                     background lock/write/fsync
+                              |
+                         steno:<sha256>
+                         canonical lineage
+```
+
+It records admitted direct replies, every Council phase attempt and sealed
+ballot, Failsafe rehabilitation replies, and synthetic Trap subject replies.
+Prompts are represented only by a `stimulus:<sha256>` binding; human commands,
+world/game/auth actions and control-plane decisions are outside its scope.
+
+Every record carries an explicit zero-authority envelope. The Stenographer owns
+no actor, prompt, Council roster, vote, command dispatcher, WorldStore,
+TrapStore or AuthBroker handle. Observation failures are caught after the actor
+boundary; storage work is handed to a bounded nonblocking daemon observer, so
+lock contention and lineage scans cannot delay the original AI result. Queue
+saturation increments a bounded gap counter. Its owner-only store is disjoint
+from all other persistence roots and
+uses a linear immutable previous-record chain; the replaceable index is rebuilt
+from lineage.
+
+The Rust `#stenographer` room and `/steno` namespace expose only read and
+verification views. See [`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md).
 
 ## Modes and geometry
 

@@ -7,13 +7,13 @@ The JSONL control API is the local structured boundary used by the Rust IRC-styl
 Protocol identifier:
 
 ```text
-nexus/0.11
+nexus/0.12
 ```
 
 Runtime identifier:
 
 ```text
-2.0.0-alpha9.1
+2.0.0-alpha9.2
 ```
 
 Current posture:
@@ -27,6 +27,7 @@ UN simulation     -> supported as a deterministic fictional local game
 HERESY MUD        -> supported as a deterministic fictional multi-avatar local game
 Failsafe          -> bounded repeated-guard containment + deterministic relief actor
 Trap Base         -> explicit synthetic fixture, isolated store and incident controls
+Stenographer      -> passive canonical AI-action ledger with read-only study views
 remote providers  -> xAI admitted; other providers not implemented
 provider auth     -> xAI API key, environment, or external helper
 ```
@@ -53,7 +54,8 @@ An explicitly configured local Ollama actor may use the separately hardened loop
 
 ```bash
 python -m pip install -e .
-python -m nexus_runtime --world .nexus-world --trap-root .nexus-trap
+python -m nexus_runtime --world .nexus-world --trap-root .nexus-trap \
+  --stenographer-root .nexus-stenographer
 ```
 
 The installed package also exposes `nexus`. Add the optional OS-keyring integration with `python -m pip install -e '.[keyring]'`.
@@ -71,8 +73,8 @@ Current response fields include:
 ```json
 {
   "status": "ok",
-  "protocol": "nexus/0.11",
-  "runtime_version": "2.0.0-alpha9.1",
+  "protocol": "nexus/0.12",
+  "runtime_version": "2.0.0-alpha9.2",
   "control_transport": "jsonl_stdio",
   "network": "local_stdio_with_explicit_loopback_ollama_or_fixed_xai_https_or_registered_auth_operations",
   "adapters": ["mock", "ollama_loopback", "xai_https"],
@@ -88,6 +90,14 @@ Current response fields include:
     "remote_adapters_admitted": true
   },
   "actor_backends_available": ["mock", "ollama", "xai"],
+  "stenographer": {
+    "schema_version": "nexus-stenographer/1",
+    "role": "watchman_only",
+    "record_scope": "ai_actions_only",
+    "persistence": "canonical_json_files",
+    "record_count": 0,
+    "complete_since_process_start": true
+  },
   "failsafe": {
     "schema_version": "nexus-failsafe/1",
     "trigger": "registered_repeated_guard_failure_after_nudge_only"
@@ -135,6 +145,12 @@ world.geometry.distance
 receipt.verify
 telemetry.verify
 failsafe.status
+stenographer.status
+stenographer.list
+stenographer.inspect
+stenographer.verify
+stenographer.summary
+stenographer.export
 trap.status
 trap.inspect
 trap.transcript
@@ -157,6 +173,35 @@ game.mud.act
 actor.chat
 council.run
 ```
+
+## Courtroom Stenographer operations
+
+The Stenographer records admitted AI outputs only and has no prompt, vote,
+decision, command or mutation authority. These operations are exact-schema,
+read-only study views:
+
+```json
+{"operation":"stenographer.status"}
+{"operation":"stenographer.list","limit":100}
+{"operation":"stenographer.list","limit":50,"action_type":"council.ballot","member_id":"A"}
+{"operation":"stenographer.inspect","record_ref":"steno:<sha256>"}
+{"operation":"stenographer.verify"}
+{"operation":"stenographer.summary"}
+{"operation":"stenographer.export"}
+```
+
+`stenographer.list` accepts a limit from 1 through 1000 and optional registered
+`action_type` and bounded `member_id` filters. `inspect` returns both the parsed
+record and its canonical JSON serialization. `verify` reconstructs and checks
+the full immutable sequence. `summary` reports deterministic action/member/
+adapter counts. `export` returns the ordered record references and head; it does
+not write an arbitrary path. List responses stop at a two-MiB canonical-record
+budget and return `truncated: true` when more matching records remain.
+
+There is deliberately no public record, edit, clear or delete operation. A
+hidden display-only lore invocation is also absent from `system.operations`;
+it is not authentication or runtime authority. See
+[`STENOGRAPHER.md`](STENOGRAPHER.md).
 
 ## Trap Base operations
 

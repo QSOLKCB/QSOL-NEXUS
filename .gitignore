@@ -3,4 +3,5 @@ __pycache__/
 tui/target/
 .nexus-world/
 .nexus-trap/
+.nexus-stenographer/
 trap-base-report/
