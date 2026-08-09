@@ -30,6 +30,7 @@ NEXUS now has:
 - deterministic human/AI tables for **UNO, Monopoly, 500 and Blackjack**, with player-specific views and an authoritative deterministic Blackjack dealer;
 - **DORK v2**, a human-only Zork-shaped text adventure that reveals the Great Under-Moderated NEXUS beneath the mailbox;
 - **Pure History Mode — No Ancient Aliens Edition** for source-forensic historical deliberation;
+- six new cognitive rooms spanning clinical differential education, fictional diagnostic drama, CBT skills, Roman oratory, cross-tradition scholarship, and ultimate questions;
 - a hidden Rust-TUI **`/GO64` Secret Alias Mode** with a text demoscene and DR. S.BAITSO tribute;
 - **NEXUS Failsafe** containment with the cursed Upside Down, bounded rehabilitation, Shadow Realm, and deterministic equal-vote relief actors.
 - an isolated **Decoy Gate / Trap Base** for explicit synthetic hostile fixtures, with a separate `trap:<sha256>` store, owner-checked Council mutation lock, equal-vote defender session, restricted Trap YAML, and inert candidate quarantine.
@@ -38,13 +39,13 @@ NEXUS now has:
 Current posture:
 
 ```text
-protocol: nexus/0.12
-runtime version: 2.0.0-alpha10
-operator TUI version: 2.0.0-alpha10
+protocol: nexus/0.13
+runtime version: 2.0.0-alpha10.1
+operator TUI version: 2.0.0-alpha10.1
 control transport: JSONL over stdio
 operator shell: Rust IRC-style TUI
 actor backends: mock + explicit loopback Ollama + fixed-HTTPS xAI
-world modes: analytical / historical / pure_history / cultural / meme_casual / game_un / game_mud / game_uno / game_monopoly / game_500 / game_blackjack / game_dork
+world modes: analytical / historical / pure_history / cultural / meme_casual / clinical_differential / house_fun / cbt_learning / roman_orator / house_of_wisdom / ultimate_questions / game_un / game_mud / game_uno / game_monopoly / game_500 / game_blackjack / game_dork
 geometry: named-regions-v3
 game rooms: #un-sim + #mud + #uno + #monopoly + #500 + #blackjack + #dork
 remote/cloud providers: xAI admitted; OpenAI / Anthropic / Google deferred
@@ -118,6 +119,12 @@ NEXUS should not be all work and no play.
 | `pure_history` | Archive / `#pure-history` | source-forensic history; no myth/retelling/speculation promotion |
 | `cultural` | Agora / `#agora` | norms, ambiguity, social meaning, cultural comparison |
 | `meme_casual` | Commons / `#commons` | playful, irreverent, meme-aware interaction |
+| `clinical_differential` | Observatory / `#differential-clinic` | safety-first educational differential reasoning; never a diagnosis |
+| `house_fun` | Commons / `#house-fun` | original fictional diagnostic-drama puzzles, zebras and snark |
+| `cbt_learning` | Observatory / `#cbt-workshop` | collaborative CBT concepts and practical low-risk life skills |
+| `roman_orator` | Agora / `#roman-forum` | deliberately long-form original rhetoric and structured rants |
+| `house_of_wisdom` | Archive / `#house-of-wisdom` | translation, attribution, source plurality and synthesis |
+| `ultimate_questions` | Observatory / `#deep-thought` | life, consciousness, meaning, the universe and everything |
 | `game_un` | Assembly Hall / `#un-sim` | fictional UN-style strategy game, crises, Risk-like state and memes |
 | `game_mud` | Dungeon / `#mud` | deterministic multi-avatar HERESY MUD |
 | `game_uno` | Commons / `#uno` | deterministic shedding-card table for human and AI seats |
@@ -130,9 +137,9 @@ The important invariant is:
 
 > **The mode can change the vibe. It cannot change the vote.**
 
-Modes may affect framing, context and tone. They do **not** change evidence status, verification, Council thresholds, secret handling, the Equality Guard, or `vote_weight = 1`.
+Modes may affect framing, context, tone, and a bounded output-length preference. They do **not** change evidence status, verification, Council thresholds, secret handling, the Equality Guard, or `vote_weight = 1`. The Roman Orator room deliberately raises the response budget; it does not raise anyone's authority.
 
-See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md).
+See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) and [`docs/COGNITIVE_MODES.md`](docs/COGNITIVE_MODES.md).
 
 ## World Geometry
 
@@ -753,6 +760,7 @@ OpenAI, Anthropic, Google, generic remote endpoints, and additional providers re
 - [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md) — synthetic Decoy Gate, isolated Trap Base, restricted YAML, recovery, and claim boundary
 - [`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md) — passive canonical AI-action ledger, read-only interfaces, integrity, and claim boundary
 - [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md) — World Modes and named-region geometry
+- [`docs/COGNITIVE_MODES.md`](docs/COGNITIVE_MODES.md) — clinical/CBT boundaries and the six new cognitive rooms
 - [`docs/PURE_HISTORY.md`](docs/PURE_HISTORY.md) — source-forensic `#pure-history` mode and discipline guard
 - [`docs/IRC_TUI.md`](docs/IRC_TUI.md) — implemented Rust IRC-style operator interface
 - [`docs/CLI_TUI.md`](docs/CLI_TUI.md) — broader operator-shell direction

@@ -60,16 +60,25 @@ WorldMode
 └── region_id
 ```
 
-Initial built-ins:
+Current built-ins:
 
 ```text
 analytical
 historical
+pure_history
 cultural
 meme_casual
+clinical_differential
+house_fun
+cbt_learning
+roman_orator
+house_of_wisdom
+ultimate_questions
+game_un
+game_mud
 ```
 
-A mode may affect reasoning posture, context and tone. It does not modify evidence status, verification, vote weight, Council threshold, secret handling or Equality Guard policy.
+A mode may affect reasoning posture, context, tone and a bounded generation-length preference. It does not modify evidence status, verification, vote weight, Council threshold, secret handling or Equality Guard policy.
 
 ## World geometry
 

@@ -46,6 +46,12 @@ class WorldModeTests(unittest.TestCase):
                 "pure_history",
                 "cultural",
                 "meme_casual",
+                "clinical_differential",
+                "house_fun",
+                "cbt_learning",
+                "roman_orator",
+                "house_of_wisdom",
+                "ultimate_questions",
                 "game_un",
                 "game_mud",
                 "game_uno",
@@ -59,6 +65,12 @@ class WorldModeTests(unittest.TestCase):
         self.assertEqual(get_mode("pure_history").region_id, "archive")
         self.assertEqual(get_mode("game_un").region_id, "assembly")
         self.assertEqual(get_mode("game_mud").region_id, "dungeon")
+        self.assertEqual(get_mode("clinical_differential").region_id, "observatory")
+        self.assertEqual(get_mode("house_fun").region_id, "commons")
+        self.assertEqual(get_mode("cbt_learning").region_id, "observatory")
+        self.assertEqual(get_mode("roman_orator").region_id, "agora")
+        self.assertEqual(get_mode("house_of_wisdom").region_id, "archive")
+        self.assertEqual(get_mode("ultimate_questions").region_id, "observatory")
         self.assertEqual(get_mode("game_uno").region_id, "commons")
         self.assertEqual(get_mode("game_monopoly").region_id, "commons")
         self.assertEqual(get_mode("game_500").region_id, "commons")
@@ -175,6 +187,12 @@ class ModeGeometryAPITests(unittest.TestCase):
                 "pure_history",
                 "cultural",
                 "meme_casual",
+                "clinical_differential",
+                "house_fun",
+                "cbt_learning",
+                "roman_orator",
+                "house_of_wisdom",
+                "ultimate_questions",
                 "game_un",
                 "game_mud",
                 "game_uno",

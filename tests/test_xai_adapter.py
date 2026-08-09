@@ -345,6 +345,38 @@ class XAIActorTests(unittest.TestCase):
         with self.assertRaises(AdapterProtocolError):
             actor.ballot(self.context())
 
+    def test_roman_orator_uses_expansive_but_bounded_remote_output_budget(self) -> None:
+        context = PhaseContext(
+            "session",
+            Phase.BLUE,
+            "Address the forum.",
+            "object:" + "a" * 64,
+            {},
+            mode_id="roman_orator",
+            mode_instruction="Use original Roman-orator-inspired rhetoric.",
+            geometry_region_id="agora",
+        )
+        transport = _StubTransport("A finite oration.", "A finite direct oration.")
+        actor = XAIActor(
+            CouncilMember("Grok", "grok-4.5", adapter_id="xai"),
+            "grok-4.5",
+            transport,  # type: ignore[arg-type]
+        )
+        self.assertEqual(actor.respond(context), "A finite oration.")
+        self.assertEqual(
+            actor.direct_message(
+                "Rant about build systems.",
+                mode_id="roman_orator",
+                mode_instruction="Use original Roman-orator-inspired rhetoric.",
+                geometry_region_id="agora",
+            ),
+            "A finite direct oration.",
+        )
+        self.assertEqual(transport.calls[0][2], 2048)
+        self.assertEqual(transport.calls[1][2], 2048)
+        self.assertIn("300 to 600 words", transport.calls[0][1])
+        self.assertIn("500 to 1,000 words", transport.calls[1][1])
+
 
 class XAIAPIAndCLITests(unittest.TestCase):
     def broker(self, root: Path) -> AuthBroker:

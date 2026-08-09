@@ -34,6 +34,7 @@ XAI_MAX_MODEL_RESPONSE_BYTES = 1024 * 1024
 XAI_MAX_MODELS = 512
 XAI_PHASE_OUTPUT_TOKENS = 1024
 XAI_DIRECT_OUTPUT_TOKENS = 1024
+XAI_ROMAN_ORATOR_OUTPUT_TOKENS = 2048
 XAI_BALLOT_OUTPUT_TOKENS = 1024
 
 _MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$")
@@ -366,10 +367,13 @@ class XAIActor:
         }
 
     def respond(self, context: PhaseContext) -> str:
+        output_tokens = (
+            XAI_ROMAN_ORATOR_OUTPUT_TOKENS if context.mode_id == "roman_orator" else XAI_PHASE_OUTPUT_TOKENS
+        )
         return self.transport.generate(
             self.model,
             build_phase_prompt(context),
-            max_output_tokens=XAI_PHASE_OUTPUT_TOKENS,
+            max_output_tokens=output_tokens,
             require_complete=False,
         )
 
@@ -382,6 +386,7 @@ class XAIActor:
         geometry_region_id: str,
         evidence_context: str = "",
     ) -> str:
+        output_tokens = XAI_ROMAN_ORATOR_OUTPUT_TOKENS if mode_id == "roman_orator" else XAI_DIRECT_OUTPUT_TOKENS
         return self.transport.generate(
             self.model,
             build_direct_prompt(
@@ -391,7 +396,7 @@ class XAIActor:
                 geometry_region_id=geometry_region_id,
                 evidence_context=evidence_context,
             ),
-            max_output_tokens=XAI_DIRECT_OUTPUT_TOKENS,
+            max_output_tokens=output_tokens,
             require_complete=False,
         )
 
