@@ -86,6 +86,13 @@ class ThirdPartyReviewFixTests(unittest.TestCase):
         self.assertIn("openai", health["actor_backends_available"])
         self.assertIn("gemini", health["actor_backends_available"])
 
+    def test_provider_api_keeps_non_string_operation_inside_error_boundary(self) -> None:
+        with TemporaryDirectory() as directory:
+            api = CanonicalNexusAPI(auth_root=Path(directory) / "auth")
+            result = api.handle({"operation": []})  # type: ignore[list-item]
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["code"], "invalid_request")
+
     def test_oversized_integer_timeout_is_rejected_without_overflow(self) -> None:
         with self.assertRaisesRegex(ValueError, "timeout_seconds"):
             ThirdPartyTransport(
