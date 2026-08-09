@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 import stat
@@ -75,6 +76,54 @@ class SecurityAuditRemediationTests(unittest.TestCase):
                 world.create_object("note", payload, {"actor": "operator"})
             self.assertEqual(external.read_text(encoding="utf-8"), "do-not-touch")
 
+    @unittest.skipIf(os.name == "nt", "POSIX permission migration semantics")
+    def test_world_store_migrates_legacy_umask_permissions(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "world"
+            objects = root / "objects"
+            objects.mkdir(parents=True, mode=0o755)
+            created = WorldStore().create_object(
+                "legacy_note",
+                {"message": "still readable"},
+                {"actor": "legacy-runtime"},
+            )
+            path = objects / f"{created.object_id.removeprefix('object:')}.json"
+            path.write_text(canonical_json(created.as_dict()) + "\n", encoding="utf-8")
+            root.chmod(0o755)
+            objects.chmod(0o755)
+            path.chmod(0o644)
+
+            migrated = WorldStore(root)
+
+            self.assertEqual(migrated.inspect(created.object_id).as_dict(), created.as_dict())
+            self.assertEqual(stat.S_IMODE(root.stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE(objects.stat().st_mode), 0o700)
+            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o600)
+
+    @unittest.skipIf(os.name == "nt", "POSIX persisted-file semantics")
+    def test_existing_world_object_requires_closed_canonical_bytes(self) -> None:
+        with TemporaryDirectory() as temporary:
+            root = Path(temporary) / "world"
+            world = WorldStore(root)
+            created = world.create_object("note", {"message": "immutable"}, {"actor": "operator"})
+            path = root / "objects" / f"{created.object_id.removeprefix('object:')}.json"
+
+            injected = created.as_dict()
+            injected["unhashed_extra"] = "not covered by object identity"
+            path.write_text(canonical_json(injected) + "\n", encoding="utf-8")
+            path.chmod(0o600)
+            with self.assertRaisesRegex(ValueError, "schema"):
+                WorldStore(root).create_object(
+                    "note",
+                    {"message": "immutable"},
+                    {"actor": "operator"},
+                )
+
+            path.write_text(json.dumps(created.as_dict(), indent=2) + "\n", encoding="utf-8")
+            path.chmod(0o600)
+            with self.assertRaisesRegex(ValueError, "canonical"):
+                WorldStore(root).inspect(created.object_id)
+
     def test_oauth_post_form_always_installs_empty_proxy_handler(self) -> None:
         captured_handlers: list[object] = []
 
@@ -124,6 +173,30 @@ class SecurityAuditRemediationTests(unittest.TestCase):
         self.assertNotIn("GITHUB_TOKEN", clean)
         self.assertNotIn("AWS_SECRET_ACCESS_KEY", clean)
         self.assertNotIn("CUSTOM_NON_SECRET", clean)
+
+        forwarded = _external_helper_environment(
+            environment,
+            adapter_id="fixture",
+            profile_name="default",
+            forwarded_names=("XAI_API_KEY",),
+        )
+        self.assertEqual(forwarded["XAI_API_KEY"], environment["XAI_API_KEY"])
+        self.assertNotIn("GITHUB_TOKEN", forwarded)
+
+    def test_external_helper_environment_matches_windows_names_case_insensitively(self) -> None:
+        environment = {
+            "Path": r"C:\\Windows\\System32",
+            "provider_token": "fixture-secret",
+        }
+        with patch("nexus_runtime.auth.broker.os.name", "nt"):
+            clean = _external_helper_environment(
+                environment,
+                adapter_id="fixture",
+                profile_name="default",
+                forwarded_names=("PROVIDER_TOKEN",),
+            )
+        self.assertEqual(clean["Path"], environment["Path"])
+        self.assertEqual(clean["provider_token"], environment["provider_token"])
 
     def test_remote_ollama_retains_no_proxy_no_redirect_opener(self) -> None:
         captured_handlers: list[object] = []

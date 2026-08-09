@@ -14,6 +14,7 @@ from .canonical import canonical_json, sha256_ref
 
 
 _OBJECT_REF = re.compile(r"^object:[0-9a-f]{64}$")
+_OBJECT_FILENAME = re.compile(r"^[0-9a-f]{64}\.json$")
 
 
 @dataclass(frozen=True)
@@ -54,8 +55,6 @@ class WorldStore:
         existed = self.root.exists()
         if self.root.is_symlink() or (existed and (not self.root.is_dir() or self.root.resolve() != self.root.absolute())):
             raise ValueError("world storage root must be a private directory")
-        if existed and os.name != "nt" and stat.S_IMODE(self.root.stat().st_mode) & 0o077:
-            raise ValueError("world storage root permissions must be owner-only")
         self.root.mkdir(parents=True, exist_ok=True, mode=0o700)
 
         objects_dir = self.root / "objects"
@@ -64,15 +63,37 @@ class WorldStore:
             objects_existed and (not objects_dir.is_dir() or objects_dir.resolve() != objects_dir.absolute())
         ):
             raise ValueError("world object storage must be a private directory")
-        if objects_existed and os.name != "nt" and stat.S_IMODE(objects_dir.stat().st_mode) & 0o077:
-            raise ValueError("world object storage permissions must be owner-only")
         objects_dir.mkdir(mode=0o700, exist_ok=True)
 
         if os.name != "nt":
-            if not existed:
-                os.chmod(self.root, stat.S_IRWXU)
-            if not objects_existed:
-                os.chmod(objects_dir, stat.S_IRWXU)
+            # Earlier NEXUS versions created these paths under the process
+            # umask, commonly as 0755/0644. Tighten that exact, already-
+            # validated directory tree in place so upgrades remain readable.
+            os.chmod(self.root, stat.S_IRWXU, follow_symlinks=False)
+            os.chmod(objects_dir, stat.S_IRWXU, follow_symlinks=False)
+            self._migrate_legacy_object_permissions(objects_dir)
+
+    @staticmethod
+    def _migrate_legacy_object_permissions(objects_dir: Path) -> None:
+        for path in objects_dir.iterdir():
+            if path.is_symlink() or _OBJECT_FILENAME.fullmatch(path.name) is None:
+                raise ValueError("world object storage contains an unsafe entry")
+            descriptor: int | None = None
+            try:
+                flags = os.O_RDONLY
+                flags |= getattr(os, "O_CLOEXEC", 0)
+                flags |= getattr(os, "O_NOFOLLOW", 0)
+                flags |= getattr(os, "O_BINARY", 0)
+                descriptor = os.open(path, flags)
+                info = os.fstat(descriptor)
+                if not stat.S_ISREG(info.st_mode):
+                    raise ValueError("persisted world object must be a regular file")
+                os.fchmod(descriptor, stat.S_IRUSR | stat.S_IWUSR)
+            except OSError as exc:
+                raise OSError("world object permissions could not be migrated") from exc
+            finally:
+                if descriptor is not None:
+                    os.close(descriptor)
 
     def create_object(
         self,
@@ -185,9 +206,17 @@ class WorldStore:
                 raise ValueError("persisted world object must be a regular file")
             if os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077:
                 raise ValueError("persisted world object permissions must be owner-only")
-            with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+            with os.fdopen(descriptor, "rb") as handle:
                 descriptor = None
-                raw = json.load(handle)
+                encoded = handle.read()
+            decoded = encoded.decode("utf-8")
+            raw = json.loads(decoded)
+            try:
+                canonical = (canonical_json(raw) + "\n").encode("utf-8")
+            except (TypeError, ValueError, RecursionError) as exc:
+                raise ValueError("persisted world object is not canonical JSON") from exc
+            if encoded != canonical:
+                raise ValueError("persisted world object is not canonical JSON")
         except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
             raise ValueError("persisted world object cannot be decoded") from exc
         finally:
@@ -213,6 +242,9 @@ class WorldStore:
     def _load_validated(object_ref: str, raw: Any) -> WorldObject:
         if not isinstance(raw, dict):
             raise ValueError("persisted world object must be a JSON object")
+        expected_fields = {"object_id", "object_type", "payload", "provenance"}
+        if set(raw) != expected_fields:
+            raise ValueError("persisted world object schema is invalid")
         try:
             object_id = raw["object_id"]
             object_type = raw["object_type"]

@@ -103,6 +103,18 @@ A model response is not evidence merely because:
 
 Model outputs may become useful hypotheses, critiques, syntheses, experiment proposals, or interpretations.
 
+The same separation applies to games. Model narration can recommend or
+role-play an UNO play, Monopoly purchase, 500 bid, Blackjack decision, MUD move
+or DORK clue. It does not establish that the action occurred. Only a validated
+runtime transition changes authoritative game state. DORK v2 goes further: it
+has no model player at all.
+
+Deterministic replay establishes that a declared seed, state and action produce
+the same successor under this runtime. It does not certify an official rules
+implementation, commercial affiliation, fair real-money gambling, or identity
+with an upstream story binary. The implemented profiles and exclusions are
+listed in [`docs/GAMES.md`](docs/GAMES.md).
+
 ## Instrument boundary
 
 A NEXUS instrument verifies only what its contract says it verifies.

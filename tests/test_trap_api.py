@@ -98,6 +98,16 @@ class TrapAPIBoundaryTests(unittest.TestCase):
                 },
                 {"operation": "game.un.new"},
                 {"operation": "game.mud.new"},
+                {"operation": "game.uno.new"},
+                {"operation": "game.monopoly.new"},
+                {"operation": "game.500.new"},
+                {"operation": "game.blackjack.new"},
+                {"operation": "game.dork.new"},
+                {"operation": "game.uno.act"},
+                {"operation": "game.monopoly.act"},
+                {"operation": "game.500.act"},
+                {"operation": "game.blackjack.act"},
+                {"operation": "game.dork.act"},
                 {"operation": "council.run", "question": "blocked", "members": []},
             )
             for request in blocked:

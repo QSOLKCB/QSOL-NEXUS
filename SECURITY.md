@@ -80,6 +80,21 @@ They must never be written to:
 
 Authentication material belongs only in adapter authentication or transport fields and must never become semantic prompt content exposed to a model.
 
+## WorldStore persistence boundary
+
+File-backed WorldStore roots and object directories are owner-only `0700` on
+POSIX, and immutable object files are `0600`. On first open, the runtime safely
+tightens the exact legacy directory tree and canonical object filenames created
+by older umask-based releases, so existing `0755`/`0644` stores remain usable.
+Symbolic links, non-object entries and non-regular files fail closed instead of
+being traversed or chmodded.
+
+Every persisted object must be the exact canonical JSON encoding of a closed
+four-field schema plus one trailing newline. Unknown fields, alternate
+whitespace/key order, duplicate-key encodings, hash mismatch and symbolic-link
+replacement are rejected even when the recognized identity fields still hash
+to the requested object reference.
+
 ## Synthetic decoy and trap boundary
 
 Trap Base is activated only by a closed, trusted synthetic fixture request. A
@@ -314,6 +329,24 @@ Model-generated text, structured output, tool requests, and suggested code are u
 The Ollama ballot path requests a closed JSON schema and validates the returned ballot enum. Malformed output fails rather than becoming an invented vote.
 
 NEXUS should not directly execute arbitrary model-generated code in the control plane. Experiments requiring code execution need an explicit bounded instrument/sandbox contract.
+
+### Game action and hidden-information boundary
+
+Model narration is also untrusted game input. A sentence that claims a card was
+played, property bought, bid made, dealer action taken or DORK room entered has
+no mutation effect. Only an exact `game.*.act` request with a registered player,
+valid phase and legal action can produce a canonical successor.
+
+UNO/500 hands and the unrevealed Blackjack dealer card are excluded from the
+derived public `content` supplied as Council evidence. Player views expose only
+the requesting seat's hand and omit deck/shoe internals. The local JSONL runtime
+can inspect the full authoritative object and is therefore a trusted operator
+boundary, not a multi-tenant game server.
+
+Blackjack uses fictional chips only. Its dealer has no model, endpoint or
+discretion and deterministically stands on soft 17. DORK v2 binds one human
+operator and rejects every AI/alternate view or action. See threats T39–T42 in
+[`THREAT_MODEL.md`](THREAT_MODEL.md).
 
 ## Replay boundary
 

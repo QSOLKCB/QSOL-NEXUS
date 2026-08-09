@@ -165,6 +165,34 @@ Council/model output -> narration, proposals and role-play
 
 See [`MUD.md`](MUD.md).
 
+### Human/AI Tables — Commons
+
+`game_uno`, `game_monopoly`, `game_500` and `game_blackjack` all reuse the
+existing Commons region. Each mode has its own room and authoritative
+content-addressed state, but adding a table does not invent a new place merely
+to make the topology larger.
+
+```text
+game_uno       -> #uno       -> Commons
+game_monopoly  -> #monopoly  -> Commons
+game_500       -> #500       -> Commons
+game_blackjack -> #blackjack -> Commons
+```
+
+Human and AI seats share the same rules. Council/model output may propose a
+move; only an explicit `/uno`, `/monopoly`, `/500`, `/blackjack` or matching
+`game.*.act` operation creates a successor. Blackjack's dealer is runtime-owned
+and deterministic, not a privileged model seat.
+
+### DORK v2 — Dungeon
+
+`game_dork` maps `#dork` onto the existing Dungeon region while keeping its
+adventure graph separate from HERESY MUD. It is intentionally human-only:
+models may discuss the public adventure view but cannot acquire an avatar or
+submit a proxy action.
+
+See [`GAMES.md`](GAMES.md).
+
 ## Why runtime modes, not just persona prompts?
 
 NEXUS records the selected mode as protocol state rather than pretending a model prompt can perfectly enforce behavior.
@@ -286,7 +314,10 @@ Example:
 
 returns the shortest topological hop distance in the current named-region graph.
 
-The game itself is exposed separately through the `game.un.*` operations documented in [`API.md`](API.md) and [`UN_SIM.md`](UN_SIM.md).
+Games are exposed separately through the `game.un.*`, `game.mud.*`,
+`game.uno.*`, `game.monopoly.*`, `game.500.*`, `game.blackjack.*` and
+`game.dork.*` operations documented in [`API.md`](API.md), [`UN_SIM.md`](UN_SIM.md),
+[`MUD.md`](MUD.md) and [`GAMES.md`](GAMES.md).
 
 ## Geometry-inspired ideas deliberately deferred
 

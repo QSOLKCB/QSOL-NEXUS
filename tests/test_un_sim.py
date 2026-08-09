@@ -160,7 +160,7 @@ class UNSimulationAPITests(unittest.TestCase):
         api = NexusAPI()
         health = api.handle({"operation": "system.health"})
         self.assertEqual(health["protocol"], "nexus/0.12")
-        self.assertEqual(health["runtime_version"], "2.0.0-alpha9.2")
+        self.assertEqual(health["runtime_version"], "2.0.0-alpha10")
         self.assertIn("game_un", health["world_modes"])
         self.assertEqual(health["geometry"], "named-regions-v3")
         self.assertIn("#un-sim", {game["room"] for game in health["games"]})

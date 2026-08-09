@@ -40,12 +40,30 @@ class WorldModeTests(unittest.TestCase):
     def test_initial_mode_registry_is_explicit(self) -> None:
         self.assertEqual(
             {mode.mode_id for mode in list_modes()},
-            {"analytical", "historical", "pure_history", "cultural", "meme_casual", "game_un", "game_mud"},
+            {
+                "analytical",
+                "historical",
+                "pure_history",
+                "cultural",
+                "meme_casual",
+                "game_un",
+                "game_mud",
+                "game_uno",
+                "game_monopoly",
+                "game_500",
+                "game_blackjack",
+                "game_dork",
+            },
         )
         self.assertEqual(get_mode("historical").region_id, "archive")
         self.assertEqual(get_mode("pure_history").region_id, "archive")
         self.assertEqual(get_mode("game_un").region_id, "assembly")
         self.assertEqual(get_mode("game_mud").region_id, "dungeon")
+        self.assertEqual(get_mode("game_uno").region_id, "commons")
+        self.assertEqual(get_mode("game_monopoly").region_id, "commons")
+        self.assertEqual(get_mode("game_500").region_id, "commons")
+        self.assertEqual(get_mode("game_blackjack").region_id, "commons")
+        self.assertEqual(get_mode("game_dork").region_id, "dungeon")
         with self.assertRaises(ValueError):
             get_mode("corporate_supremacy")
 
@@ -151,7 +169,20 @@ class ModeGeometryAPITests(unittest.TestCase):
         self.assertEqual(modes["status"], "ok")
         self.assertEqual(
             {item["mode_id"] for item in modes["modes"]},
-            {"analytical", "historical", "pure_history", "cultural", "meme_casual", "game_un", "game_mud"},
+            {
+                "analytical",
+                "historical",
+                "pure_history",
+                "cultural",
+                "meme_casual",
+                "game_un",
+                "game_mud",
+                "game_uno",
+                "game_monopoly",
+                "game_500",
+                "game_blackjack",
+                "game_dork",
+            },
         )
         geometry = api.handle({"operation": "world.geometry"})
         self.assertEqual(geometry["geometry_id"], "named-regions-v3")
