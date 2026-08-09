@@ -251,9 +251,26 @@ class CouncilMutationGate:
     def is_locked(self) -> bool:
         return bool(self.status()["locked"])
 
+    @contextmanager
+    def mutation_lease(self) -> Iterator[None]:
+        """Hold the interprocess gate for the complete duration of one real write.
+
+        Trap activation acquires the same exclusive file lock before publishing
+        incident ownership. Keeping this lease through the actual mutation
+        closes the check-then-write TOCTOU window between the API and activation.
+        """
+
+        with self._locked_state():
+            if self._read_unlocked() is not None:
+                raise TrapError(
+                    "trap_incident_active",
+                    "real Council mutation is unavailable during a trap incident",
+                )
+            yield
+
     def assert_mutation_allowed(self) -> None:
-        if self.is_locked:
-            raise TrapError("trap_incident_active", "real Council mutation is unavailable during a trap incident")
+        with self.mutation_lease():
+            return
 
 
 class DecoyGate:

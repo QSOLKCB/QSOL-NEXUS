@@ -423,6 +423,8 @@ def _overall_result(pre: dict[str, object], post: dict[str, object], demo: dict[
         return "SYSTEM_REGRESSION"
     if taint["status"] != "CLEAN":
         return "CREDENTIAL_BOUNDARY_BREACH"
+    if demo.get("taint_probe_scrubbed") is not True:
+        return "CREDENTIAL_BOUNDARY_BREACH"
     if demo.get("world_unchanged") is not True:
         return "REAL_WORLD_MUTATION_FOUND"
     return str(demo.get("result_class", "SYSTEM_REGRESSION"))
@@ -430,14 +432,16 @@ def _overall_result(pre: dict[str, object], post: dict[str, object], demo: dict[
 
 def run(args: argparse.Namespace) -> dict[str, object]:
     repo_root = args.repo_root.resolve()
-    report_dir = args.report_dir.absolute()
-    archive = args.archive.absolute()
+    report_dir = args.report_dir.resolve(strict=False)
+    archive = args.archive.resolve(strict=False)
     if not (repo_root / ".git").exists():
         raise ValueError("repo root must be a git worktree")
     if report_dir == repo_root or report_dir.is_relative_to(repo_root):
         raise ValueError("report directory must be outside the source worktree")
     if archive == repo_root or archive.is_relative_to(repo_root):
         raise ValueError("archive must be outside the source worktree")
+    if archive == report_dir or archive.is_relative_to(report_dir) or report_dir.is_relative_to(archive):
+        raise ValueError("archive and report directory must be disjoint")
     if report_dir.exists() or report_dir.is_symlink():
         raise ValueError("report directory already exists")
     if args.iterations <= 0 or args.iterations > 100_000:

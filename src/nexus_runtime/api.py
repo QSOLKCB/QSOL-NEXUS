@@ -266,7 +266,9 @@ class NexusAPI:
                 clean_payload, payload_events = self._scrub_semantic_value(payload)
                 clean_provenance, provenance_events = self._scrub_semantic_value(provenance)
                 events = payload_events + provenance_events
-                obj = self.world.create_object(object_type, clean_payload, clean_provenance)
+                obj = self._run_real_mutation(
+                    lambda: self.world.create_object(object_type, clean_payload, clean_provenance)
+                )
                 response = {
                     "status": "ok",
                     "object": obj.as_dict(),
@@ -515,7 +517,7 @@ class NexusAPI:
                 if not isinstance(raw_seed, str) or not raw_seed.strip():
                     raise ValueError("seed must be non-empty text")
                 scrubbed = self.scrubber.scrub(raw_seed)
-                game = new_game(self.world, scrubbed.text)
+                game = self._run_real_mutation(lambda: new_game(self.world, scrubbed.text))
                 response = {
                     "status": "ok",
                     "game_ref": game.object_id,
@@ -535,11 +537,13 @@ class NexusAPI:
                 targets = request.get("targets", [])
                 if not isinstance(targets, list) or not all(isinstance(target, str) for target in targets):
                     raise ValueError("targets must be a list of fictional country ids")
-                game = apply_action(self.world, game_ref, action, list(targets))
+                game = self._run_real_mutation(
+                    lambda: apply_action(self.world, game_ref, action, list(targets))
+                )
                 response = {"status": "ok", "game_ref": game.object_id, "game": game.payload}
             elif operation == "game.un.turn":
                 game_ref = self._require_str(request, "game_ref")
-                game = advance_turn(self.world, game_ref)
+                game = self._run_real_mutation(lambda: advance_turn(self.world, game_ref))
                 response = {"status": "ok", "game_ref": game.object_id, "game": game.payload}
             elif operation == "game.mud.catalog":
                 response = {
@@ -556,7 +560,9 @@ class NexusAPI:
                 if not isinstance(players, list) or not players or not all(isinstance(player, str) for player in players):
                     raise ValueError("players must be a non-empty list of MUD player ids")
                 scrubbed = self.scrubber.scrub(raw_seed)
-                mud = new_mud(self.world, scrubbed.text, list(players))
+                mud = self._run_real_mutation(
+                    lambda: new_mud(self.world, scrubbed.text, list(players))
+                )
                 first_player = next(iter(mud.payload["players"]))
                 response = {
                     "status": "ok",
@@ -592,7 +598,9 @@ class NexusAPI:
                 args = request.get("args", [])
                 if not isinstance(args, list) or not all(isinstance(arg, str) and arg for arg in args):
                     raise ValueError("args must be a list of non-empty strings")
-                mud = apply_mud_action(self.world, mud_ref, player_id, action, list(args))
+                mud = self._run_real_mutation(
+                    lambda: apply_mud_action(self.world, mud_ref, player_id, action, list(args))
+                )
                 response = {
                     "status": "ok",
                     "mud_ref": mud.object_id,
@@ -675,12 +683,14 @@ class NexusAPI:
                 if not isinstance(mode_id, str):
                     raise ValueError("mode must be a string")
                 get_mode(mode_id)
-                response = self.council.run(
-                    question,
-                    actors,
-                    evidence_refs=evidence_refs,
-                    evidence_state=evidence_state,
-                    mode_id=mode_id,
+                response = self._run_real_mutation(
+                    lambda: self.council.run(
+                        question,
+                        actors,
+                        evidence_refs=evidence_refs,
+                        evidence_state=evidence_state,
+                        mode_id=mode_id,
+                    )
                 )
             else:
                 return self._error(request_id, "unknown_operation", "operation is not supported")
@@ -703,6 +713,12 @@ class NexusAPI:
         if request_id is not None:
             response = {"request_id": request_id, **response}
         return response
+
+    def _run_real_mutation(self, callback: Callable[[], Any]) -> Any:
+        """Execute a real write while holding the Trap Base mutation lease."""
+
+        with self.trap_mutation_gate.mutation_lease():
+            return callback()
 
     @staticmethod
     def _ensure_disjoint_storage_roots(
