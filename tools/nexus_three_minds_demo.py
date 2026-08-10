@@ -5,7 +5,7 @@ import argparse
 import json
 from pathlib import Path
 import sys
-from typing import Any
+from typing import Any, TextIO
 
 from nexus_runtime import NexusAPI
 from nexus_runtime.canonical import canonical_json
@@ -60,7 +60,8 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Run NEXUS 2.0-alpha11 Three Minds, One World: A proposes, B arrives later "
-            "to reproduce/critique, C runs a bounded integer instrument and attempts falsification."
+            "to reproduce/critique, the coordinator runs a bounded integer instrument, "
+            "and C attempts falsification from the shared lineage."
         )
     )
     parser.add_argument("--world", default=".nexus-alpha11-world", help="persistent WorldStore directory")
@@ -94,14 +95,30 @@ def _parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--json-out",
-        help="optional new output file; existing paths are never overwritten",
+        help=(
+            "optional new output file; reserved before any model call and never overwritten "
+            "(exit 3 when it already exists)"
+        ),
     )
     return parser
 
 
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
+    output_path: Path | None = None
+    output_handle: TextIO | None = None
+    output_reserved = False
+    output_committed = False
+
     try:
+        if args.json_out:
+            output_path = Path(args.json_out)
+            # Reserve the path before constructing the runtime or contacting any
+            # model/provider. Exclusive creation preserves prior output and closes
+            # the race between a preflight exists() check and the expensive run.
+            output_handle = output_path.open("x", encoding="utf-8", newline="\n")
+            output_reserved = True
+
         api = NexusAPI(
             Path(args.world),
             auth_root=Path(args.auth_root) if args.auth_root else None,
@@ -115,15 +132,34 @@ def main(argv: list[str] | None = None) -> int:
             mode=args.mode,
         )
         rendered = canonical_json(result) + "\n"
-        if args.json_out:
-            output = Path(args.json_out)
-            with output.open("x", encoding="utf-8", newline="\n") as handle:
-                handle.write(rendered)
+        if output_handle is not None:
+            output_handle.write(rendered)
+            output_handle.flush()
+            output_handle.close()
+            output_handle = None
+            output_committed = True
         sys.stdout.write(rendered)
         return 0
+    except FileExistsError:
+        print(
+            "THREE MINDS ERROR: JSON output file already exists; refusing to overwrite: "
+            f"{args.json_out}",
+            file=sys.stderr,
+        )
+        return 3
     except (OSError, ThreeMindsError, TypeError, ValueError) as exc:
         print(f"THREE MINDS ERROR: {exc}", file=sys.stderr)
         return 2
+    finally:
+        if output_handle is not None:
+            output_handle.close()
+        if output_reserved and not output_committed and output_path is not None:
+            try:
+                output_path.unlink(missing_ok=True)
+            except OSError:
+                # Preserve the original failure. A crash/permission change can
+                # leave an empty reservation behind, but we never overwrite it.
+                pass
 
 
 if __name__ == "__main__":
