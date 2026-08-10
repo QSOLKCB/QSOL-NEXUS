@@ -11,6 +11,12 @@ from .adapters import (
     ThirdPartyTransport,
 )
 from .api import MAX_REMOTE_COUNCIL_SEATS, NexusAPI as CoreNexusAPI
+from .council_chair import (
+    MAX_COUNCIL_VOTING_SEATS,
+    chair_policy_snapshot,
+    evaluate_council_roster_request,
+    validate_council_roster_request,
+)
 from .local_role_runtime import LocalAwareCitizenship, LocalAwareFailsafe
 from .local_roles import LocalRoleBackendConfig, LocalRoleRegistry
 from .types import CouncilMember
@@ -80,11 +86,24 @@ class ProviderNexusAPI(CoreNexusAPI):
                 *sorted(THIRD_PARTY_PROVIDER_IDS),
             ]
             response["local_roles"] = self.local_roles.status()
+            council_limits = dict(response.get("council_limits", {}))
+            council_limits["max_members"] = MAX_COUNCIL_VOTING_SEATS
+            council_limits["chair_policy"] = chair_policy_snapshot()
+            response["council_limits"] = council_limits
         elif operation == "system.operations" and response.get("status") == "ok":
             response = dict(response)
             operations = list(response.get("operations", []))
             operations.extend(sorted(_LOCAL_ROLE_OPERATIONS))
             response["operations"] = sorted(set(operations))
+        elif operation == "council.run" and response.get("status") == "ok":
+            # The exact public roster was already admitted by
+            # _validate_council_request_limits before any actor/auth creation.
+            # Return the deterministic admission summary so operators can audit
+            # which protected/general slot each requested model occupied.
+            response = dict(response)
+            response["council_chair"] = evaluate_council_roster_request(
+                request.get("members", [])
+            )
         return response
 
     def _handle_local_role_operation(self, request: dict[str, Any]) -> dict[str, Any]:
@@ -125,6 +144,10 @@ class ProviderNexusAPI(CoreNexusAPI):
 
     @staticmethod
     def _validate_council_request_limits(members: list[Any]) -> None:
+        # Preserve the existing spend/network caps first so their historical
+        # diagnostics remain stable, then apply the stricter Chair composition
+        # contract. All of this happens before actor construction, credential
+        # resolution, or provider inference.
         CoreNexusAPI._validate_council_request_limits(members)
         remote_seats = sum(
             1
@@ -135,6 +158,7 @@ class ProviderNexusAPI(CoreNexusAPI):
             raise ValueError(
                 f"Council permits at most {MAX_REMOTE_COUNCIL_SEATS} remote provider seats"
             )
+        validate_council_roster_request(members)
 
     def _actor(self, item: Any) -> Any:
         if not isinstance(item, dict):
