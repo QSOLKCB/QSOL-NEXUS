@@ -212,9 +212,12 @@ class CouncilChairAPITests(unittest.TestCase):
         api = NexusAPI()
         health = api.handle({"operation": "system.health"})
         self.assertEqual(health["status"], "ok")
-        self.assertEqual(health["council_limits"]["max_members"], MAX_COUNCIL_VOTING_SEATS)
-        chair = health["council_limits"]["chair_policy"]
+        # council_limits remains the lower-level coordinator/spend surface for
+        # backward compatibility; public voting admission is the Chair object.
+        self.assertEqual(health["council_limits"], {"max_members": 32, "max_remote_seats": 4})
+        chair = health["council_chair"]
         self.assertEqual(chair["schema"], COUNCIL_CHAIR_SCHEMA)
+        self.assertEqual(chair["maximum_voting_seats"], MAX_COUNCIL_VOTING_SEATS)
         self.assertEqual(chair["maximum_closed_general_seats"], 2)
         self.assertEqual(chair["maximum_large_open_weight_seats"], 2)
 
