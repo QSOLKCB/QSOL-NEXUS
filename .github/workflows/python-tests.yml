@@ -15,8 +15,18 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
       - name: Python version
         run: python3 --version
+      - name: Validate machine README manifest
+        run: python3 tools/validate_readme_contract.py
+      - name: Require README4AI update when README changes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 tools/validate_readme_contract.py --base "$BASE_SHA" --head "$HEAD_SHA"
       - name: Unit tests
         env:
           PYTHONPATH: src
