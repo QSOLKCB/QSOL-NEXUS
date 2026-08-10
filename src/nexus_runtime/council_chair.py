@@ -4,6 +4,8 @@ from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from .scrub import SecretScrubber
+
 
 COUNCIL_CHAIR_SCHEMA = "nexus-council-chair/1"
 MAX_COUNCIL_VOTING_SEATS = 5
@@ -25,6 +27,7 @@ _ALLOWED_CLASSIFICATION_FIELDS = frozenset(
         "parameter_count_source",
     }
 )
+_IDENTITY_SCRUBBER = SecretScrubber()
 
 
 @dataclass(frozen=True)
@@ -77,6 +80,7 @@ def chair_policy_snapshot() -> dict[str, Any]:
         "unknown_open_weight_parameter_count": "rejected",
         "moe_rule": "use_total_declared_parameters_not_active_parameters_per_token",
         "distinct_identity_rule": "distinct_effective_adapter_model_identity",
+        "anythingllm_identity_rule": "workspace_slug_is_effective_model_identity",
         "parameter_attestation": (
             "explicit parameter counts require a bounded source label; the runtime validates the "
             "attestation shape but does not perform network verification"
@@ -95,12 +99,22 @@ def _nonempty_text(value: object, label: str, *, maximum: int = 256) -> str:
     return value.strip()
 
 
-def _effective_model_id(item: dict[str, Any]) -> str:
-    model_id = _nonempty_text(item.get("model_id"), "model_id")
+def _identity_text(value: object, label: str, *, maximum: int = 256) -> str:
+    text = _nonempty_text(value, label, maximum=maximum)
+    if _IDENTITY_SCRUBBER.scrub(text).changed:
+        raise ValueError(f"Council Chair {label} must not contain credential-shaped text")
+    return text
+
+
+def _effective_model_id(item: dict[str, Any], adapter_id: str) -> str:
+    model_id = _identity_text(item.get("model_id"), "model_id")
+    if adapter_id == "anythingllm_local":
+        workspace = _identity_text(item.get("workspace"), "AnythingLLM workspace")
+        return f"workspace:{workspace}"
     override = item.get("model")
     if override is None:
         return model_id
-    return _nonempty_text(override, "effective model override")
+    return _identity_text(override, "effective model override")
 
 
 def _explicit_classification(
@@ -193,9 +207,9 @@ def classify_member_request(item: object) -> ChairSeatClassification:
     if not isinstance(item, dict):
         raise ValueError("Council Chair requires every member to be an object")
 
-    member_id = _nonempty_text(item.get("member_id"), "member_id", maximum=128)
-    adapter_id = _nonempty_text(item.get("adapter_id", "mock"), "adapter_id", maximum=128)
-    effective_model_id = _effective_model_id(item)
+    member_id = _identity_text(item.get("member_id"), "member_id", maximum=128)
+    adapter_id = _identity_text(item.get("adapter_id", "mock"), "adapter_id", maximum=128)
+    effective_model_id = _effective_model_id(item, adapter_id)
 
     capability_metadata = item.get("capability_metadata", {})
     if not isinstance(capability_metadata, dict):
@@ -203,9 +217,13 @@ def classify_member_request(item: object) -> ChairSeatClassification:
             f"Council Chair member {member_id!r} capability_metadata must be an object"
         )
 
-    explicit = capability_metadata.get(CLASSIFICATION_FIELD)
-    if explicit is not None:
-        return _explicit_classification(member_id, adapter_id, effective_model_id, explicit)
+    if CLASSIFICATION_FIELD in capability_metadata:
+        return _explicit_classification(
+            member_id,
+            adapter_id,
+            effective_model_id,
+            capability_metadata[CLASSIFICATION_FIELD],
+        )
 
     if adapter_id in SYNTHETIC_SMALL_ADAPTERS:
         return ChairSeatClassification(
