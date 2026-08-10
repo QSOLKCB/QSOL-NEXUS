@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from contextlib import redirect_stderr
+import io
 from pathlib import Path
 import tempfile
 import unittest
@@ -15,6 +17,7 @@ from nexus_runtime.three_minds import (
     integer_primality_probe,
     run_three_minds_demo,
 )
+from tools import nexus_three_minds_demo as demo_cli
 
 
 FAKE_PROVIDER_KEY = "fixture-three-minds-provider-key"
@@ -96,11 +99,18 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             self.assertIn(result["hypothesis_ref"], reproduction.payload["evidence_refs_used"])
             self.assertEqual(instrument.payload["previous_stage_ref"], result["reproduction_ref"])
             self.assertEqual(instrument.payload["composite_values"], [25])
+            self.assertEqual(
+                instrument.payload["execution_initiator"]["actor"],
+                "nexus_three_minds_demo",
+            )
+            self.assertEqual(instrument.payload["made_available_to"]["member_id"], "Gamma")
+            self.assertNotIn("requested_by_member_id", instrument.provenance)
             self.assertEqual(falsification.payload["previous_stage_ref"], result["instrument_result_ref"])
             self.assertIn(result["instrument_result_ref"], falsification.payload["evidence_refs_used"])
             self.assertTrue(run.payload["shared_world"])
             self.assertTrue(run.payload["sequential_arrival"])
             self.assertEqual(run.payload["mind_count"], 3)
+            self.assertEqual(run.payload["instrument_execution_actor"], "nexus_three_minds_demo")
             self.assertEqual(run.payload["additional_votes_created"], 0)
 
             reopened = NexusAPI(world_root, auth_root=auth_root)
@@ -110,6 +120,24 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
                 {"operation": "receipt.verify", "receipt_ref": result["receipt_ref"]}
             )
             self.assertEqual(verified["status"], "verified")
+
+    def test_task_and_instrument_evidence_expose_exact_custom_inputs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            api = NexusAPI(base / "world", auth_root=base / "auth")
+            question = "Custom framing: independently test this exact finite fixture."
+            result = run_three_minds_demo(
+                api,
+                members=mock_roster(),
+                values=[2, 3, 5, 7, 11, 13],
+                question=question,
+            )
+            task = api.world.inspect(result["task_ref"])
+            instrument = api.world.inspect(result["instrument_result_ref"])
+
+            self.assertIn(question, task.payload["content"])
+            self.assertIn("values=[2,3,5,7,11,13]", task.payload["content"])
+            self.assertIn("values=[2,3,5,7,11,13]", instrument.payload["content"])
 
     def test_prime_fixture_is_not_overclaimed_as_proof(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -137,8 +165,38 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)
             api = NexusAPI(base / "world", auth_root=base / "auth")
-            with self.assertRaises(ValueError):
+            with self.assertRaisesRegex(ValueError, "mind 3.*duplicates member_id.*mind 2"):
                 run_three_minds_demo(api, members=duplicate)
+
+    def test_member_validation_names_index_member_and_bad_field(self) -> None:
+        roster = [dict(member) for member in mock_roster()]
+        roster[0].update(
+            {
+                "adapter_id": "ollama",
+                "model_id": "declared-model",
+                "model": "different-effective-model",
+            }
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            api = NexusAPI(base / "world", auth_root=base / "auth")
+            with self.assertRaisesRegex(
+                ValueError,
+                "mind 1.*member_id='Alpha'.*field model.*equal model_id",
+            ):
+                run_three_minds_demo(api, members=roster)
+
+    def test_world_modes_contract_failure_is_not_reported_as_unknown_mode(self) -> None:
+        class BadModesAPI:
+            def handle(self, request: dict[str, object]) -> dict[str, object]:
+                self.assert_request = request
+                return {"status": "ok", "modes": None}
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "world.modes returned unexpected modes structure: expected list, got 'NoneType'",
+        ):
+            run_three_minds_demo(BadModesAPI(), members=mock_roster())
 
     def test_mock_openai_and_gemini_can_share_one_hermetic_lineage(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -194,6 +252,56 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             self.assertFalse(run.payload["execution_replayable"])
             self.assertEqual(run.payload["result_state"], "FALSIFIED_BY_INTEGER_FIXTURE")
             self.assertEqual(run.payload["additional_votes_created"], 0)
+
+
+class ThreeMindsCLITests(unittest.TestCase):
+    def test_existing_json_output_fails_before_runtime_or_model_calls(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            output = base / "existing.json"
+            output.write_text("preserve-me\n", encoding="utf-8")
+            stderr = io.StringIO()
+            with mock.patch.object(demo_cli, "NexusAPI") as api_constructor, redirect_stderr(stderr):
+                code = demo_cli.main(
+                    [
+                        "--world",
+                        str(base / "world"),
+                        "--json-out",
+                        str(output),
+                    ]
+                )
+
+            self.assertEqual(code, 3)
+            api_constructor.assert_not_called()
+            self.assertEqual(output.read_text(encoding="utf-8"), "preserve-me\n")
+            self.assertIn("refusing to overwrite", stderr.getvalue())
+
+    def test_failed_run_removes_only_its_reserved_empty_output(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            output = base / "reserved.json"
+            stderr = io.StringIO()
+            with (
+                mock.patch.object(demo_cli, "NexusAPI", return_value=object()),
+                mock.patch.object(
+                    demo_cli,
+                    "run_three_minds_demo",
+                    side_effect=ValueError("fixture failure"),
+                ),
+                redirect_stderr(stderr),
+            ):
+                code = demo_cli.main(
+                    [
+                        "--world",
+                        str(base / "world"),
+                        "--json-out",
+                        str(output),
+                    ]
+                )
+
+            self.assertEqual(code, 2)
+            self.assertFalse(output.exists())
+            self.assertIn("fixture failure", stderr.getvalue())
 
 
 if __name__ == "__main__":
