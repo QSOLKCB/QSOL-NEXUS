@@ -66,6 +66,10 @@ class CouncilChairPolicyTests(unittest.TestCase):
             "classification_changes_admission_only_never_vote_weight",
         )
         self.assertEqual(policy["moe_rule"], "use_total_declared_parameters_not_active_parameters_per_token")
+        self.assertEqual(
+            policy["unknown_unclassified_adapter"],
+            "conservative_closed_general_not_protected_small",
+        )
 
     def test_full_five_seat_roster_admits_two_closed_two_large_open_and_one_small(self) -> None:
         roster = [
@@ -206,6 +210,20 @@ class CouncilChairPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "distinct effective adapter/model identities"):
             evaluate_council_roster_request(roster)
 
+    def test_unclassified_model_host_is_conservative_general_not_small(self) -> None:
+        result = evaluate_council_roster_request(
+            [
+                member("SmallA", "small-a"),
+                member("SmallB", "small-b"),
+                member("Local", "local-model", adapter_id="ollama"),
+            ]
+        )
+        local = next(seat for seat in result["seats"] if seat["member_id"] == "Local")
+        self.assertEqual(local["slot_class"], "closed_general")
+        self.assertIsNone(local["parameter_count_millions"])
+        self.assertTrue(local["inferred"])
+        self.assertIn("unclassified_adapter_conservative", local["parameter_count_source"])
+
 
 class CouncilChairAPITests(unittest.TestCase):
     def test_health_advertises_hard_five_seat_chair_policy(self) -> None:
@@ -242,25 +260,6 @@ class CouncilChairAPITests(unittest.TestCase):
         self.assertEqual(result["council_chair"]["slot_counts"]["protected_small"], 1)
         self.assertEqual(result["council_chair"]["vote_weight_per_seat"], 1)
 
-    def test_unclassified_local_model_is_rejected_before_actor_construction(self) -> None:
-        api = NexusAPI()
-        roster = [
-            member("SmallA", "small-a"),
-            member("SmallB", "small-b"),
-            member("Local", "local-model", adapter_id="ollama"),
-        ]
-        with mock.patch.object(api, "_actor", side_effect=AssertionError("actor construction must not run")) as actor:
-            result = api.handle(
-                {
-                    "operation": "council.run",
-                    "question": "test admission first",
-                    "members": roster,
-                }
-            )
-        self.assertEqual(result["status"], "error")
-        self.assertIn("requires capability_metadata.council_classification", result["error"]["message"])
-        actor.assert_not_called()
-
     def test_third_closed_general_model_is_rejected_before_credentials(self) -> None:
         api = NexusAPI()
         roster = [
@@ -280,6 +279,19 @@ class CouncilChairAPITests(unittest.TestCase):
         self.assertEqual(result["status"], "error")
         self.assertIn("at most 2 closed-model general seats", result["error"]["message"])
         resolve.assert_not_called()
+
+    def test_parole_semantic_rejection_precedes_chair_roster_shape(self) -> None:
+        api = NexusAPI()
+        result = api.handle(
+            {
+                "operation": "council.run",
+                "question": "May parole vote?",
+                "mode": "citizenship_parole",
+                "members": [{"member_id": "Only", "model_id": "mock-only"}],
+            }
+        )
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["code"], "citizen_parole_has_no_council")
 
 
 if __name__ == "__main__":
