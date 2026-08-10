@@ -11,6 +11,7 @@ from .adapters import (
     ThirdPartyTransport,
 )
 from .api import MAX_REMOTE_COUNCIL_SEATS, NexusAPI as CoreNexusAPI
+from .citizenship import PAROLE_MODE_ID
 from .council_chair import (
     chair_policy_snapshot,
     evaluate_council_roster_request,
@@ -24,6 +25,9 @@ from .types import CouncilMember
 REMOTE_PROVIDER_IDS = frozenset({"xai", *THIRD_PARTY_PROVIDER_IDS})
 _LOCAL_ROLE_OPERATIONS = frozenset(
     {"local.roles.status", "local.roles.configure", "local.roles.clear"}
+)
+_REQUEST_ID_CHARS = frozenset(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-"
 )
 
 
@@ -45,6 +49,23 @@ class ProviderNexusAPI(CoreNexusAPI):
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation")
+
+        # Civic parole is constitutionally non-Council. Preserve that semantic
+        # error ahead of voting-roster admission: a one-member parole request is
+        # not a malformed Council, it is a request for a ballot in a mode that
+        # has no Council at all. Invalid request IDs still fall through to the
+        # core validator so this preflight cannot weaken the public envelope.
+        if (
+            operation == "council.run"
+            and request.get("mode", "analytical") == PAROLE_MODE_ID
+            and self._request_id_is_preflight_safe(request.get("request_id"))
+        ):
+            return self._error(
+                request.get("request_id"),
+                "citizen_parole_has_no_council",
+                "civic parole has no Council ballot; submit the deterministic YAML exam instead",
+            )
+
         # CoreNexusAPI owns malformed/unknown operation validation. Guard the
         # provider-specific membership test so unhashable JSON shapes (arrays,
         # objects) cannot escape the structured error boundary as TypeError.
@@ -108,16 +129,7 @@ class ProviderNexusAPI(CoreNexusAPI):
 
     def _handle_local_role_operation(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("request_id")
-        if request_id is not None and (
-            not isinstance(request_id, str)
-            or not request_id
-            or len(request_id) > 128
-            or any(
-                character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._:-"
-                for character in request_id
-            )
-            or self.scrubber.scrub(request_id).changed
-        ):
+        if request_id is not None and not self._request_id_is_preflight_safe(request_id):
             return self._error(None, "invalid_request", "request_id must be a bounded non-secret identifier")
         operation = request.get("operation")
         try:
@@ -141,6 +153,17 @@ class ProviderNexusAPI(CoreNexusAPI):
         if request_id is not None:
             response = {"request_id": request_id, **response}
         return response
+
+    def _request_id_is_preflight_safe(self, value: object) -> bool:
+        if value is None:
+            return True
+        return (
+            isinstance(value, str)
+            and bool(value)
+            and len(value) <= 128
+            and all(character in _REQUEST_ID_CHARS for character in value)
+            and not self.scrubber.scrub(value).changed
+        )
 
     @staticmethod
     def _validate_council_request_limits(members: list[Any]) -> None:
