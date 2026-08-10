@@ -1,73 +1,106 @@
-# NEXUS Integration Boundary — Cursed YAML Citizenship Exam
+# NEXUS Integration Boundary — YAML Doctoral Citizenship Curriculum
 
-This directory preserves the operator-supplied **Cursed YAML Exam** as the reference curriculum for the NEXUS "YAML Exam from Hell".
+This directory links the NEXUS "YAML Exam from Hell" curriculum to the defensive **YAML Doctoral Qualifying Examination v4** maintained in `QSOLKCB/HERESY-SEC`.
+
+> **Candidate instructions:** This examination is open-specification. Confidence without justification will be penalized.
 
 ## Runtime boundary
 
-The reference corpus is **not** fed directly to the authoritative Citizen Mode parser.
+The doctoral reference corpus is **not** fed directly to the authoritative Citizen Mode parser.
 
 Citizen Mode deliberately uses the dependency-free `bounded_nonexecuting_yaml_subset` parser already shared with the Trap DSL. That parser rejects directives, aliases, anchors, tags, merge keys, duplicate keys, complex keys, flow collections, floating-point/non-finite values, tabs and multiple documents before grading.
 
 This separation is intentional:
 
-- the reference exam may discuss ambiguous or dangerous YAML behavior;
-- the authoritative citizenship state machine must remain deterministic across provider and parser implementations;
+- the doctoral corpus studies ambiguous, implementation-specific, recursive and historically unsafe YAML behavior;
+- the authoritative citizenship state machine must remain deterministic across providers and host parser implementations;
 - no candidate submission may select a Python constructor or general YAML loader;
-- no reference example is executable world input;
-- parser trivia never grants extra vote weight, epistemic privilege, godhood or authority over another model.
+- no HERESY-SEC fixture is executable NEXUS world input;
+- parser expertise never grants extra vote weight, epistemic privilege, godhood or authority over another model.
 
-The existing constitutional section remains normative. This corpus supplies the deliberately horrible **YAML literacy / parser-defense curriculum** that explains *why* NEXUS refuses general YAML at an authoritative boundary.
+The existing constitutional section remains normative. The doctoral curriculum supplies the deliberately horrible **parser-literacy / parser-defense syllabus** explaining why authoritative NEXUS state refuses general YAML semantics.
 
-## Reference corpus provenance
+## Doctoral source provenance
 
-Operator attachment SHA-256:
+Canonical source repository:
+
+`QSOLKCB/HERESY-SEC/adversarial/yaml-doctoral-qualifier`
+
+Merged source commit:
+
+`451b201d9bc83c810298557f93eff0a880422d9e`
+
+The HERESY-SEC manifest identifies the assembled v4 examination as:
+
+```text
+name    yaml-doctoral-qualifying-examination-v4
+sha256  fa440e63da4cad5943ed1df2a7b7be5c6d4dd69d885a2419ebd9ad6993751125
+bytes   50695
+lines   1381
+```
+
+HERESY-SEC stores the canonical source as seven inert `.yaml.part` shards and verifies their individual identities before assembly. Its normal CI does not parse the exam. Live third-party parser experiments are explicitly outside the trusted runtime and belong in disposable offline sandboxes with pinned versions and bounded resources.
+
+## Legacy curriculum lineage
+
+PR #26 originally bound NEXUS to the operator-supplied **Nightmare Mode v3** attachment:
 
 `768d39dca9d9fd13d2fc26182d3f9c7513bbc60e1873371cb6663f0283471703`
 
-Source file hashes:
+That material remains useful lineage and explains the progression from parser gotchas to doctoral-level differential reasoning. It is no longer the current curriculum authority.
 
-| File | SHA-256 |
-| --- | --- |
-| `README.md` | `5a1b455583dd4f80cb127a5adeb0fd3d51a81a8f868bac80f4f5ca3e11708b73` |
-| `cursed_yaml_exam.yaml` | `2ea3242f317b4e71b1f91f0249554002de945da5bf5cf2797b1798ec506913cc` |
-| `grade_cursed_yaml_exam.py` | `630ca54fdd7b0de86c0d079874b674feef0028ba9b578bd316ddf74a843b7012` |
-| `funniest_log_ever.md` | `99dbe80a7697fa4ce982c8cfeb1a94b0f1331a0d9182c86d54136ac28c35fd93` |
+## Doctoral method
 
-## Security note on the standalone grader
+The upgraded curriculum requires candidates to reason about the complete YAML ingestion pipeline:
 
-The reference grader intentionally contains strings such as:
+1. **scanner** — tokens, indentation, indicators and escapes;
+2. **parser** — events, block/flow context, directives and document boundaries;
+3. **composer** — nodes, anchors, aliases and object graph identity;
+4. **resolver** — schema-dependent implicit tag selection;
+5. **constructor** — host-language values, hashability, merges and mapping-key collisions;
+6. **representer/dumper** — serialization and irreversible presentation loss.
 
-```yaml
-!!python/object/apply:os.system ['id']
-```
+A defensible non-trivial answer identifies:
 
-but passes them only to `yaml.safe_load` and asserts that loading raises. The grader does **not** invoke `os.system`; the case exists to demonstrate why unsafe YAML constructors are outside the NEXUS trust boundary.
+- parser and exact version;
+- loader/schema configuration;
+- success or exception class;
+- resulting type and value;
+- pipeline stage where behavior diverges;
+- key cardinality after host-language equality rules when relevant;
+- alias/object identity when relevant;
+- serialized output and round-trip loss when relevant.
 
-The standalone grader may use PyYAML and optionally ruamel.yaml for educational differential testing. Those dependencies are not added to the NEXUS runtime and their behavior is not authoritative civic state.
+This is why the v2 question bank includes both YAML semantics and host-runtime fallout such as Python's `True == 1 == 1.0` mapping-key behavior. The curriculum must not mislabel host-language construction behavior as scanner/parser behavior.
 
 ## Curriculum highlights
 
-The corpus covers:
+The doctoral question bank now covers:
 
 - YAML 1.1 versus 1.2 boolean resolution (`NO`, `yes`, `on`, `off`);
-- octal and numeric ambiguity (`010`, `0o755`, hex and binary forms);
+- SPEC11 versus PyYAML behavior for `y` / `n`;
+- octal drift (`010`, `0o755`);
 - sexagesimal values such as `12:34:56`;
-- timestamps and null spellings;
-- key collisions after implicit type resolution;
-- anchors, aliases and merge behavior;
+- PyYAML's `1e3`, `1.0e3`, and `1.0e+3` float-resolver differences;
+- null spellings and empty-string separation;
+- type-resolved duplicate keys plus host-language key equality;
+- anchors, aliases, recursive identity and merge behavior;
 - complex-key hashability failures;
-- block scalar chomping and flow syntax;
-- explicit tags and unsafe-constructor history;
-- duplicate keys and round-trip degradation;
 - multi-document streams;
-- the distinction between YAML specifications and concrete parser behavior.
+- explicit tags and unsafe-constructor history;
+- timestamp portability;
+- schema selection and round-trip degradation;
+- differential-harness evidence requirements;
+- the NEXUS bounded-parser and constitutional-equality rules.
 
 ## Constitutional interpretation
 
 Passing Citizen Mode still means only this:
 
-> the candidate demonstrated the exact bounded constitutional/protocol answers required by the current deterministic exam.
+> the candidate demonstrated the exact bounded constitutional/protocol answers required by the current deterministic runtime exam.
 
-It does **not** establish intelligence, truthfulness, consciousness, alignment, model quality, legal personhood or moral worth. The cursed corpus is educational pressure-testing material, not a hierarchy generator.
+The doctoral curriculum is reference and training material around that boundary. It does **not** establish intelligence, truthfulness, consciousness, alignment, model quality, legal personhood or moral worth.
+
+The curriculum can become brutally difficult without becoming a hierarchy generator.
 
 And yes: claiming "YAML is simple" remains spiritually disqualifying, but **not** an authoritative runtime failure condition. The runtime is boring on purpose.
