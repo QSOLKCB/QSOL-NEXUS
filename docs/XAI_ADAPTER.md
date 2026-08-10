@@ -100,7 +100,7 @@ The model ID is operator-selected from discovery. `grok-4.5` is only an example,
 
 The remote actor receives the same phase prompt, guard/nudge lifecycle, strict ballot parser, one ballot, `vote_weight = 1`, and `epistemic_privilege = none` as every other actor. Live xAI inference is marked non-replayable.
 
-A Council request permits at most 32 total seats and four xAI seats. NEXUS checks both limits before constructing actors or resolving an xAI credential. One remote seat can still make multiple phase, nudge, failsafe, and ballot calls, so operators must retain provider-side budgets and alerts.
+A public `council.run` admits **3 to 5 voting seats** under the Council Chair. The `system.health` field `council_limits.max_members = 32` is the lower-level coordinator ceiling retained for compatibility; it is not the public voting-roster maximum. The fixed-remote exposure cap remains four seats across admitted remote providers, while the Chair independently permits at most two closed/opaque general seats and requires at least one protected <=20B seat. All admission limits are checked before constructing actors or resolving an xAI credential. One remote seat can still make multiple phase, nudge, failsafe, and ballot calls, so operators must retain provider-side budgets and alerts.
 
 ## Fixed transport boundary
 

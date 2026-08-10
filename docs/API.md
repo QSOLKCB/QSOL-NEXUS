@@ -697,7 +697,6 @@ The runtime—not the Rust file parser—owns the final secret-scrub/persistence
 ## Bounded evidence views
 
 Council evidence identity remains reference-based:
-
 ```text
 EvidenceSnapshot
   -> included_object_refs[]
@@ -777,7 +776,7 @@ A fixed-remote provider peer references only an opaque profile name; for example
 
 Remote provider member schemas reject arbitrary endpoint/base-URL overrides and inline credentials. The actor resolves the named profile only inside its transport; raw material remains broker-internal.
 
-Council requests are capped at 32 total seats and four fixed-remote provider seats across xAI/OpenAI/Anthropic/Gemini/Groq/Together. Both limits are checked before actor construction or auth-profile resolution. A remote seat can make multiple phase, nudge, failsafe, and ballot calls; the seat cap is a spend/exposure bound, not a per-run price quote.
+Public `council.run` requests admit **3 to 5 voting seats** under the Council Chair and at most four fixed-remote provider seats across xAI/OpenAI/Anthropic/Gemini/Groq/Together. The `system.health` field `council_limits.max_members = 32` is the lower-level coordinator ceiling retained for compatibility; it is not the public voting-roster maximum. The Chair additionally requires at least one protected <=20B seat and permits at most two closed/opaque general seats and two large open-weight seats. These admission limits are checked before actor construction or auth-profile resolution. A remote seat can make multiple phase, nudge, failsafe, and ballot calls; the remote-seat cap is a spend/exposure bound, not a per-run price quote.
 
 `citizenship_parole` cannot be used for `council.run`: parole has no civic ballot. `civic_bureaucracy` requires each exact registered citizen identity and replaces an active proxy only within that same seat. `citizen_play` also requires citizenship but calls the citizen's configured actor rather than the bureaucracy proxy.
 
