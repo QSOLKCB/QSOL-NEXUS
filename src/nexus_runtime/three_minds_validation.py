@@ -15,10 +15,17 @@ def _member_label(index: int | None, member: Any) -> str:
     return prefix
 
 
-def public_member(member: Any, *, index: int | None = None) -> dict[str, str]:
-    """Validate constitutional/public identity fields for one alpha11 participant."""
+def public_member(
+    member: Any,
+    *,
+    index: int | None = None,
+    context: str = "three-minds demo",
+) -> dict[str, str]:
+    """Validate constitutional/public identity fields for one multi-mind participant."""
 
     label = _member_label(index, member)
+    if not isinstance(context, str) or not context:
+        raise ValueError("validation context must be non-empty text")
     if not isinstance(member, dict):
         raise ValueError(f"{label} specification must be an object")
 
@@ -38,7 +45,7 @@ def public_member(member: Any, *, index: int | None = None) -> dict[str, str]:
             raise ValueError(f"{label} field model must be non-empty text when supplied")
         if backend_model != model_id:
             raise ValueError(
-                f"{label} field model must equal model_id in the three-minds demo so "
+                f"{label} field model must equal model_id in the {context} so "
                 "the declared identity matches the effective backend model"
             )
 
@@ -55,16 +62,25 @@ def public_member(member: Any, *, index: int | None = None) -> dict[str, str]:
     }
 
 
-def validate_members(members: Iterable[dict[str, Any]]) -> tuple[tuple[dict[str, Any], ...], tuple[dict[str, str], ...]]:
+def validate_members(
+    members: Iterable[dict[str, Any]],
+    *,
+    context: str = "three-minds demo",
+) -> tuple[tuple[dict[str, Any], ...], tuple[dict[str, str], ...]]:
     """Require exactly three distinct declared/effective participant identities."""
 
+    if not isinstance(context, str) or not context:
+        raise ValueError("validation context must be non-empty text")
     normalized = tuple(members)
     if len(normalized) != 3:
         raise ValueError(
-            f"three-minds demo requires exactly three minds; got {len(normalized)}"
+            f"{context} requires exactly three minds; got {len(normalized)}"
         )
 
-    public = tuple(public_member(member, index=index) for index, member in enumerate(normalized))
+    public = tuple(
+        public_member(member, index=index, context=context)
+        for index, member in enumerate(normalized)
+    )
 
     member_seen: dict[str, int] = {}
     identity_seen: dict[tuple[str, str], int] = {}
