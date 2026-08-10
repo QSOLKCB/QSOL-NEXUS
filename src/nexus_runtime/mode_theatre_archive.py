@@ -5,10 +5,11 @@ from pathlib import Path
 import tempfile
 from typing import Any
 
-from .canonical import canonical_json
+from .canonical import canonical_json, sha256_ref
 
 
 MODE_THEATRE_ARCHIVE_SCHEMA = "nexus-mode-theatre-archive/1"
+ARCHIVE_COMMITTED_STATUS = "archive_committed_before_world_success"
 
 
 class ModeTheatreArchiveError(RuntimeError):
@@ -23,6 +24,11 @@ class ModeTheatreArchive:
     not bypass the runtime's semantic secret-scrubbing boundary. The ordinary
     Courtroom Stenographer may additionally be pointed at ``stenographer_root``
     for its independent append-only AI-action study ledger.
+
+    ``finalize`` is intentionally a pre-success commit: the immutable archive
+    manifest must exist before the WorldStore may record a successful
+    ``mode_theatre_run``. This prevents a full filesystem from leaving behind a
+    world object that falsely claims the mandatory laugh-later archive exists.
     """
 
     def __init__(self, run_dir: Path) -> None:
@@ -110,21 +116,60 @@ class ModeTheatreArchive:
         except OSError as exc:
             raise ModeTheatreArchiveError(f"cannot record mode-theatre failure: {exc}") from exc
 
+    @staticmethod
+    def _ref_list(value: object, field: str, *, expected_count: int | None = None) -> list[str]:
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            raise ModeTheatreArchiveError(f"archive {field} must be a list of object references")
+        if expected_count is not None and len(value) != expected_count:
+            raise ModeTheatreArchiveError(
+                f"archive {field} must contain exactly {expected_count} references"
+            )
+        return list(value)
+
     def finalize(self, result: dict[str, Any]) -> dict[str, Any]:
+        """Commit the mandatory archive before any WorldStore success object exists."""
+
         if not isinstance(result, dict):
             raise ModeTheatreArchiveError("archive result must be an object")
-        manifest = {
+        if result.get("status") != ARCHIVE_COMMITTED_STATUS:
+            raise ModeTheatreArchiveError(
+                f"archive status must be {ARCHIVE_COMMITTED_STATUS!r}"
+            )
+        task_ref = result.get("task_ref")
+        if not isinstance(task_ref, str) or not task_ref:
+            raise ModeTheatreArchiveError("archive task_ref must be a non-empty object reference")
+        house_refs = self._ref_list(result.get("house_entry_refs"), "house_entry_refs", expected_count=3)
+        orator_refs = self._ref_list(result.get("orator_entry_refs"), "orator_entry_refs", expected_count=3)
+        context_refs = self._ref_list(result.get("evidence_context_refs"), "evidence_context_refs", expected_count=6)
+        replayable = result.get("execution_replayable")
+        if type(replayable) is not bool:
+            raise ModeTheatreArchiveError("archive execution_replayable must be boolean")
+
+        manifest_body = {
             "schema": MODE_THEATRE_ARCHIVE_SCHEMA,
-            "status": result.get("status"),
-            "run_ref": result.get("run_ref"),
-            "receipt_ref": result.get("receipt_ref"),
-            "receipt_status": result.get("receipt_status"),
+            "status": ARCHIVE_COMMITTED_STATUS,
+            "task_ref": task_ref,
+            "house_entry_refs": house_refs,
+            "orator_entry_refs": orator_refs,
+            "evidence_context_refs": context_refs,
+            "execution_replayable": replayable,
             "event_log": self.events_path.name,
             "human_transcript": self.transcript_path.name,
             "stenographer_directory": self.stenographer_root.name,
             "world_paths_stored": False,
-            "credentials_stored": False,
+            "secret_handling": {
+                "archive_input": "scrubbed_world_objects",
+                "runtime_high_confidence_scrubber_applied_upstream": True,
+                "raw_credentials_intentionally_recorded": False,
+                "credential_absence_verified": False,
+                "claim": (
+                    "the archive records scrubbed WorldStore objects but does not certify "
+                    "the absence of unrecognized credential formats"
+                ),
+            },
         }
+        commitment_ref = sha256_ref("mode_theatre_archive", manifest_body)
+        manifest = {**manifest_body, "archive_commitment_ref": commitment_ref}
         try:
             with self.manifest_path.open("x", encoding="utf-8", newline="\n") as handle:
                 handle.write(canonical_json(manifest) + "\n")
@@ -136,6 +181,7 @@ class ModeTheatreArchive:
 
 
 __all__ = [
+    "ARCHIVE_COMMITTED_STATUS",
     "MODE_THEATRE_ARCHIVE_SCHEMA",
     "ModeTheatreArchive",
     "ModeTheatreArchiveError",
