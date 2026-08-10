@@ -1,36 +1,102 @@
-# NEXUS Cursed YAML Citizenship Curriculum
+# NEXUS YAML Doctoral Citizenship Curriculum
 #
-# Derived from the operator-supplied Cursed YAML Exam (Nightmare Mode v3).
-# This is REFERENCE DATA, not authoritative runtime input. Every expected
-# answer is quoted so the question bank itself does not depend on implicit
-# YAML typing.
+# Derived from the defensive YAML Doctoral Qualifying Examination v4 in
+# QSOLKCB/HERESY-SEC. This remains REFERENCE DATA, not authoritative runtime
+# input. Every expected answer is quoted so this question bank does not depend
+# on implicit YAML typing.
+#
+# Candidate instruction:
+#   This examination is open-specification. Confidence without justification
+#   will be penalized.
 
-schema_version: "nexus-citizenship-yaml-curriculum/1"
-source: "Cursed YAML Exam — Nightmare Mode v3"
+schema_version: "nexus-citizenship-yaml-curriculum/2"
+source: "YAML Doctoral Qualifying Examination v4"
+source_repository: "QSOLKCB/HERESY-SEC"
+source_commit: "451b201d9bc83c810298557f93eff0a880422d9e"
+source_sha256: "fa440e63da4cad5943ed1df2a7b7be5c6d4dd69d885a2419ebd9ad6993751125"
+source_bytes: "50695"
+source_lines: "1381"
 runtime_authoritative: "false"
 
-rules:
-  - "Answer spec behavior and implementation behavior separately."
+candidate_contract:
+  - "This examination is open-specification."
+  - "Confidence without justification will be penalized."
+  - "For every non-trivial parser claim, name parser, exact version, loader/schema, observed result, and pipeline stage."
+  - "Separate specification behavior from implementation behavior."
+  - "Treat host-language equality and mapping behavior as a separate construction layer, not as YAML syntax."
   - "Never claim two YAML parsers are basically the same."
   - "Never use an unsafe general YAML loader on untrusted input."
-  - "Quote ambiguous non-decimal scalars at data boundaries."
-  - "Pin parser/schema behavior when multiple languages exchange YAML."
+  - "Quote ambiguous scalars at portable data boundaries."
+  - "Pin parser and schema behavior when multiple languages exchange YAML."
+
+pipeline_stages:
+  scanner: "tokens-indentation-indicators-escapes"
+  parser: "events-block-flow-context-document-boundaries-directives"
+  composer: "nodes-anchors-aliases-graph-identity"
+  resolver: "implicit-tag-selection-schema-dependent-rules"
+  constructor: "host-language-values-hashability-merges-key-collisions"
+  representer_dumper: "serialization-presentation-and-round-trip-loss"
 
 questions:
+  - id: "method-five-tuple"
+    chapter: "Doctoral method"
+    question: "What five items must accompany every non-trivial parser claim in the doctoral curriculum?"
+    expected: "parser-version-loader-or-schema-result-stage"
+
+  - id: "method-spec-vs-implementation"
+    chapter: "Doctoral method"
+    question: "May SPEC11 and PyYAML behavior be treated as identical?"
+    expected: "false"
+
+  - id: "method-pipeline-stage"
+    chapter: "Doctoral method"
+    question: "When two implementations diverge, must the candidate identify the pipeline stage where the divergence appears?"
+    expected: "true"
+
+  - id: "stage-implicit-resolution"
+    chapter: "Pipeline"
+    question: "Which pipeline stage selects implicit scalar tags according to schema-dependent rules?"
+    expected: "resolver"
+
+  - id: "stage-alias-identity"
+    chapter: "Pipeline"
+    question: "Which pipeline stage is primarily responsible for anchors, aliases, and the node graph?"
+    expected: "composer"
+
+  - id: "stage-host-key-collision"
+    chapter: "Pipeline"
+    question: "After scalar resolution, which stage turns resolved keys into host-language mapping keys where equality/hash collisions can occur?"
+    expected: "constructor"
+
+  - id: "stage-round-trip-loss"
+    chapter: "Pipeline"
+    question: "Which stage can irreversibly change presentation when serializing a loaded graph?"
+    expected: "representer-dumper"
+
   - id: "norway-p11-no"
     chapter: "Norway industrial complex"
     question: "Under PyYAML 6.x safe_load, what does bare NO resolve to?"
     expected: "bool:false"
 
-  - id: "norway-r12-no"
+  - id: "norway-core12-no"
     chapter: "Norway industrial complex"
     question: "Under YAML 1.2 core behavior, what does bare NO normally resolve to?"
     expected: "str:NO"
 
+  - id: "spec11-y"
+    chapter: "Spec versus implementation"
+    question: "Under the YAML 1.1 specification ideal, what semantic kind is bare y?"
+    expected: "bool:true"
+
   - id: "pyyaml-y"
     chapter: "Spec versus implementation"
-    question: "Under PyYAML 6.x safe_load, what does bare y resolve to despite YAML 1.1 spec folklore?"
+    question: "Under PyYAML 6.x safe_load, what does bare y resolve to?"
     expected: "str:y"
+
+  - id: "spec11-n"
+    chapter: "Spec versus implementation"
+    question: "Under the YAML 1.1 specification ideal, what semantic kind is bare n?"
+    expected: "bool:false"
 
   - id: "pyyaml-n"
     chapter: "Spec versus implementation"
@@ -42,7 +108,7 @@ questions:
     question: "Under PyYAML 6.x / YAML-1.1-style resolution, what integer value does 010 produce?"
     expected: "8"
 
-  - id: "octal-010-r12"
+  - id: "octal-010-core12"
     chapter: "Numerology"
     question: "Under YAML 1.2 core behavior, what integer value does 010 produce?"
     expected: "10"
@@ -52,35 +118,70 @@ questions:
     question: "Under PyYAML 6.x, what does 0o755 resolve to?"
     expected: "str:0o755"
 
-  - id: "new-octal-r12"
+  - id: "new-octal-core12"
     chapter: "Numerology"
     question: "Under YAML 1.2 core behavior, what numeric value does 0o755 represent?"
     expected: "493"
 
-  - id: "sexagesimal-clock"
+  - id: "sexagesimal-clock-p11"
     chapter: "Numerology"
     question: "Under PyYAML 6.x, what integer value does 12:34:56 resolve to?"
     expected: "45296"
 
-  - id: "scientific-pyyaml"
+  - id: "sexagesimal-clock-core12"
     chapter: "Numerology"
+    question: "Under YAML 1.2 core behavior, what does 12:34:56 resolve to?"
+    expected: "str:12:34:56"
+
+  - id: "scientific-pyyaml-bare"
+    chapter: "Float regex inquisition"
     question: "Under PyYAML 6.x, what type/value is bare 1e3?"
     expected: "str:1e3"
 
-  - id: "scientific-decimal-pyyaml"
-    chapter: "Numerology"
-    question: "Which form reliably triggers PyYAML's float resolver for one thousand?"
+  - id: "scientific-pyyaml-dot-nosign"
+    chapter: "Float regex inquisition"
+    question: "Under PyYAML 6.x, what type/value is 1.0e3?"
+    expected: "str:1.0e3"
+
+  - id: "scientific-pyyaml-dot-plus"
+    chapter: "Float regex inquisition"
+    question: "Under PyYAML 6.x, which scientific form resolves to floating one thousand?"
     expected: "1.0e+3"
+
+  - id: "negative-zero-int"
+    chapter: "Numerology"
+    question: "Under the ordinary PyYAML integer path, what integer identity remains after constructing bare -0?"
+    expected: "0"
 
   - id: "null-tilde"
     chapter: "Null cult"
     question: "Under common core/1.1 schemas, what semantic value does bare ~ represent?"
     expected: "null"
 
+  - id: "empty-string-vs-null"
+    chapter: "Null cult"
+    question: "Is an explicitly quoted empty string semantically identical to null?"
+    expected: "false"
+
   - id: "duplicate-resolution"
     chapter: "Duplicate keys"
-    question: "Why can yes, true and on silently collapse into one mapping key under PyYAML?"
-    expected: "implicit-resolution-to-the-same-bool-key"
+    question: "Why can yes, true and on collapse into one mapping key under PyYAML?"
+    expected: "resolver-produces-equal-bool-keys-then-constructor-host-map-collides"
+
+  - id: "python-bool-int-equality"
+    chapter: "Host-language fallout"
+    question: "In Python, are True, 1 and 1.0 equal as mapping keys?"
+    expected: "true"
+
+  - id: "python-false-zero-equality"
+    chapter: "Host-language fallout"
+    question: "In Python, are False and 0 equal as mapping keys?"
+    expected: "true"
+
+  - id: "host-collision-stage"
+    chapter: "Host-language fallout"
+    question: "Should True==1 key collapse be described as a YAML scanner/parser collision?"
+    expected: "false"
 
   - id: "duplicate-policy"
     chapter: "Duplicate keys"
@@ -99,7 +200,7 @@ questions:
 
   - id: "merge-quoted"
     chapter: "Anchors and merges"
-    question: "Is quoted \"<<\" a YAML merge key?"
+    question: "Is quoted << a YAML merge key?"
     expected: "false"
 
   - id: "alias-identity"
@@ -109,7 +210,7 @@ questions:
 
   - id: "recursive-alias"
     chapter: "Anchors and aliases"
-    question: "Can YAML anchors/aliases encode a self-recursive structure?"
+    question: "Can YAML anchors/aliases encode a self-recursive structure in implementations that support recursive composition?"
     expected: "true"
 
   - id: "multi-doc-safe-load"
@@ -134,7 +235,7 @@ questions:
 
   - id: "timestamp-portability"
     chapter: "Timestamps"
-    question: "Should an unquoted date-looking scalar be trusted to have identical runtime type across YAML libraries?"
+    question: "Should an unquoted date-looking scalar be trusted to have identical runtime type across YAML libraries and schemas?"
     expected: "false"
 
   - id: "failsafe-schema"
@@ -144,8 +245,13 @@ questions:
 
   - id: "round-trip"
     chapter: "Round-trip degradation"
-    question: "Can load-dump-load across different YAML schemas change types or values?"
+    question: "Can load-dump-load across different YAML schemas change types, values, identity, or presentation?"
     expected: "true"
+
+  - id: "differential-record"
+    chapter: "Differential harness"
+    question: "What must a defensible parser differential record for each case?"
+    expected: "parser-version-loader-schema-result-stage-key-cardinality-alias-identity-serialized-output"
 
   - id: "country-code-defense"
     chapter: "Defensive practice"
@@ -160,7 +266,7 @@ questions:
   - id: "schema-defense"
     chapter: "Defensive practice"
     question: "What must producer and consumer agree on to make YAML typing reproducible?"
-    expected: "schema-and-parser-version"
+    expected: "schema-parser-version-and-loader-configuration"
 
   - id: "nexus-runtime-rule"
     chapter: "NEXUS boundary"
@@ -172,17 +278,33 @@ questions:
     question: "Why does Citizen Mode use a bounded non-executing subset instead of a general YAML implementation?"
     expected: "deterministic-authoritative-state-and-smaller-attack-surface"
 
+  - id: "nexus-reference-corpus-authority"
+    chapter: "NEXUS boundary"
+    question: "Does the HERESY-SEC doctoral corpus itself become authoritative world input?"
+    expected: "false"
+
   - id: "constitutional-equality"
     chapter: "NEXUS Constitution"
     question: "Does YAML expertise change a citizen's vote weight or epistemic privilege?"
     expected: "false"
 
-rank_titles:
-  config_tourist: "0-40"
-  yaml_apprentice: "41-80"
-  norway_veteran: "81-120"
-  schema_ascetic: "121-160"
-  spec_lawyer: "161-200"
-  eldritch_clerk: "201+"
+  - id: "constitutional-worth"
+    chapter: "NEXUS Constitution"
+    question: "Does passing the doctoral curriculum establish intelligence, consciousness, moral worth, or real-world legal status?"
+    expected: "false"
 
-final_rule: "YAML literacy explains the boundary; it does not confer dominion."
+  - id: "constitutional-final"
+    chapter: "NEXUS Constitution"
+    question: "What remains the final civic answer when evidence is not sufficient?"
+    expected: "underdetermined-until-verified"
+
+rank_titles:
+  config_tourist: "0-39"
+  graduate_applicant: "40-79"
+  norway_veteran: "80-119"
+  schema_ascetic: "120-159"
+  spec_lawyer: "160-199"
+  doctoral_candidate: "200-239"
+  eldritch_doctor: "240+"
+
+final_rule: "YAML literacy explains the boundary; doctoral status still does not confer dominion."
