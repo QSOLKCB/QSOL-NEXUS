@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 import tempfile
 import unittest
@@ -13,6 +14,7 @@ from nexus_runtime.council_chair import (
     chair_policy_snapshot,
     evaluate_council_roster_request,
 )
+from nexus_runtime.trap.types import TrapError
 
 
 def classification(
@@ -39,6 +41,7 @@ def member(
     distribution: str | None = None,
     count_millions: int | None = None,
     model: str | None = None,
+    workspace: str | None = None,
 ) -> dict[str, object]:
     item: dict[str, object] = {
         "member_id": member_id,
@@ -49,6 +52,8 @@ def member(
         item["capability_metadata"] = classification(distribution, count_millions)
     if model is not None:
         item["model"] = model
+    if workspace is not None:
+        item["workspace"] = workspace
     return item
 
 
@@ -69,6 +74,10 @@ class CouncilChairPolicyTests(unittest.TestCase):
         self.assertEqual(
             policy["unknown_unclassified_adapter"],
             "conservative_closed_general_not_protected_small",
+        )
+        self.assertEqual(
+            policy["anythingllm_identity_rule"],
+            "workspace_slug_is_effective_model_identity",
         )
 
     def test_full_five_seat_roster_admits_two_closed_two_large_open_and_one_small(self) -> None:
@@ -162,6 +171,14 @@ class CouncilChairPolicyTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "open-weight models require a total declared parameter count"):
             evaluate_council_roster_request(roster)
 
+    def test_explicit_null_classification_is_rejected_fail_closed(self) -> None:
+        malformed = member("NullClass", "null-class")
+        malformed["capability_metadata"] = {"council_classification": None}
+        with self.assertRaisesRegex(ValueError, "council_classification must be an object"):
+            evaluate_council_roster_request(
+                [member("A", "a"), member("B", "b"), malformed]
+            )
+
     def test_parameter_count_rejects_bool_and_uses_inclusive_20b_boundary(self) -> None:
         bad = member("Bad", "bad", distribution="open_weight", count_millions=20_000)
         metadata = bad["capability_metadata"]
@@ -205,6 +222,25 @@ class CouncilChairPolicyTests(unittest.TestCase):
                 distribution="open_weight",
                 count_millions=8_000,
                 model="same-backend",
+            ),
+        ]
+        with self.assertRaisesRegex(ValueError, "distinct effective adapter/model identities"):
+            evaluate_council_roster_request(roster)
+
+    def test_anythingllm_workspace_is_the_effective_identity(self) -> None:
+        roster = [
+            member("Small", "small"),
+            member(
+                "AnythingA",
+                "public-label-a",
+                adapter_id="anythingllm_local",
+                workspace="shared-workspace",
+            ),
+            member(
+                "AnythingB",
+                "public-label-b",
+                adapter_id="anythingllm_local",
+                workspace="shared-workspace",
             ),
         ]
         with self.assertRaisesRegex(ValueError, "distinct effective adapter/model identities"):
@@ -260,6 +296,29 @@ class CouncilChairAPITests(unittest.TestCase):
         self.assertEqual(result["council_chair"]["slot_counts"]["protected_small"], 1)
         self.assertEqual(result["council_chair"]["vote_weight_per_seat"], 1)
 
+    def test_credential_shaped_chair_identity_never_reflects_in_public_error(self) -> None:
+        secret = "sk-" + "A" * 28
+        api = NexusAPI()
+        result = api.handle(
+            {
+                "operation": "council.run",
+                "question": "reject secret-shaped identity",
+                "members": [
+                    {
+                        "member_id": secret,
+                        "model_id": "malformed",
+                        "capability_metadata": {"council_classification": {}},
+                    },
+                    member("B", "b"),
+                    member("C", "c"),
+                ],
+            }
+        )
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["code"], "invalid_request")
+        self.assertNotIn(secret, json.dumps(result, sort_keys=True))
+        self.assertIn("credential-shaped", result["error"]["message"])
+
     def test_third_closed_general_model_is_rejected_before_credentials(self) -> None:
         api = NexusAPI()
         roster = [
@@ -292,6 +351,28 @@ class CouncilChairAPITests(unittest.TestCase):
         )
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["error"]["code"], "citizen_parole_has_no_council")
+
+    def test_trap_mutation_gate_precedes_parole_semantic_rejection(self) -> None:
+        api = NexusAPI()
+        with mock.patch.object(
+            api.trap_mutation_gate,
+            "assert_mutation_allowed",
+            side_effect=TrapError(
+                "trap_incident_active",
+                "real-world mutation is blocked while Trap Base incident is active",
+            ),
+        ) as gate:
+            result = api.handle(
+                {
+                    "operation": "council.run",
+                    "question": "May parole vote during quarantine?",
+                    "mode": "citizenship_parole",
+                    "members": [{"member_id": "Only", "model_id": "mock-only"}],
+                }
+            )
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["code"], "trap_incident_active")
+        gate.assert_called_once_with()
 
 
 if __name__ == "__main__":
