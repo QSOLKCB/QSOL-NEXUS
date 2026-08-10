@@ -104,6 +104,8 @@ An undisclosed count is accepted only for a closed classification and uses:
 
 An explicitly open-weight model with an unknown total parameter count is rejected because the Chair cannot determine whether it belongs in the protected-small or large-open-weight class.
 
+If `council_classification` is present at all, its value must be an object. An explicit `null` is malformed configuration and fails closed rather than being treated as if the field were omitted.
+
 `parameter_count_source` is a bounded attestation label for auditability. NEXUS validates the shape of the attestation but does **not** claim to perform network verification of an external model card during Council admission.
 
 ## Adapter defaults and conservative fallback
@@ -132,6 +134,10 @@ The deterministic `mock` adapter is treated as a synthetic protected-small fixtu
 Every voting seat must have a distinct effective `(adapter_id, model)` identity.
 
 For adapters that allow a separate backend `model` override, the Chair checks the effective model override rather than trusting only the public `model_id`. Distinct labels that secretly route to the same configured backend do not create artificial diversity.
+
+AnythingLLM is workspace-routed rather than model-routed. For `anythingllm_local`, the workspace slug is therefore the effective model identity used by the Chair. Two public member/model labels pointed at the same AnythingLLM workspace still count as one effective backend and cannot create two voting seats.
+
+Chair identity strings are also checked for credential-shaped material before any member identifier is interpolated into a public validation error. A malformed attestation therefore cannot use a token-shaped `member_id` as a reflection path into logs or clients.
 
 ## Example: ChatGPT + gpt-oss
 
@@ -183,7 +189,7 @@ The existing remote-provider spend caps remain in force and retain their earlier
 
 A rejected roster therefore cannot spend provider inference merely to discover that its Council composition was unconstitutional.
 
-A separate semantic precedence rule remains: `citizenship_parole` has no Council at all, so a request for a parole-mode Council is rejected as `citizen_parole_has_no_council` before Chair roster arithmetic is considered.
+Two higher-precedence boundaries remain intact. First, an active Trap Base incident owns the real-world mutation gate, so `council.run` returns `trap_incident_active` before any parole or Chair diagnostic. Second, when the mutation gate is open, `citizenship_parole` still has no Council at all, so a parole-mode Council request returns `citizen_parole_has_no_council` before Chair roster arithmetic is considered.
 
 ## Public audit surface
 
