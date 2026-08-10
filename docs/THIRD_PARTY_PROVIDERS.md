@@ -100,22 +100,36 @@ A Together or Groq open-weight member can use a namespaced model id:
 
 ## Council example
 
-Remote providers can be mixed with local and deterministic members:
+Remote providers can be mixed with a local protected-small model while respecting the Council Chair composition rule:
 
 ```json
 {
   "operation": "council.run",
   "question": "What does the evidence support?",
   "members": [
-    {"member_id": "Local", "model_id": "qwen2.5:7b", "adapter_id": "ollama"},
+    {
+      "member_id": "Local",
+      "model_id": "qwen2.5:7b",
+      "adapter_id": "ollama",
+      "model": "qwen2.5:7b",
+      "capability_metadata": {
+        "council_classification": {
+          "distribution": "open_weight",
+          "parameter_count_millions": 7000,
+          "parameter_count_basis": "total_declared",
+          "parameter_count_source": "model_card:qwen2.5:7b"
+        }
+      }
+    },
     {"member_id": "Claude", "model_id": "claude-sonnet-4-5", "adapter_id": "anthropic"},
-    {"member_id": "Gemini", "model_id": "gemini-3.5-flash", "adapter_id": "gemini"},
     {"member_id": "OpenAI", "model_id": "gpt-5.5", "adapter_id": "openai"}
   ]
 }
 ```
 
-The existing remote-seat ceiling is shared across all fixed-host remote providers. A Council cannot evade the cap by spreading seats across different vendors.
+Here the attested 7B Ollama model occupies `protected_small`, while Anthropic and OpenAI occupy the two permitted `closed_general` seats. The example therefore satisfies the 3–5 seat Chair rule instead of relying on the older 32-seat coordinator ceiling.
+
+The existing fixed-remote exposure ceiling is shared across all fixed-host remote providers. A Council cannot evade the cap by spreading seats across different vendors. The Chair is stricter still: it requires at least one protected <=20B seat and permits at most two closed/opaque general seats and two large open-weight seats.
 
 Every member still has:
 
