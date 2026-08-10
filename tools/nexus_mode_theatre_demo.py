@@ -78,6 +78,15 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _record_archive_error(archive: ModeTheatreArchive | None, message: str) -> None:
+    if archive is None:
+        return
+    try:
+        archive.record_error(message)
+    except ModeTheatreArchiveError:
+        pass
+
+
 def main(argv: list[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     archive: ModeTheatreArchive | None = None
@@ -107,12 +116,14 @@ def main(argv: list[str] | None = None) -> int:
         sys.stdout.write(canonical_json(result) + "\n")
         print(f"MODE THEATRE ARCHIVE: {archive.run_dir}", file=sys.stderr)
         return 0
+    except KeyboardInterrupt:
+        # Preserve normal Ctrl-C semantics, but leave an explicit marker in the
+        # already-reserved archive so an interrupted live provider run cannot be
+        # mistaken for unexplained filesystem corruption.
+        _record_archive_error(archive, "MODE THEATRE INTERRUPTED: operator keyboard interrupt")
+        raise
     except (ModeTheatreArchiveError, ModeTheatreError, OSError, TypeError, ValueError) as exc:
-        if archive is not None:
-            try:
-                archive.record_error(f"MODE THEATRE ERROR: {exc}")
-            except ModeTheatreArchiveError:
-                pass
+        _record_archive_error(archive, f"MODE THEATRE ERROR: {exc}")
         print(f"MODE THEATRE ERROR: {exc}", file=sys.stderr)
         return 2
 
