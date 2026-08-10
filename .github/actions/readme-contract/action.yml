@@ -1,0 +1,13 @@
+name: Validate README dual-surface contract
+description: Validate README4AI and enforce README/README4AI synchronization for the current GitHub event.
+
+runs:
+  using: composite
+  steps:
+    - name: Validate README contract
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 tools/validate_readme_contract.py \
+          --mode contract \
+          --github-event "$GITHUB_EVENT_PATH"

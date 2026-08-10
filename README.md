@@ -22,7 +22,7 @@ operator shell:  Rust IRC-style TUI
 status:          alpha — not stable 2.0
 ```
 
-This release is an integration/hardening milestone. It deliberately does **not** claim stable 2.0 yet. The roadmap still has instrument, persistence/migration, alpha11 shared-world demonstration, and beta-hardening work remaining.
+This release is an integration/hardening milestone. It deliberately does **not** claim stable 2.0 yet. The alpha11 **Three Minds, One World** shared-world demonstration is merged in PR #31; the remaining high-level work is broader instrument admission, persistent-world/migration hardening, release alignment, and beta-level hardening.
 
 ## What exists now
 
@@ -50,6 +50,7 @@ NEXUS currently includes:
 - optional local-model/MCP language enrichment for deterministic Failsafe and civic-proxy roles without transferring ballot authority;
 - an isolated synthetic **Decoy Gate / Trap Base** defensive test domain;
 - the passive append-only **Courtroom Stenographer / Knowledge-Watchman** AI-action study ledger;
+- the alpha11 **Three Minds, One World** sequential shared-world demonstration with immutable lineage, a bounded deterministic integer-primality instrument, and verified receipt;
 - a hidden display-oriented Rust-TUI `/GO64` retro easter egg.
 
 ## Architecture in one picture
@@ -446,6 +447,7 @@ Read [`SECURITY.md`](SECURITY.md) and [`THREAT_MODEL.md`](THREAT_MODEL.md) befor
 
 - [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md)
 - [`docs/COGNITIVE_MODES.md`](docs/COGNITIVE_MODES.md)
+- [`docs/THREE_MINDS_ONE_WORLD.md`](docs/THREE_MINDS_ONE_WORLD.md)
 - [`docs/IRC_TUI.md`](docs/IRC_TUI.md)
 - [`docs/CLI_TUI.md`](docs/CLI_TUI.md)
 
@@ -466,7 +468,7 @@ The previous browser workbench remains preserved under [`archives/v1.0.0/`](arch
 
 Green CI does not by itself make NEXUS stable 2.0.
 
-The project still intends to complete the remaining architecture criteria in the roadmap before removing the alpha/beta qualification, including the broader instrument layer, persistent-world/migration hardening, an explicit heterogeneous shared-world demonstration, and beta-level security/adaptor hardening.
+The project still intends to complete the remaining architecture criteria in the roadmap before removing the alpha/beta qualification, including the broader instrument layer, persistent-world/migration hardening, formal release alignment, and beta-level security/adaptor hardening. The explicit alpha11 shared-world demonstration itself is already merged in PR #31.
 
 Until then:
 
