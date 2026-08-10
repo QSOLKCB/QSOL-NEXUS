@@ -63,7 +63,7 @@ A 7B local model and a frontier closed model cast the same one vote once both ar
 
 ## Model classification metadata
 
-For model hosts where the distribution/size cannot be safely inferred from the adapter alone, the member must provide a closed, machine-readable classification under `capability_metadata.council_classification`:
+A model that needs to claim an open-weight or protected-small class supplies a closed, machine-readable classification under `capability_metadata.council_classification`:
 
 ```json
 {
@@ -91,7 +91,7 @@ Known counts must be positive exact integers in **millions of total declared par
 parameter_count_basis = total_declared
 ```
 
-An undisclosed count is accepted only for a closed model and uses:
+An undisclosed count is accepted only for a closed classification and uses:
 
 ```json
 {
@@ -102,13 +102,13 @@ An undisclosed count is accepted only for a closed model and uses:
 }
 ```
 
-An open-weight model with an unknown total parameter count is rejected because the Chair cannot determine whether it belongs in the protected-small or large-open-weight class.
+An explicitly open-weight model with an unknown total parameter count is rejected because the Chair cannot determine whether it belongs in the protected-small or large-open-weight class.
 
 `parameter_count_source` is a bounded attestation label for auditability. NEXUS validates the shape of the attestation but does **not** claim to perform network verification of an external model card during Council admission.
 
-## Adapter defaults
+## Adapter defaults and conservative fallback
 
-When no explicit classification is supplied, the public provider-aware API currently treats these adapter families as closed by default:
+When no explicit classification is supplied, the public provider-aware API treats these adapter families as known closed defaults:
 
 ```text
 xai
@@ -117,11 +117,13 @@ anthropic
 gemini
 ```
 
-The default means `closed_general` with undisclosed size. It does not let such a model claim the protected small seat.
+They occupy `closed_general` with undisclosed size and cannot claim the protected-small seat without an explicit <=20B attestation.
 
-An explicit classification may override that default when the selected backend is actually an open-weight model and the operator supplies the total-parameter attestation.
+For other model-hosting or aggregator adapters, including Ollama, LM Studio, AnythingLLM, Groq, and Together, an omitted classification is handled conservatively as an **opaque `closed_general` seat with undisclosed size**. This is a backward-compatibility fallback, not a claim that the underlying model is actually closed. It deliberately grants neither open-weight status nor protected-small status.
 
-Adapters that can host many unrelated model families require explicit classification for Council voting, including local model hosts and model aggregators such as Ollama, LM Studio, AnythingLLM, Groq, and Together.
+To make an Ollama or aggregator-hosted open model count as `open_weight` or `protected_small`, the operator must provide the explicit total-parameter attestation. Thus an unclassified 7B local model does **not** satisfy the Small-Mind Guarantee merely because it happens to run locally.
+
+An explicit classification may also override a closed-provider default when the selected backend is actually an open-weight model and the operator supplies the total-parameter attestation.
 
 The deterministic `mock` adapter is treated as a synthetic protected-small fixture unless a test explicitly supplies another classification.
 
@@ -173,13 +175,15 @@ Admission checks execute before actor construction, credential resolution, or pr
 The existing remote-provider spend caps remain in force and retain their earlier diagnostics. After those caps pass, the Chair enforces:
 
 1. 3-5 voting seats;
-2. explicit/inferred classification;
+2. explicit, default, or conservative classification;
 3. distinct effective adapter/model identity;
 4. at least one protected-small seat;
 5. no more than two closed-general seats;
 6. no more than two large-open-weight seats.
 
 A rejected roster therefore cannot spend provider inference merely to discover that its Council composition was unconstitutional.
+
+A separate semantic precedence rule remains: `citizenship_parole` has no Council at all, so a request for a parole-mode Council is rejected as `citizen_parole_has_no_council` before Chair roster arithmetic is considered.
 
 ## Public audit surface
 
