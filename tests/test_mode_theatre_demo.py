@@ -192,6 +192,9 @@ class ModeTheatreDemoTests(unittest.TestCase):
             run = api.world.inspect(result["run_ref"])
             self.assertFalse(run.payload["execution_replayable"])
             self.assertEqual(run.payload["entry_count"], 6)
+            # actor.chat records asynchronously; drain before TemporaryDirectory
+            # teardown so the worker cannot race removal of stenographer files.
+            self.assertTrue(api.stenographer.wait_for_idle())
 
 
 if __name__ == "__main__":
