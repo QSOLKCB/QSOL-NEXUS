@@ -19,6 +19,7 @@ from .council_chair import (
 )
 from .local_role_runtime import LocalAwareCitizenship, LocalAwareFailsafe
 from .local_roles import LocalRoleBackendConfig, LocalRoleRegistry
+from .trap.types import TrapError
 from .types import CouncilMember
 
 
@@ -51,15 +52,18 @@ class ProviderNexusAPI(CoreNexusAPI):
         operation = request.get("operation")
 
         # Civic parole is constitutionally non-Council. Preserve that semantic
-        # error ahead of voting-roster admission: a one-member parole request is
-        # not a malformed Council, it is a request for a ballot in a mode that
-        # has no Council at all. Invalid request IDs still fall through to the
-        # core validator so this preflight cannot weaken the public envelope.
+        # error ahead of voting-roster admission, but never ahead of Trap Base's
+        # real-world mutation quarantine. Invalid request IDs still fall through
+        # to the core validator so this preflight cannot weaken the envelope.
         if (
             operation == "council.run"
             and request.get("mode", "analytical") == PAROLE_MODE_ID
             and self._request_id_is_preflight_safe(request.get("request_id"))
         ):
+            try:
+                self.trap_mutation_gate.assert_mutation_allowed()
+            except TrapError as exc:
+                return self._error(request.get("request_id"), exc.code, str(exc))
             return self._error(
                 request.get("request_id"),
                 "citizen_parole_has_no_council",
