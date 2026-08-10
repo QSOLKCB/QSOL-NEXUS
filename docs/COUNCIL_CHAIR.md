@@ -183,19 +183,21 @@ A rejected roster therefore cannot spend provider inference merely to discover t
 
 ## Public audit surface
 
-`system.health` exposes the machine-readable Chair policy under:
-
-```text
-council_limits.chair_policy
-```
-
-A successful public `council.run` response includes:
+`system.health` exposes the machine-readable Chair policy as the top-level:
 
 ```text
 council_chair
 ```
 
-That object records the admitted slot class for every requested seat, the aggregate slot counts, and the unchanged one-vote/no-privilege rule.
+The existing `council_limits` object remains the lower-level coordinator/network ceiling for compatibility. The Chair object is the stricter public voting-admission contract.
+
+A successful public `council.run` response also includes:
+
+```text
+council_chair
+```
+
+That run-specific object records the admitted slot class for every requested seat, the aggregate slot counts, and the unchanged one-vote/no-privilege rule.
 
 ## Claim boundary
 
