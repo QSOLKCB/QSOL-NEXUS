@@ -12,7 +12,6 @@ from .adapters import (
 )
 from .api import MAX_REMOTE_COUNCIL_SEATS, NexusAPI as CoreNexusAPI
 from .council_chair import (
-    MAX_COUNCIL_VOTING_SEATS,
     chair_policy_snapshot,
     evaluate_council_roster_request,
     validate_council_roster_request,
@@ -86,10 +85,11 @@ class ProviderNexusAPI(CoreNexusAPI):
                 *sorted(THIRD_PARTY_PROVIDER_IDS),
             ]
             response["local_roles"] = self.local_roles.status()
-            council_limits = dict(response.get("council_limits", {}))
-            council_limits["max_members"] = MAX_COUNCIL_VOTING_SEATS
-            council_limits["chair_policy"] = chair_policy_snapshot()
-            response["council_limits"] = council_limits
+            # Keep the legacy core-engine council_limits shape stable. The
+            # public admission layer is stricter and is exposed separately so
+            # operators can distinguish the coordinator's internal ceiling
+            # from the Chair's constitutional voting-roster rule.
+            response["council_chair"] = chair_policy_snapshot()
         elif operation == "system.operations" and response.get("status") == "ok":
             response = dict(response)
             operations = list(response.get("operations", []))
