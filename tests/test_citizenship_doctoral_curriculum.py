@@ -31,7 +31,8 @@ class CitizenshipDoctoralCurriculumTests(unittest.TestCase):
             "constructor:",
             "representer_dumper:",
         ):
-            self.assertIn(stage, text)
+            with self.subTest(stage=stage):
+                self.assertIn(stage, text)
         for question_id in (
             "method-five-tuple",
             "norway-p11-no",
@@ -42,13 +43,14 @@ class CitizenshipDoctoralCurriculumTests(unittest.TestCase):
             "differential-record",
             "constitutional-equality",
         ):
-            self.assertIn(f'id: "{question_id}"', text)
+            with self.subTest(question_id=question_id):
+                self.assertIn(f'id: "{question_id}"', text)
 
     def test_integration_keeps_reference_corpus_non_authoritative(self) -> None:
         text = (CURRICULUM / "NEXUS_INTEGRATION.md").read_text(encoding="utf-8")
         self.assertIn(SOURCE_COMMIT, text)
         self.assertIn(SOURCE_SHA256, text)
-        self.assertIn("not fed directly to the authoritative Citizen Mode parser", text)
+        self.assertIn("is **not** fed directly to the authoritative Citizen Mode parser", text)
         self.assertIn("bounded_nonexecuting_yaml_subset", text)
         self.assertIn("does **not** establish intelligence", text)
 
