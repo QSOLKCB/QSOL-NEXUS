@@ -39,14 +39,40 @@ The runtime creates ordinary content-addressed WorldStore objects:
 
 ```text
 mode_theatre_task
+mode_theatre_evidence_context x 6
 mode_theatre_entry x 6
 mode_theatre_run
 receipt
 ```
 
-Every entry records the requested/effective model identity, mode, geometry region, evidence refs, round position, role, content, Failsafe replacement state, and the invariant `additional_votes_created = 0`.
+Every entry records the requested/effective model identity, mode, geometry region, immutable source refs, the exact bounded evidence-context ref actually supplied to the actor, round position, role, content, Failsafe replacement state, and the invariant `additional_votes_created = 0`.
 
-The House entries become evidence for the Roman Orator round. Earlier model contributions are never rewritten merely because a later mind has a better joke.
+Earlier model contributions are never rewritten merely because a later mind has a better joke.
+
+## Bounded all-source evidence
+
+The generic NEXUS evidence renderer has strict per-object and total character budgets. Passing every growing transcript object directly would therefore allow an oldest-first context to consume the budget before a later House or Forum contribution becomes model-readable.
+
+Mode Theatre avoids claiming continuity it cannot prove. Before **every** actor call it creates one compact `mode_theatre_evidence_context` object. That object:
+
+- lists every immutable source ref required for that turn;
+- contains a bounded excerpt from every listed source;
+- stays below the generic per-object evidence limit;
+- is the only evidence ref passed to that actor call;
+- records that excerpts are convenience views and the original immutable source objects remain authoritative.
+
+For the final Forum speaker the compact source index therefore represents:
+
+```text
+task
++ House 1
++ House 2
++ House 3
++ Forum 1
++ Forum 2
+```
+
+The demo claims **bounded all-source representation**, not that every character of every previous model response fits inside one prompt.
 
 ## Mandatory logs
 
@@ -57,14 +83,22 @@ The archive contains:
 ```text
 events.jsonl        canonical machine-readable event log
 transcript.md       human-readable transcript for later amusement
-manifest.json       archive/run/receipt identity
+manifest.json       pre-success archive commitment and source identity
 stenographer/       normal Courtroom Stenographer records when the CLI is used
-ERROR.txt           only when a run fails after archive reservation
+ERROR.txt           only when a run fails or is interrupted after archive reservation
 ```
 
 The human transcript is generated from the **scrubbed WorldStore objects**, not from unsanitized raw operator input. Custom case/motion text therefore crosses the normal NEXUS semantic secret-scrubbing boundary before it is copied into the laugh-later transcript.
 
-The archive manifest deliberately does not store credentials or host-specific WorldStore paths.
+The archive manifest is committed **before** the successful `mode_theatre_run` object and receipt are created. If manifest creation fails, NEXUS does not persist a successful Mode Theatre run or verified success receipt. The later `mode_theatre_run` stores the archive commitment ref, so WorldStore success can only claim that the already-committed archive exists.
+
+The manifest deliberately avoids a stronger claim than NEXUS can verify. It records that archive inputs came from WorldStore objects after the runtime's high-confidence scrubber and that raw credentials are not intentionally collected, but it sets `credential_absence_verified` to `false`. An unrecognized secret format cannot therefore be mistaken for a certified secret-free archive.
+
+No host-specific WorldStore path is stored in the archive manifest.
+
+## Interrupts
+
+A live provider call can take long enough for an operator to press Ctrl-C. The CLI catches `KeyboardInterrupt` only long enough to write a fixed `ERROR.txt` interruption marker into the already-reserved archive, then re-raises the interrupt so normal Ctrl-C exit behavior is preserved.
 
 ## Hermetic run
 
@@ -114,13 +148,13 @@ A successful run demonstrates:
 ```text
 three distinct minds
 + two existing cognitive modes
-+ persistent cross-round evidence
++ bounded all-source cross-round evidence
 + immutable attributed lineage
-+ mandatory durable logs
++ pre-success mandatory durable logs
 + verified receipt
 ```
 
-It does **not** demonstrate diagnosis, truth, provider superiority, consciousness, rhetorical authority, or stable-2.0 completion.
+It does **not** demonstrate diagnosis, truth, provider superiority, consciousness, rhetorical authority, certified secret absence, or stable-2.0 completion.
 
 The constitutional rule remains gloriously boring:
 
