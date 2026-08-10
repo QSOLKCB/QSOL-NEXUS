@@ -98,6 +98,12 @@ def main(argv: list[str] | None = None) -> int:
             house_case=args.house_case,
             orator_motion=args.orator_motion,
         )
+        # actor.chat submits Stenographer observations asynchronously. The
+        # Mode Theatre's own scrubbed archive is already durable here, but the
+        # CLI also promises a complete laugh-later Stenographer directory, so
+        # drain the observer before process exit instead of racing its daemon.
+        if not api.stenographer.wait_for_idle():
+            raise ModeTheatreError("stenographer observations did not flush before timeout")
         sys.stdout.write(canonical_json(result) + "\n")
         print(f"MODE THEATRE ARCHIVE: {archive.run_dir}", file=sys.stderr)
         return 0
