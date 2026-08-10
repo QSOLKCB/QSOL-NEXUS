@@ -12,8 +12,9 @@ HOUSE_MODE_ID = "house_fun"
 ORATOR_MODE_ID = "roman_orator"
 MAX_THEATRE_PROMPT_CHARS = 1_500
 MAX_MODE_THEATRE_CONTEXT_CHARS = 2_600
-MAX_TASK_CONTEXT_FIELD_CHARS = 300
-MAX_ENTRY_CONTEXT_CHARS = 220
+MAX_TASK_CONTEXT_FIELD_CHARS = 220
+MAX_ENTRY_CONTEXT_CHARS = 150
+MAX_CONTEXT_MEMBER_ID_CHARS = 48
 
 DEFAULT_HOUSE_CASE = (
     "Fictional case: the Observatory's ancient printer emits a perfect ECG trace only "
@@ -139,7 +140,8 @@ def _context_content(task: dict[str, Any], prior_entries: list[dict[str, Any]]) 
             [
                 (
                     f"source_ref={entry_ref} kind=entry round={payload.get('round_id')} "
-                    f"role={payload.get('role')} member={member_id}"
+                    f"role={payload.get('role')} "
+                    f"member={_bounded_excerpt(member_id, MAX_CONTEXT_MEMBER_ID_CHARS)}"
                 ),
                 f"excerpt={_bounded_excerpt(payload.get('content'), MAX_ENTRY_CONTEXT_CHARS)}",
             ]
@@ -176,6 +178,7 @@ def _evidence_context_object(
             "excerpt_policy": {
                 "task_field_chars": MAX_TASK_CONTEXT_FIELD_CHARS,
                 "entry_chars": MAX_ENTRY_CONTEXT_CHARS,
+                "member_id_chars": MAX_CONTEXT_MEMBER_ID_CHARS,
                 "total_chars": MAX_MODE_THEATRE_CONTEXT_CHARS,
             },
             "content": _context_content(task, prior_entries),
