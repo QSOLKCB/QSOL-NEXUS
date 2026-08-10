@@ -1,0 +1,43 @@
+name: README dual-surface contract
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  readme-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate machine README manifest
+        run: python3 tools/validate_readme_contract.py
+
+      - name: Require README4AI update when README changes
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: python3 tools/validate_readme_contract.py --base "$BASE_SHA" --head "$HEAD_SHA"
+
+      - name: Audit direct main-branch pushes
+        if: github.event_name == 'push'
+        env:
+          BASE_SHA: ${{ github.event.before }}
+          HEAD_SHA: ${{ github.sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "$BASE_SHA" = "0000000000000000000000000000000000000000" ]; then
+            echo "Initial push has no comparable base; manifest validation already passed."
+            exit 0
+          fi
+          python3 tools/validate_readme_contract.py --base "$BASE_SHA" --head "$HEAD_SHA"
