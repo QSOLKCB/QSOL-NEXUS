@@ -73,6 +73,7 @@ def chair_policy_snapshot() -> dict[str, Any]:
         ],
         "equal_vote_rule": "classification_changes_admission_only_never_vote_weight",
         "unknown_closed_parameter_count": "allowed_in_closed_general_only",
+        "unknown_unclassified_adapter": "conservative_closed_general_not_protected_small",
         "unknown_open_weight_parameter_count": "rejected",
         "moe_rule": "use_total_declared_parameters_not_active_parameters_per_token",
         "distinct_identity_rule": "distinct_effective_adapter_model_identity",
@@ -220,21 +221,24 @@ def classify_member_request(item: object) -> ChairSeatClassification:
         )
 
     if adapter_id in CLOSED_DEFAULT_ADAPTERS:
-        return ChairSeatClassification(
-            member_id=member_id,
-            adapter_id=adapter_id,
-            effective_model_id=effective_model_id,
-            slot_class="closed_general",
-            distribution="closed",
-            parameter_count_millions=None,
-            parameter_count_basis="undisclosed",
-            parameter_count_source=f"runtime:closed_default_adapter:{adapter_id}",
-            inferred=True,
-        )
+        source = f"runtime:closed_default_adapter:{adapter_id}"
+    else:
+        # Backward-compatible conservative fallback: an unclassified host may
+        # participate only as an opaque general seat. It receives no protected
+        # small-model status and no open-weight classification. Operators must
+        # provide the explicit attestation to claim either of those classes.
+        source = f"runtime:unclassified_adapter_conservative:{adapter_id}"
 
-    raise ValueError(
-        f"Council Chair member {member_id!r} on adapter {adapter_id!r} requires "
-        f"capability_metadata.{CLASSIFICATION_FIELD} so open/closed distribution and total parameter count are explicit"
+    return ChairSeatClassification(
+        member_id=member_id,
+        adapter_id=adapter_id,
+        effective_model_id=effective_model_id,
+        slot_class="closed_general",
+        distribution="closed",
+        parameter_count_millions=None,
+        parameter_count_basis="undisclosed",
+        parameter_count_source=source,
+        inferred=True,
     )
 
 
