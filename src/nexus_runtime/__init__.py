@@ -5,6 +5,12 @@ from .provider_api import ProviderNexusAPI as _BaseProviderNexusAPI
 from .hardening import HardenedNexusAPI
 from . import api as _api
 from . import provider_api as _provider_api
+from .civilization_gauntlet import (
+    CivilizationGauntlet,
+    CivilizationGauntletError,
+    ReferenceCivilizationActor,
+    civilization_gauntlet_policy_snapshot,
+)
 from .council import CouncilCoordinator
 from .guard import EqualityGuard
 from .scrub import SecretScrubber
@@ -23,6 +29,8 @@ _provider_api.ProviderNexusAPI = HardenedNexusAPI
 
 __all__ = [
     "Ballot",
+    "CivilizationGauntlet",
+    "CivilizationGauntletError",
     "CouncilCoordinator",
     "CouncilMember",
     "CouncilPolicy",
@@ -36,10 +44,12 @@ __all__ = [
     "Phase",
     "ProviderNexusAPI",
     "RUNTIME_VERSION",
+    "ReferenceCivilizationActor",
     "SecretScrubber",
     "StenographerRecord",
     "StenographerStore",
     "TrapController",
     "TrapStore",
     "WorldStore",
+    "civilization_gauntlet_policy_snapshot",
 ]
