@@ -176,7 +176,14 @@ def _matrix_audit() -> CheckResult:
         return CheckResult("matrix-audit", "fail", time.monotonic() - started, f"{type(exc).__name__}: {exc}")
 
 
-def _worktree_audit(name: str) -> CheckResult:
+def _is_generated_python_cache_status(line: str) -> bool:
+    if len(line) < 4:
+        return False
+    path = line[3:]
+    return "/__pycache__/" in f"/{path}" and path.endswith(".pyc")
+
+
+def _worktree_audit(name: str, *, allow_generated_python_cache: bool = False) -> CheckResult:
     started = time.monotonic()
     try:
         proc = subprocess.run(
@@ -191,6 +198,8 @@ def _worktree_audit(name: str) -> CheckResult:
         if proc.returncode != 0:
             raise RuntimeError(f"git status failed: {proc.stdout}")
         dirty = [line for line in proc.stdout.splitlines() if line.strip()]
+        if allow_generated_python_cache:
+            dirty = [line for line in dirty if not _is_generated_python_cache_status(line)]
         if dirty:
             preview = "\n".join(dirty[:20])
             if len(dirty) > 20:
@@ -199,12 +208,10 @@ def _worktree_audit(name: str) -> CheckResult:
                 "release hardening requires a clean candidate worktree so all checks and git archive test the same HEAD:\n"
                 + preview
             )
-        return CheckResult(
-            name,
-            "pass",
-            time.monotonic() - started,
-            "candidate worktree matches HEAD with no tracked or unignored untracked changes",
-        )
+        detail = "candidate worktree matches HEAD with no tracked or unignored untracked changes"
+        if allow_generated_python_cache:
+            detail += "; generated tracked Python bytecode cache churn ignored after execution"
+        return CheckResult(name, "pass", time.monotonic() - started, detail)
     except Exception as exc:
         return CheckResult(name, "fail", time.monotonic() - started, f"{type(exc).__name__}: {exc}")
 
@@ -379,7 +386,12 @@ def main() -> int:
             )
         else:
             checks.append(_operator_rehearsal())
-        checks.append(_worktree_audit("candidate-tree-unchanged"))
+        checks.append(
+            _worktree_audit(
+                "candidate-tree-unchanged",
+                allow_generated_python_cache=True,
+            )
+        )
 
     report = _build_report(checks)
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
