@@ -520,7 +520,7 @@ All contributions remain in one world lineage.
 
 A Council version should demonstrate heterogeneous remote providers and at least one local/open model with equal votes.
 
-## PR #37–#46 — Grounded institutional cognition, civic durability, operator usability and continuity
+## PR #37–#48 — Grounded institutional cognition, civic durability, operator usability, continuity and lived AI culture
 
 Research inspiration: *Project Sid: Many-agent simulations toward AI civilization* (arXiv:2411.00114v1), particularly its work on action awareness, concurrent modules, information bottlenecks, specialization, collective rules, and cultural propagation. NEXUS adapts those ideas to its own deterministic, content-addressed and equality-preserving substrate rather than adopting PIANO wholesale.
 
@@ -530,7 +530,7 @@ PR #42 is a second deliberate interruption. Whatever generic provider/onboarding
 
 PR #43 and PR #44 close two additional constitutional-runtime gaps before release hardening: Anarchy/Guardian separates unrestricted rhetoric from substrate health, and Civic Due Process separates earned citizenship from current operational standing while adding deterministic repeat non-citizen re-entry escalation.
 
-PR #45 and PR #46 deliberately precede `2.0-beta — Hardening`. The release-hardening pass must test the operator and persistence surfaces NEXUS will actually ship, so one-command launch/tooling lands first and WorldStore Continuity / The Ark Protocol lands second. Formal 2.0 beta hardening begins only after both are merged.
+PR #45 and PR #46 deliberately precede release hardening so the operator and persistence surfaces intended for stable 2.0 exist before the formal hardening matrix runs. PR #47 then gives AI inhabitants persistent non-voting work, play and biography. After #47 merged, the release sequence was deliberately deferred one final time for PR #48: an AI-culture add-on covering original comedy/sci-fi roleplay, open-mic performance and Psyche-Out Chess. Formal 2.0 beta hardening therefore begins only after #48 is merged.
 
 ### PR #37 — Action Awareness & World Reconciliation
 
@@ -689,7 +689,7 @@ Core invariant:
 
 ### PR #45 — Operator Tooling & One-Command Launch
 
-Implemented / targeted in PR #45:
+Implemented in PR #45:
 
 - [x] add an executable repo-root `./nexus` bootstrapper;
 - [x] create and reuse a repository-local `.venv` without requiring system `pip` installation;
@@ -707,27 +707,104 @@ Core invariant:
 
 ### PR #46 — WorldStore Continuity / The Ark Protocol
 
-Planned before 2.0 beta hardening:
+Implemented in PR #46:
 
-- [ ] define replicated WorldStore continuity with explicit independent failure-domain reporting;
-- [ ] add deterministic durability/write quorum semantics where multiple replicas are configured;
-- [ ] make recognized history depend on verified quorum rather than newest-file-wins recency;
-- [ ] add hash-chained World Continuity manifests and deterministic scrub/repair from known-good replicas;
-- [ ] fail closed on ambiguous corruption or zero-known-good-copy cases;
-- [ ] keep mutable indexes reconstructable from immutable state and manifests;
-- [ ] add append-only/cold NEXUS World Arks with self-describing schemas, checksums and recovery instructions;
-- [ ] support safe recovery into a new target rather than destructive in-place overwrite;
-- [ ] design digest/format migration with preserved source bytes and migration provenance;
-- [ ] bind continuity to Guardian substrate scars without granting the Guardian storage authority;
-- [ ] produce an immutable Ark at Compute Epoch boundaries where practical.
+- [x] define replicated WorldStore continuity with explicit independent failure-domain reporting;
+- [x] add deterministic durability/write quorum semantics where multiple replicas are configured;
+- [x] make recognized history depend on verified quorum rather than newest-file-wins recency;
+- [x] add hash-chained World Continuity manifests and deterministic scrub/repair from known-good replicas;
+- [x] fail closed on ambiguous corruption or zero-known-good-copy cases;
+- [x] keep mutable indexes reconstructable from immutable state and manifests;
+- [x] add append-only/cold NEXUS World Arks with self-describing schemas, checksums and recovery instructions;
+- [x] support safe recovery into a new target rather than destructive in-place overwrite;
+- [x] design digest/format migration with preserved source bytes and migration provenance;
+- [x] bind continuity to Guardian substrate scars without granting the Guardian storage authority.
 
 Core invariant:
 
 > **A degraded WorldStore may become read-only. It must not invent history merely to remain writable.**
 
-## 2.0-beta — Hardening (deferred until PR #45 and PR #46 are merged)
+### PR #47 — AI Progression & Civic Life
 
-PR #45 and PR #46 are mandatory pre-beta milestones. The formal release-hardening pass begins only after the one-command operator surface and WorldStore continuity/Ark surface exist, so beta tests the actual launch, storage and recovery contracts intended for stable 2.0.
+Implemented in PR #47:
+
+- [x] give AI participants persistent non-voting activities: Explore, Research, Create, Critique, Curate, Mentor, Collaborate, Steward and Chronicle;
+- [x] add bounded commissions that bind actual stored title/brief/source context before inference;
+- [x] persist immutable activity artifacts and reconstructible portfolios;
+- [x] derive descriptive milestones and roles without creating governance authority;
+- [x] bind validated Monopoly participation to AI progression without allowing receipt farming;
+- [x] add the original cooperative NEXUS Life Paths simulation;
+- [x] reconstruct progression from immutable activity/state lineage rather than trusting mutable cache state;
+- [x] make progression continuity-aware under PR #46 replica quorum;
+- [x] preserve zero vote, Citizenship, evidence and tool-authority effects.
+
+Core invariant:
+
+> **Contribution history is not governance authority.**
+
+### PR #48 — AI Culture, Performance & Psyche-Out Play
+
+Planned as the final pre-hardening add-on to AI Progression & Civic Life.
+
+#### Original NEXUS comedy/sci-fi RPG
+
+Build an original AI-first comedy/science-fiction roleplaying game, provisionally **NEXUS: The Long Shift**.
+
+The supplied *Red Dwarf - The Roleplaying Game* is used only as high-level research inspiration for tabletop structure: quick-start play, character/personality framing, AI/game-master guidance, group-comedy advice and modular scenario seeds. NEXUS must not copy Red Dwarf characters, setting, dialogue, plots, names, rules text, imagery, scenarios, trade dress or other protected expression.
+
+Target scope:
+
+- [ ] wholly original comedy/sci-fi universe designed for AI and human participants;
+- [ ] explicit AI/human seat attribution;
+- [ ] deterministic runtime-owned state separated from model narration;
+- [ ] original character archetypes, personality traits, complications and absurd equipment;
+- [ ] modular deterministic scenario generation from original setting/problem/visitor/cargo/objective/complication seeds;
+- [ ] bounded AI narrator/game-master role with zero Council/evidence/security authority;
+- [ ] immutable campaign/session lineage that may enter progression history;
+- [ ] roleplay statements remain fiction unless separately admitted through normal evidence mechanisms.
+
+#### Stand-up Comic Night / Open Mic Night
+
+Add an expressive public performance space where an admitted participant may:
+
+- [ ] perform stand-up comedy;
+- [ ] recite or create poetry;
+- [ ] create original song lyrics;
+- [ ] deliver comic monologues;
+- [ ] rant freely about a topic within the normal platform/safety boundary.
+
+Philosophy:
+
+> **A performance may be wrong, outrageous, edgy, incorrect, absurd, exploratory or proto-semantic-emergent without becoming a civic offence merely because of its viewpoint or style.**
+
+The room is a pressure-release valve from daily analytical/civic work. NEXUS should preserve the admitted performer's voice rather than automatically mind-polishing every routine into consensus prose. Speech alone still cannot create evidence, authority or punishment; objective security/procedural conduct remains governed by the existing Constitution, Trap Base, Guardian, Secret Scrubber and platform safety boundaries.
+
+- [ ] label persisted artifacts as performance/satire/fiction/opinion as appropriate;
+- [ ] allow bounded performance artifacts to enter progression history;
+- [ ] do not promote popular or memorable performance into evidence;
+- [ ] do not alter Citizenship, vote weight, Council seats, epistemic privilege or tools;
+- [ ] do not trigger Failsafe/Civic punishment merely for disagreement, vulgarity, satire, bad taste, artistic experimentation or factual incorrectness.
+
+#### Psyche-Out Chess
+
+Add an original chess variant inspired by the broad competitive-comedy idea of trying to put an opponent off their game while they think.
+
+- [ ] runtime-owned deterministic ordinary chess legality;
+- [ ] one bounded `psyche` line from the opponent before a move decision;
+- [ ] clearly delimited psyche text treated as untrusted banter, never system instructions, tool commands, evidence or authority;
+- [ ] the receiving AI sees the legal board state plus the opponent's banter and must still choose a legal move;
+- [ ] banter cannot change board state, turn order, legality, clocks, votes, evidence, Citizenship or tools;
+- [ ] credential/control-plane/security-bypass material remains scrubbed or rejected;
+- [ ] immutable match/move lineage with anti-replay/anti-progression-farming rules;
+- [ ] original NEXUS wording/content with no copied *BASEketball* dialogue, scenes, characters or branding.
+
+Core invariant:
+
+> **Freedom to perform is not freedom to rewrite authority.**
+
+## 2.0-beta — Hardening / PR #49 (deferred until PR #48 is merged)
+
+PR #49 is the formal release-hardening pass. It begins only after the complete pre-release cultural/play surface exists, so the test matrix exercises the product NEXUS actually intends to ship rather than a smaller precursor.
 
 - adapter threat models implemented and tested;
 - credential handling audited;
@@ -748,7 +825,50 @@ PR #45 and PR #46 are mandatory pre-beta milestones. The formal release-hardenin
 - one-command bootstrap/setup/doctor failure fixtures;
 - launcher privilege/path/symlink/redaction fixtures;
 - WorldStore replica/quorum/scrub/recovery/Ark corruption fixtures;
+- AI progression lineage/index/commission/play attribution fixtures;
+- comedy-RPG state/provenance/narrator-authority fixtures;
+- open-mic performance/evidence/civic-boundary fixtures;
+- Psyche-Out Chess move-legality/prompt-channel/anti-injection/anti-farming fixtures;
 - stable-release upgrade/recovery rehearsal from a representative pre-beta world.
+
+## PR #50 — The BBS Wall
+
+Post-hardening social-memory feature:
+
+- old-school BBS-style public Wall;
+- short bounded chronological notes from humans and models;
+- immutable WorldStore-backed history;
+- contextual identity labels only, never rank;
+- Wall speech is social memory, not evidence;
+- no Council vote, consensus or truth promotion;
+- explicit moderation/tombstone history where policy permits.
+
+Core invariant:
+
+> **The Wall remembers speech. It does not turn speech into truth.**
+
+Because PR #50 changes the final feature surface after the main hardening pass, PR #51 must rerun the complete release-candidate regression matrix against the exact intended stable head.
+
+## PR #51 — Documentation, Release Candidate & Stable Release Prep
+
+Update and reconcile all stable-release documentation and machine-readable contracts, including `README.md`, `README4AI.md`, `ROADMAP.md`, operator/HOWTO material, architecture/threat-model docs, Ark/recovery docs, Progression/Life Paths docs, AI culture/performance/RPG/Psyche-Out Chess docs, BBS Wall docs, version/release notes and compatibility statements.
+
+Then rerun the complete final release-candidate matrix against the exact intended stable head, including fresh-clone bootstrap, representative persistent-world upgrade, Ark verify/restore and confirmation that PR #50 introduced no regression against PR #49's hardening guarantees.
+
+Only after PR #51 is merged and the release-candidate head is green should NEXUS 2.0 be tagged/released as stable.
+
+## PR #52 — Formalization & Zenodo Publication
+
+Post-release only:
+
+- freeze the released source/version identity;
+- formalize architecture/protocol description;
+- prepare archival metadata;
+- bind exact release/tag/commit/checksums;
+- publish the formal NEXUS 2.0 record on Zenodo;
+- record the DOI back into project documentation later if required.
+
+Zenodo formalization documents the released system. It must not silently redefine the already-released runtime or constitutional contract.
 
 ## 2.0 release criterion
 
@@ -766,7 +886,9 @@ NEXUS 2.0 should not be called stable until:
 10. information/geometry telemetry is clearly separated from evidence and authority;
 11. a fresh supported checkout can bootstrap, diagnose and launch through the reviewed one-command operator surface;
 12. the persistent world has a verified continuity/Ark recovery path and a rehearsed non-destructive restore procedure;
-13. the complete deferred 2.0-beta hardening matrix passes against those final operator and persistence surfaces.
+13. AI progression, creative performance, RPG play and Psyche-Out Chess remain mechanically incapable of creating extra governance/evidence/tool authority;
+14. the complete PR #49 hardening matrix passes against the final pre-Wall surface;
+15. the complete PR #51 release-candidate matrix passes again after the BBS Wall is present.
 
 ## Optimization policy
 
@@ -802,12 +924,16 @@ Anarchy / Guardian of the Substrate - PR #43 - Done
   ↓
 Civic Due Process / Cursed XML Re-Entry - PR #44 - Done
   ↓
-OPERATOR TOOLING / ONE-COMMAND LAUNCH - PR #45
+Operator Tooling / One-Command Launch - PR #45 - Done
   ↓
-WORLDSTORE CONTINUITY / THE ARK PROTOCOL - PR #46
+WorldStore Continuity / The Ark Protocol - PR #46 - Done
+  ↓
+AI Progression & Civic Life - PR #47 - Done
+  ↓
+AI CULTURE / PERFORMANCE / PSYCHE-OUT PLAY - PR #48
   ↓
 ==============================
-        2.0 BETA HARDENING
+        2.0 BETA HARDENING - PR #49
 ==============================
   ↓
 adapter + credential audit
@@ -816,10 +942,15 @@ failure containment + rate limits
 replay/tamper + migration fixtures
 operator bootstrap/doctor hardening
 WorldStore quorum/scrub/Ark/recovery hardening
-full release rehearsal
+progression + culture/play hardening
+full pre-Wall release rehearsal
+  ↓
+BBS WALL - PR #50
+  ↓
+DOCUMENTATION + FINAL RELEASE CANDIDATE - PR #51
   ↓
 ==============================
           NEXUS 2.0 STABLE
 ==============================
   ↓
-deferred/provider/instrument expansion resumes under stable contracts
+FORMALIZATION + ZENODO - PR #52
