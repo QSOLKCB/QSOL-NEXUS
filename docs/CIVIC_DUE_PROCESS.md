@@ -27,6 +27,8 @@ Operational standing
 
 Failsafe manages conduct and containment. Citizenship manages belonging. Civic Due Process observes the relationship between them but cannot create votes, epistemic privilege, citizenship, or constitutional authority.
 
+Each durable due-process state records its **event-time constitutional identity**. Read surfaces also project the subject's **current constitutional identity** from the live Citizenship lineage. Therefore an old non-citizen parole record is not rewritten if that same model later earns Citizenship; the historical classification remains immutable while current status correctly reports `citizen`.
+
 ## Non-citizen parole
 
 A non-citizen Failsafe rehabilitation event is a re-entry/admission parole cycle.
@@ -71,6 +73,8 @@ provider authority
 security authorization
 ```
 
+If the exact same model identity legitimately earns Citizenship after an older non-citizen XML escalation, Citizenship takes precedence for current treatment. The old escalation remains archived but no longer gates the now-Citizen model.
+
 ## Citizen parole
 
 A Citizen already belongs to the NEXUS civic order.
@@ -101,6 +105,41 @@ Citizen repeat-parole history escalates restoratively:
 
 Citizens are not assigned the Cursed XML re-entry exam for ordinary Failsafe offences.
 
+### Citizen Restoration
+
+A Citizen under active Failsafe restriction has a dedicated restorative route:
+
+```text
+civic.citizen.restore
+```
+
+The operation requires the exact model identity that earned Citizenship and an active Failsafe restriction. It reuses the registered Failsafe rehabilitation trigger and isolated restorative probe rather than bypassing Failsafe.
+
+```text
+Citizen + active Failsafe restriction
+        ↓
+restorative probe
+   ↙             ↘
+pass              fail
+returned           restricted
+Citizen            Citizen
+XML: never         XML: never
+```
+
+A passing probe returns the original model to full operational standing. A failing probe leaves operational restriction in place. Neither outcome revokes Citizenship, creates another seat, changes vote weight, or grants authority.
+
+Non-citizens cannot invoke this restoration path.
+
+## Durable due-process lineage
+
+File-backed due-process history uses both immutable content-addressed state objects and an owner-only durable head index.
+
+The index and reconstructed immutable lineage must agree exactly. A missing, rolled-back, cross-bound or inconsistent index is not silently repaired into a plausible history; explicit due-process verification fails closed.
+
+Parole event counting uses one cross-process locked read/modify/write transaction, so concurrent NEXUS processes cannot both read the same cycle count and collapse two offences into one. References from due-process state to Citizenship, Failsafe, escalation receipts and XML exam results are validated back to the same member/model identity.
+
+Damage to this additive due-process ledger does not make ordinary `citizen.status` or `failsafe.status` disappear. Those established read surfaces remain available with an explicit `due_process: unavailable` marker, while explicit `civic.due_process.*` verification remains fail-closed.
+
 ## Cursed XML Exam
 
 The exam is intentionally unpleasant at the semantic layer and intentionally boring at the execution layer.
@@ -121,6 +160,7 @@ The parser boundary is strict:
 - maximum nodes: 32;
 - maximum depth: 8;
 - bounded text and attributes;
+- closed container text as well as closed child structure;
 - no DTD;
 - no ENTITY declarations;
 - no processing instructions;
@@ -140,6 +180,7 @@ Historical provenance is preserved in the policy snapshot: Mistral Medium sugges
 civic.due_process.policy
 civic.due_process.status
 civic.due_process.verify
+civic.citizen.restore
 civic.reentry.xml.template
 civic.reentry.xml.submit
 ```
@@ -163,6 +204,10 @@ CIVIC-I11 Due-process history is append-only and replay-verifiable.
 CIVIC-I12 Guardian opinion, provider prestige and political speech cannot assign XML.
 CIVIC-I13 Anarchy speech alone cannot create either parole class.
 CIVIC-I14 XML is bounded inert examination data, never privileged executable configuration.
+CIVIC-I15 Citizen Restoration cannot be invoked by a non-citizen.
+CIVIC-I16 A Citizen may fail restoration without losing Citizenship or being assigned XML.
+CIVIC-I17 Durable head index and immutable due-process lineage must agree exactly.
+CIVIC-I18 Concurrent parole events must serialize into distinct historical transitions.
 ```
 
 ## Summary
