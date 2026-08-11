@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# QSOL NEXUS one-command bootstrap and operator launcher.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+VENV="${NEXUS_VENV:-$ROOT/.venv}"
+PYTHON="${NEXUS_BOOTSTRAP_PYTHON:-python3}"
+VENV_PYTHON="$VENV/bin/python"
+STAMP="$VENV/.nexus-editable-install"
+
+fail() {
+  printf '[nexus] %s\n' "$*" >&2
+  exit 2
+}
+
+command -v "$PYTHON" >/dev/null 2>&1 || fail "python3 is required to bootstrap NEXUS"
+
+if [[ ! -x "$VENV_PYTHON" ]]; then
+  printf '[nexus] creating virtual environment at %s\n' "$VENV" >&2
+  "$PYTHON" -m venv "$VENV" || fail "could not create virtual environment"
+fi
+
+needs_install=0
+if [[ ! -f "$STAMP" ]]; then
+  needs_install=1
+elif [[ "$ROOT/pyproject.toml" -nt "$STAMP" ]]; then
+  needs_install=1
+elif [[ ! -x "$VENV/bin/nexus" ]]; then
+  needs_install=1
+fi
+
+if (( needs_install )); then
+  printf '[nexus] installing editable NEXUS runtime into local virtual environment...\n' >&2
+  "$VENV_PYTHON" -m pip install -e "$ROOT" || fail "editable runtime install failed"
+  : > "$STAMP"
+fi
+
+export NEXUS_REPO_ROOT="$ROOT"
+exec "$VENV_PYTHON" -m nexus_runtime.operator_cli "$@"
