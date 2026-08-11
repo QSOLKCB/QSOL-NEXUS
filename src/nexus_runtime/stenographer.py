@@ -45,6 +45,9 @@ _OTHER_STORE_REF = re.compile(r"^(?:object|trap):[0-9a-f]{64}$")
 _STIMULUS_REF = re.compile(r"^stimulus:[0-9a-f]{64}$")
 _RECORDED_AT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
 _PHASES = frozenset({"WHITE", "RED", "BLACK", "YELLOW", "GREEN", "BLUE"})
+_PERM_OBJECT_NAME = re.compile(r"^[0-9a-f]{64}\.json$")
+_OBJECT_TMP_NAME = re.compile(r"^\.([0-9a-f]{64})\.tmp-\d+-\d+$")
+
 
 def _lore_envelope() -> dict[str, Any]:
     return {
@@ -195,6 +198,10 @@ class StenographerStore:
         return None if self.root is None else self.root / "objects"
 
     @property
+    def write_tmp_dir(self) -> Path | None:
+        return None if self.root is None else self.root / ".write-tmp"
+
+    @property
     def index_path(self) -> Path | None:
         return None if self.root is None else self.root / "stenographer-index.json"
 
@@ -248,11 +255,32 @@ class StenographerStore:
                 "stenographer object storage permissions must be owner-only",
             )
         objects_dir.mkdir(mode=0o700, exist_ok=True)
+
+        write_tmp_dir = self.root / ".write-tmp"
+        write_tmp_existed = write_tmp_dir.exists()
+        if write_tmp_existed and (
+            write_tmp_dir.is_symlink()
+            or not write_tmp_dir.is_dir()
+            or write_tmp_dir.resolve() != write_tmp_dir.absolute()
+        ):
+            raise StenographerError(
+                "stenographer_store_unavailable",
+                "stenographer write temporary storage must be a private directory",
+            )
+        if write_tmp_existed and os.name != "nt" and stat.S_IMODE(write_tmp_dir.stat().st_mode) & 0o077:
+            raise StenographerError(
+                "stenographer_store_unavailable",
+                "stenographer write temporary storage permissions must be owner-only",
+            )
+        write_tmp_dir.mkdir(mode=0o700, exist_ok=True)
+
         if os.name != "nt":
             if not existed:
                 os.chmod(self.root, 0o700)
             if not objects_existed:
                 os.chmod(objects_dir, 0o700)
+            if not write_tmp_existed:
+                os.chmod(write_tmp_dir, 0o700)
 
     @contextmanager
     def _locked_index(self) -> Iterator[None]:
@@ -504,12 +532,46 @@ class StenographerStore:
         refs = set(self._objects)
         if self.objects_dir is not None:
             for path in self.objects_dir.iterdir():
-                if (
-                    path.suffix != ".json"
-                    or re.fullmatch(r"[0-9a-f]{64}", path.stem) is None
-                ):
-                    raise StenographerError("stenographer_store_corrupt", "stenographer record filename is invalid")
-                refs.add(f"steno:{path.stem}")
+                name = path.name
+                if _PERM_OBJECT_NAME.fullmatch(name) is not None:
+                    refs.add(f"steno:{path.stem}")
+                    continue
+
+                # Legacy NEXUS object-write temps may remain after an older
+                # short-lived process is killed. They are not ledger records.
+                # Keep the exception narrow: only the exact historical naming
+                # pattern is tolerated, and temp-shaped symlinks/directories or
+                # loose-permission files still fail closed.
+                match = _OBJECT_TMP_NAME.fullmatch(name)
+                if match is not None:
+                    try:
+                        info = path.lstat()
+                    except OSError as exc:
+                        raise StenographerError(
+                            "stenographer_store_corrupt",
+                            "stenographer temporary record file cannot be inspected",
+                        ) from exc
+                    if (
+                        path.is_symlink()
+                        or not stat.S_ISREG(info.st_mode)
+                        or (os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077)
+                    ):
+                        raise StenographerError(
+                            "stenographer_store_corrupt",
+                            "stenographer temporary record file is invalid",
+                        )
+                    permanent = self.objects_dir / f"{match.group(1)}.json"
+                    if permanent.exists() and not permanent.is_symlink():
+                        try:
+                            path.unlink(missing_ok=True)
+                        except OSError:
+                            pass
+                    continue
+
+                raise StenographerError(
+                    "stenographer_store_corrupt",
+                    "stenographer record filename is invalid",
+                )
         return sorted(refs)
 
     def _discover_chain_unlocked(self) -> tuple[list[str], str | None]:
@@ -627,14 +689,20 @@ class StenographerStore:
 
     def _persist_immutable(self, record: StenographerRecord) -> None:
         assert self.objects_dir is not None
+        assert self.write_tmp_dir is not None
         objects_dir = self.objects_dir
+        write_tmp_dir = self.write_tmp_dir
         digest = record.record_ref.removeprefix("steno:")
         target = objects_dir / f"{digest}.json"
         body = (canonical_json(record.as_dict()) + "\n").encode("utf-8")
         if target.exists() or target.is_symlink():
             self._read_validated(record.record_ref, target)
             return
-        temporary = objects_dir / f".{digest}.tmp-{os.getpid()}-{threading.get_ident()}"
+
+        # Keep scratch files structurally outside the directory whose entries
+        # are interpreted as immutable ledger objects. A crash can therefore
+        # leave private debris without manufacturing a false corruption signal.
+        temporary = write_tmp_dir / f".{digest}.tmp-{os.getpid()}-{threading.get_ident()}"
         descriptor: int | None = None
         try:
             flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
@@ -844,6 +912,11 @@ class CourtroomStenographer:
                     return False
                 self._observer_state.wait(remaining)
             return True
+
+    def shutdown(self, timeout_seconds: float = STENOGRAPHER_READ_DRAIN_SECONDS) -> bool:
+        """Best-effort drain of accepted observer writes before process exit."""
+
+        return self.wait_for_idle(timeout_seconds)
 
     def _drain_for_read(self) -> None:
         if not self.wait_for_idle():
