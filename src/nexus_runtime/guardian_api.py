@@ -71,7 +71,37 @@ class GuardianNexusAPI(EpochNexusAPI):
                     "stenographer",
                     "guardian",
                 )
-        self.guardian = GuardianOfSubstrate(guardian_root, self.scrubber)
+
+        self.guardian: GuardianOfSubstrate | None = None
+        self._guardian_init_error: str | None = None
+        try:
+            self.guardian = GuardianOfSubstrate(guardian_root, self.scrubber)
+        except GuardianError as exc:
+            # The Guardian has zero runtime authority and therefore cannot be a
+            # startup dependency. Preserve a bounded outage marker instead of
+            # allowing observer storage damage to take the substrate down.
+            self._guardian_init_error = exc.code
+
+    def _guardian_unavailable(self) -> dict[str, Any]:
+        return {
+            "status": "unavailable",
+            "policy": guardian_policy_snapshot(),
+            "ledger": {
+                "available": False,
+                "gap_code": self._guardian_init_error
+                or "guardian_internal_observer_error",
+                "authority_effect": "none",
+                "substrate_availability_effect": "none",
+            },
+        }
+
+    def _require_guardian(self) -> GuardianOfSubstrate:
+        if self.guardian is None:
+            raise GuardianError(
+                "guardian_store_unavailable",
+                "Guardian ledger is unavailable; substrate runtime remains active",
+            )
+        return self.guardian
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation") if isinstance(request, dict) else None
@@ -97,7 +127,22 @@ class GuardianNexusAPI(EpochNexusAPI):
 
         if operation == "system.health" and response.get("status") == "ok":
             enriched = dict(response)
-            enriched["guardian_of_the_substrate"] = self.guardian.status()
+            if self.guardian is None:
+                enriched["guardian_of_the_substrate"] = self._guardian_unavailable()
+            else:
+                try:
+                    enriched["guardian_of_the_substrate"] = self.guardian.status()
+                except GuardianError as exc:
+                    enriched["guardian_of_the_substrate"] = {
+                        "status": "unavailable",
+                        "policy": guardian_policy_snapshot(),
+                        "ledger": {
+                            "available": False,
+                            "gap_code": exc.code,
+                            "authority_effect": "none",
+                            "substrate_availability_effect": "none",
+                        },
+                    }
             enriched["anarchy_mode"] = guardian_policy_snapshot()
             return enriched
 
@@ -131,7 +176,7 @@ class GuardianNexusAPI(EpochNexusAPI):
     ) -> dict[str, Any]:
         enriched = dict(response)
         try:
-            record = self.guardian.observe(request, response)
+            record = self._require_guardian().observe(request, response)
         except GuardianError as exc:
             enriched["anarchy_guardian"] = {
                 "recorded": False,
@@ -171,87 +216,101 @@ class GuardianNexusAPI(EpochNexusAPI):
                     "status": "ok",
                     "policy": guardian_policy_snapshot(),
                 }
-            elif operation == "guardian.status":
-                self._require_exact_fields(request, operation, set())
-                response = self.guardian.status()
-            elif operation == "guardian.list":
-                self._require_exact_fields(
-                    request,
-                    operation,
-                    {"limit", "record_type"},
-                )
-                limit = request.get("limit", 100)
-                record_type = request.get("record_type")
-                if record_type is not None and not isinstance(record_type, str):
-                    raise GuardianError(
-                        "guardian_invalid_request",
-                        "record_type must be text when supplied",
-                    )
-                response = self.guardian.store.list_records(
-                    limit=limit,
-                    record_type=record_type,
-                )
-            elif operation == "guardian.inspect":
-                self._require_exact_fields(request, operation, {"record_ref"})
-                record = self.guardian.store.inspect(
-                    self._require_str(request, "record_ref")
-                )
-                response = {"status": "ok", "record": record.as_dict()}
-            elif operation == "guardian.verify":
-                self._require_exact_fields(request, operation, set())
-                response = self.guardian.store.verify()
-            elif operation == "guardian.reconcile":
-                self._require_exact_fields(
-                    request,
-                    operation,
-                    {"observation_ref", "expected_status", "expected_error_code"},
-                )
-                expected_error_code = request.get("expected_error_code")
-                if expected_error_code is not None and not isinstance(
-                    expected_error_code,
-                    str,
-                ):
-                    raise GuardianError(
-                        "guardian_invalid_request",
-                        "expected_error_code must be text or null",
-                    )
-                response = self.guardian.reconcile(
-                    self._require_str(request, "observation_ref"),
-                    expected_status=self._require_str(request, "expected_status"),
-                    expected_error_code=expected_error_code,
-                )
-            elif operation == "guardian.repair.propose":
-                self._require_exact_fields(
-                    request,
-                    operation,
-                    {"defect_ref", "summary", "invariant", "regression_fixture"},
-                )
-                response = self.guardian.propose_repair(
-                    self._require_str(request, "defect_ref"),
-                    summary=self._require_str(request, "summary"),
-                    invariant=self._require_str(request, "invariant"),
-                    regression_fixture=self._require_str(
+            else:
+                guardian = self._require_guardian()
+                if operation == "guardian.status":
+                    self._require_exact_fields(request, operation, set())
+                    response = guardian.status()
+                elif operation == "guardian.list":
+                    self._require_exact_fields(
                         request,
-                        "regression_fixture",
-                    ),
-                )
-            elif operation == "guardian.scar.record":
-                self._require_exact_fields(
-                    request,
-                    operation,
-                    {"defect_ref", "repair_ref", "verification_ref"},
-                )
-                response = self.guardian.record_scar(
-                    self._require_str(request, "defect_ref"),
-                    self._require_str(request, "repair_ref"),
-                    self._require_str(request, "verification_ref"),
-                )
-            else:  # pragma: no cover - closed dispatch set
-                return self._error(
-                    request_id,
-                    "unknown_operation",
-                    "operation is not supported",
-                )
+                        operation,
+                        {"limit", "record_type"},
+                    )
+                    limit = request.get("limit", 100)
+                    record_type = request.get("record_type")
+                    if record_type is not None and not isinstance(record_type, str):
+                        raise GuardianError(
+                            "guardian_invalid_request",
+                            "record_type must be text when supplied",
+                        )
+                    response = guardian.store.list_records(
+                        limit=limit,
+                        record_type=record_type,
+                    )
+                elif operation == "guardian.inspect":
+                    self._require_exact_fields(request, operation, {"record_ref"})
+                    record = guardian.store.inspect(
+                        self._require_str(request, "record_ref")
+                    )
+                    response = {"status": "ok", "record": record.as_dict()}
+                elif operation == "guardian.verify":
+                    self._require_exact_fields(request, operation, set())
+                    response = guardian.store.verify()
+                elif operation == "guardian.reconcile":
+                    self._require_exact_fields(
+                        request,
+                        operation,
+                        {
+                            "observation_ref",
+                            "expected_status",
+                            "expected_error_code",
+                        },
+                    )
+                    expected_error_code = request.get("expected_error_code")
+                    if expected_error_code is not None and not isinstance(
+                        expected_error_code,
+                        str,
+                    ):
+                        raise GuardianError(
+                            "guardian_invalid_request",
+                            "expected_error_code must be text or null",
+                        )
+                    response = guardian.reconcile(
+                        self._require_str(request, "observation_ref"),
+                        expected_status=self._require_str(
+                            request,
+                            "expected_status",
+                        ),
+                        expected_error_code=expected_error_code,
+                    )
+                elif operation == "guardian.repair.propose":
+                    self._require_exact_fields(
+                        request,
+                        operation,
+                        {
+                            "defect_ref",
+                            "summary",
+                            "invariant",
+                            "regression_fixture",
+                        },
+                    )
+                    response = guardian.propose_repair(
+                        self._require_str(request, "defect_ref"),
+                        summary=self._require_str(request, "summary"),
+                        invariant=self._require_str(request, "invariant"),
+                        regression_fixture=self._require_str(
+                            request,
+                            "regression_fixture",
+                        ),
+                    )
+                elif operation == "guardian.scar.record":
+                    self._require_exact_fields(
+                        request,
+                        operation,
+                        {"defect_ref", "repair_ref", "verification_ref"},
+                    )
+                    response = guardian.record_scar(
+                        self._require_str(request, "defect_ref"),
+                        self._require_str(request, "repair_ref"),
+                        self._require_str(request, "verification_ref"),
+                    )
+                else:  # pragma: no cover - closed dispatch set
+                    return self._error(
+                        request_id,
+                        "unknown_operation",
+                        "operation is not supported",
+                    )
         except GuardianError as exc:
             return self._error(request_id, exc.code, str(exc))
         except (KeyError, TypeError, ValueError, RecursionError) as exc:
