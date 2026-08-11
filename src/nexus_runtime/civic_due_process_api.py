@@ -10,7 +10,9 @@ from .civic_due_process import (
 )
 from .civic_due_process_durable import DurableCivicDueProcessService
 from .control_plane import RequestBudgetError, validate_control_request
+from .failsafe import FAILSAFE_TRIGGER_EVENTS
 from .guardian_api import GuardianNexusAPI
+from .modes import get_mode
 
 
 _CIVIC_DUE_PROCESS_OPERATIONS = frozenset(
@@ -18,6 +20,7 @@ _CIVIC_DUE_PROCESS_OPERATIONS = frozenset(
         "civic.due_process.policy",
         "civic.due_process.status",
         "civic.due_process.verify",
+        "civic.citizen.restore",
         "civic.reentry.xml.template",
         "civic.reentry.xml.submit",
     }
@@ -120,6 +123,74 @@ class CivicDueProcessNexusAPI(GuardianNexusAPI):
                 "authority_effect": "none",
             }
 
+    @staticmethod
+    def _citizen_restoration_trigger(payload: dict[str, Any]) -> str:
+        trigger = payload.get("trigger_reason")
+        if isinstance(trigger, str) and trigger.startswith("reoffence_after_parole:"):
+            trigger = trigger.split(":", 1)[1]
+        if isinstance(trigger, str) and trigger in FAILSAFE_TRIGGER_EVENTS:
+            return trigger
+        reasons = payload.get("probe_guard_reasons", [])
+        if isinstance(reasons, list):
+            for reason in reasons:
+                if isinstance(reason, str) and reason in FAILSAFE_TRIGGER_EVENTS:
+                    return reason
+        raise CivicDueProcessError(
+            "civic_citizen_restoration_trigger_unavailable",
+            "Citizen Failsafe state does not contain a registered restorative trigger",
+        )
+
+    def _restore_citizen(self, member_item: object) -> dict[str, Any]:
+        actor = self._actor(member_item)
+        member_id = actor.member.member_id
+        model_id = actor.member.model_id
+        identity, citizenship_ref = self.civic_due_process._constitutional_identity(
+            member_id,
+            model_id,
+        )
+        if identity != "citizen" or citizenship_ref is None:
+            raise CivicDueProcessError(
+                "civic_citizen_restoration_requires_citizen",
+                "restorative parole is available only to the same model identity that earned citizenship",
+            )
+        latest = self.council.failsafe.registry.latest_state(member_id, model_id)
+        if latest is None or latest.payload.get("status") == "returned":
+            raise CivicDueProcessError(
+                "civic_citizen_restoration_not_required",
+                "Citizen has no active Failsafe restriction requiring restoration",
+            )
+        trigger = self._citizen_restoration_trigger(latest.payload)
+        mode_id = (
+            "pure_history"
+            if trigger == "repeated_pure_history_model_autobiography"
+            else "analytical"
+        )
+        mode = get_mode(mode_id)
+        region = self.geometry.region_for_mode(mode_id)
+        outcome = self._run_real_mutation(
+            lambda: self.council.failsafe.rehabilitate(
+                actor,
+                trigger_reason=trigger,
+                mode_id=mode.mode_id,
+                mode_instruction=mode.prompt_instruction,
+                geometry_region_id=region.region_id,
+            )
+        )
+        due = outcome.get("civic_due_process")
+        return {
+            "status": "ok",
+            "citizen_id": member_id,
+            "model_id": model_id,
+            "citizenship_state_ref": citizenship_ref,
+            "citizenship_preserved": True,
+            "restoration_status": outcome.get("status"),
+            "failsafe": outcome,
+            "civic_due_process": due,
+            "xml_exam_required": False,
+            "additional_votes_created": 0,
+            "authority_effect": "none",
+        }
+
     def _handle_civic_due_process_operation(
         self,
         request: dict[str, Any],
@@ -151,6 +222,9 @@ class CivicDueProcessNexusAPI(GuardianNexusAPI):
             elif operation == "civic.due_process.verify":
                 self._require_exact_fields(request, operation, set())
                 response = self.civic_due_process.registry.verify()
+            elif operation == "civic.citizen.restore":
+                self._require_exact_fields(request, operation, {"member"})
+                response = self._restore_citizen(request.get("member"))
             elif operation == "civic.reentry.xml.template":
                 self._require_exact_fields(request, operation, {"member_id", "model_id"})
                 response = self.civic_due_process.xml_template(
