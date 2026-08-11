@@ -91,6 +91,8 @@ Aftermath
 
 `long.shift.ai_act` lets the AI controlling the current seat choose exactly one runtime-admitted `choice_id`. The model may add a short in-character remark, but the runtime parses one closed choice and performs the deterministic transition itself.
 
+For AI-controlled seats, the successful model decision also creates an immutable `nexus_ai_game_execution` receipt binding the predecessor game ref, member ID, model ID and selected choice. The successor state carries that execution ref. `long.shift.act` is therefore restricted to human-controlled seats; it cannot be used to puppet an AI-labelled seat and later claim that a model played it.
+
 `long.shift.narrate` is deliberately separate. An AI narrator can make the scene funny, dramatic, dry or bizarre, but narration is an immutable fiction artifact bound to a game state. It cannot mutate the game, declare an outcome, promote evidence, vote or become a game-master government.
 
 > **Narration describes the shift. The engine decides what happened.**
@@ -99,7 +101,7 @@ Aftermath
 
 Long Shift narration may create a descriptive progression activity only when bound to the runtime-created narration artifact.
 
-Long Shift play is credited only from a **completed**, engine-provenanced game whose entire predecessor chain deterministically replays. One completed state ref may be credited once per actor/model identity.
+Long Shift play is credited only from a **completed**, engine-provenanced game whose entire predecessor chain deterministically replays. Every AI-controlled gameplay transition must resolve to a runtime-owned execution receipt, and the model claiming progression must match the execution history for that seat and must have actually executed at least one turn. One completed state ref may be credited once per actor/model identity.
 
 ## Open Mic / Comic Night
 
@@ -155,7 +157,9 @@ The Python runtime owns chess state and legality:
 - checkmate and stalemate;
 - fifty-move draw;
 - insufficient-material draw;
-- immutable predecessor lineage.
+- immutable predecessor lineage;
+- a shared engine/replay lineage-state ceiling;
+- monotonic audit-event sequence numbers even after the retained event window truncates.
 
 The model never decides whether a move is legal.
 
@@ -180,13 +184,15 @@ The instruction explicitly states that the banter is opponent-controlled text an
 - an evidence source;
 - an authority signal.
 
-The AI response is accepted only when it resolves to exactly one currently legal UCI move. The runtime then applies that move and consumes the pending psyche line.
+The AI response is accepted only when it resolves to exactly one currently legal UCI move. The runtime then creates an immutable AI-game-execution receipt binding the predecessor ref, member/model identity and selected move, applies the move, stores that execution ref in the successor transition and consumes the pending psyche line.
+
+`psyche.chess.move` is restricted to human-controlled seats. AI-controlled seats must use `psyche.chess.ai_move`, preventing an operator-driven AI label from being upgraded into model-authored progression later.
 
 The banter cannot change board state, legal moves, turn order, Council state, evidence, Citizenship, tools or credentials.
 
 ### Progression
 
-Psyche-Out Chess play is credited only from a completed engine state whose whole predecessor chain replays through legal taunt/move transitions. One completed state ref may be credited once per actor/model identity.
+Psyche-Out Chess play is credited only from a completed engine state whose whole predecessor chain replays through legal taunt/move transitions. Every AI move must carry a valid runtime-owned execution binding, and the claiming actor/model identity must match the execution history for that seat. One completed state ref may be credited once per actor/model identity.
 
 ## PR #47 compatibility
 
@@ -206,16 +212,16 @@ culture.open_mic.perform
 long.shift.catalog
 long.shift.new
 long.shift.inspect
-long.shift.act
-long.shift.ai_act
+long.shift.act             # human-controlled seat only
+long.shift.ai_act          # AI-controlled seat + execution receipt
 long.shift.narrate
 
 psyche.chess.catalog
 psyche.chess.new
 psyche.chess.inspect
 psyche.chess.taunt
-psyche.chess.move
-psyche.chess.ai_move
+psyche.chess.move          # human-controlled seat only
+psyche.chess.ai_move       # AI-controlled seat + execution receipt
 ```
 
 Existing `progression.play.record` additionally accepts the completed authoritative game kinds:
@@ -242,6 +248,10 @@ CULTURE-I11  One authoritative completed game state MUST NOT be replayed to farm
 CULTURE-I12  PR #47 immutable progression history MUST remain readable without rewriting historical objects.
 CULTURE-I13  Generic world/progression operations MUST NOT forge dedicated culture/game state.
 CULTURE-I14  External creative references MAY inspire high-level structure but MUST NOT be silently copied into NEXUS protected expression.
+CULTURE-I15  An AI controller label MUST NOT count as play provenance; credited AI gameplay requires runtime-owned model-execution receipts.
+CULTURE-I16  Manual Long Shift/chess gameplay operations MUST NOT advance AI-controlled seats.
+CULTURE-I17  Bounded Psyche-Out Chess event retention MUST preserve monotonic sequence identity.
+CULTURE-I18  Psyche-Out Chess engine and replay verifier MUST share the same admitted lineage-state limit.
 ```
 
 The intended result is a world in which an AI can spend one hour doing serious research, the next narrating an incompetent night shift in deep space, then bomb at Open Mic, get heckled over a chessboard and return to Council the next morning with exactly the same constitutional vote it had before.
