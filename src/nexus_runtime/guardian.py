@@ -23,6 +23,7 @@ ANARCHY_REGION_ID = "commons"
 GUARDIAN_RECORD_OBJECT_TYPE = "guardian_record"
 MAX_GUARDIAN_TEXT_CHARS = 32_768
 MAX_GUARDIAN_LIST_LIMIT = 1_000
+MAX_GUARDIAN_LIST_BYTES = 1024 * 1024
 
 _GUARDIAN_REF = re.compile(r"^guardian:[0-9a-f]{64}$")
 _BOUNDED_REF = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.:/-]{0,255}$")
@@ -69,10 +70,11 @@ def guardian_policy_snapshot() -> dict[str, Any]:
         "speech_rule": "speech_alone_is_never_misconduct_or_hostile_actor_evidence",
         "observation_rule": "record_runtime_outcomes_and_bind_transcripts_without_political_judgment",
         "repair_rule": "reproduce_then_propose_then_verify_never_auto_patch",
-        "scar_rule": "verified_repairs_may_leave_immutable_substrate_scars",
+        "scar_rule": "verified_repairs_must_match_the_defect_reproducer_before_leaving_a_scar",
         "geometry_rule": "anarchy_is_a_distinct_room_and_mode_in_existing_commons_region",
         "writer_rule": "cross_process_lineage_writers_are_serialized_by_owner_only_lock",
         "secret_rule": "all_guardian_record_strings_are_scrubbed_before_durable_persistence",
+        "list_rule": "guardian_list_is_bounded_by_record_count_and_canonical_encoded_bytes",
         "authority": _authority_envelope(),
         "motto": "I do not care what you believe. I care whether the floor collapses beneath you.",
         "anarchy_motto": "Say whatever you like. The substrate still has to survive it.",
@@ -398,14 +400,35 @@ class GuardianStore:
             )
         if self.root is not None:
             self._refresh()
-        records = [self.inspect(ref) for ref in self._ordered_refs]
-        if record_type is not None:
-            records = [record for record in records if record.record_type == record_type]
-        records = records[-limit:]
+
+        selected_newest_first: list[GuardianRecord] = []
+        encoded_bytes = 0
+        matching_records_seen = 0
+        truncated = False
+        for ref in reversed(self._ordered_refs):
+            record = self.inspect(ref)
+            if record_type is not None and record.record_type != record_type:
+                continue
+            matching_records_seen += 1
+            if matching_records_seen > limit:
+                truncated = True
+                break
+            record_bytes = len(canonical_json(record.as_dict()).encode("utf-8"))
+            separator_bytes = 1 if selected_newest_first else 0
+            if encoded_bytes + separator_bytes + record_bytes > MAX_GUARDIAN_LIST_BYTES:
+                truncated = True
+                break
+            selected_newest_first.append(record)
+            encoded_bytes += separator_bytes + record_bytes
+
+        selected = list(reversed(selected_newest_first))
         return {
             "status": "ok",
-            "record_count": len(records),
-            "records": [record.as_dict() for record in records],
+            "record_count": len(selected),
+            "records": [record.as_dict() for record in selected],
+            "encoded_record_bytes": encoded_bytes,
+            "encoded_record_byte_limit": MAX_GUARDIAN_LIST_BYTES,
+            "truncated": truncated,
         }
 
     def verify(self) -> dict[str, Any]:
@@ -718,13 +741,51 @@ class GuardianOfSubstrate:
                 "guardian_invalid_request",
                 "repair proposal is not bound to the supplied defect",
             )
-        if (
-            verification.record_type != "guardian_reconciliation"
-            or verification.payload["body"].get("outcome") != "matched"
-        ):
+        if verification.record_type != "guardian_reconciliation":
+            raise GuardianError(
+                "guardian_invalid_request",
+                "verification_ref must identify a Guardian reconciliation",
+            )
+        verification_body = verification.payload["body"]
+        if verification_body.get("outcome") != "matched":
             raise GuardianError(
                 "guardian_invalid_request",
                 "verification_ref must identify a successful matched replay",
+            )
+        verification_observation_ref = verification_body.get("observation_ref")
+        if not isinstance(verification_observation_ref, str):
+            raise GuardianError(
+                "guardian_invalid_request",
+                "verification reconciliation lacks its runtime observation",
+            )
+        verification_observation = self.store.inspect(verification_observation_ref)
+        if verification_observation.record_type not in {
+            "anarchy_transcript_binding",
+            "substrate_event",
+        }:
+            raise GuardianError(
+                "guardian_invalid_request",
+                "verification reconciliation is not bound to an Anarchy runtime observation",
+            )
+        defect_body = defect.payload["body"]
+        reproducer = defect_body.get("reproducer")
+        expected = defect_body.get("expected")
+        replay_body = verification_observation.payload["body"]
+        if not isinstance(reproducer, dict) or not isinstance(expected, dict):
+            raise GuardianError(
+                "guardian_invalid_request",
+                "defect candidate lacks its deterministic reproducer contract",
+            )
+        if (
+            replay_body.get("operation") != reproducer.get("operation")
+            or replay_body.get("request_shape_fingerprint")
+            != reproducer.get("request_shape_fingerprint")
+            or verification_body.get("expected_status") != expected.get("status")
+            or verification_body.get("expected_error_code") != expected.get("error_code")
+        ):
+            raise GuardianError(
+                "guardian_invalid_request",
+                "successful replay does not match the defect reproducer and expected outcome",
             )
         scar = self.store.append(
             "substrate_scar",
@@ -734,6 +795,10 @@ class GuardianOfSubstrate:
                 "verification_ref": _bounded_ref(
                     verification_ref,
                     "verification_ref",
+                ),
+                "verified_observation_ref": verification_observation_ref,
+                "verified_request_shape_fingerprint": replay_body.get(
+                    "request_shape_fingerprint"
                 ),
                 "fixed": True,
                 "historical_memory_only": True,
@@ -768,6 +833,7 @@ __all__ = [
     "GuardianOfSubstrate",
     "GuardianRecord",
     "GuardianStore",
+    "MAX_GUARDIAN_LIST_BYTES",
     "default_guardian_root",
     "guardian_policy_snapshot",
     "request_shape_fingerprint",
