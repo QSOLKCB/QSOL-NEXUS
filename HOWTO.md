@@ -1,10 +1,10 @@
 # QSOL NEXUS — Easy Use Guide
 
-The repository itself is the NEXUS 2.0 launcher. PR #45 introduced the operator tooling; PR #51 reconciles it with the final post-Wall release candidate.
+The repository itself is the NEXUS 2.0 launcher. PR #45 introduced the operator tooling; PR #51 reconciled it with the post-Wall release candidate, and PR #52 closes the hostile post-merge audit findings before stable release.
 
 ## Release-candidate note
 
-The current #51 branch identifies the intended stable bits as `2.0.0`, but the stable tag is not implied by a version string. Use `./nexus version` and `./nexus doctor` to verify the local checkout; the repository release is stable only once the exact merged #51 head is green and tagged `v2.0.0`.
+The current PR #52 candidate identifies the intended stable bits as `2.0.0`, but the stable tag is not implied by a version string. Use `./nexus version` and `./nexus doctor` to verify the local checkout; the repository release is stable only once the exact merged #52 head passes the complete commit/tree-bound release and review gates and is tagged `v2.0.0`.
 
 ## First launch
 

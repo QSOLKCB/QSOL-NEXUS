@@ -49,13 +49,14 @@ jobs:
           test "$(cargo --version | awk '{print $2}')" = "1.97.1"
           test "$(rustc --version | awk '{print $2}')" = "1.97.1"
 
-      - name: Run final release-candidate matrix
+      - name: Run exact-commit final release-candidate matrix
         env:
           PYTHONPATH: src
         run: |
           set -euo pipefail
           python3 tools/nexus_release_hardening.py \
             --iterations 128 \
+            --expect-commit "$GITHUB_SHA" \
             --json-out "$HARDENING_REPORT"
 
       - name: Show machine-readable report

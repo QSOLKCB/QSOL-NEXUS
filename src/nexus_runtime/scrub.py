@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -37,7 +38,7 @@ _PATTERNS: tuple[_Pattern, ...] = (
         ),
     ),
     _Pattern("GITHUB_TOKEN", re.compile(r"(?P<secret>gh[pousr]_[A-Za-z0-9]{20,})")),
-    _Pattern("OPENAI_STYLE_TOKEN", re.compile(r"(?P<secret>sk-[A-Za-z0-9_-]{20,})")),
+    _Pattern("OPENAI_STYLE_TOKEN", re.compile(r"(?P<secret>sk-[A-Za-z0-9_-]{20,})", re.I)),
     _Pattern("XAI_API_KEY", re.compile(r"(?P<secret>xai-[A-Za-z0-9_-]{20,})", re.I)),
     _Pattern("GROQ_API_KEY", re.compile(r"(?P<secret>gsk_[A-Za-z0-9_-]{20,})")),
     _Pattern("HUGGINGFACE_TOKEN", re.compile(r"(?P<secret>hf_[A-Za-z0-9]{20,})")),
@@ -79,10 +80,7 @@ class SecretScrubber:
     def __init__(self, patterns: Iterable[_Pattern] = _PATTERNS) -> None:
         self._patterns = tuple(patterns)
 
-    def scrub(self, text: str) -> ScrubResult:
-        if not isinstance(text, str):
-            raise TypeError("SecretScrubber accepts text only")
-
+    def _scrub_patterns(self, text: str) -> ScrubResult:
         seen: dict[tuple[str, str], str] = {}
         counters: dict[str, int] = {}
         events: list[ScrubEvent] = []
@@ -108,3 +106,21 @@ class SecretScrubber:
             output = pattern.regex.sub(replace, output)
 
         return ScrubResult(output, tuple(events))
+
+    def scrub(self, text: str) -> ScrubResult:
+        if not isinstance(text, str):
+            raise TypeError("SecretScrubber accepts text only")
+
+        direct = self._scrub_patterns(text)
+
+        # Unicode format controls (category Cf) can visually split a credential
+        # prefix without changing what a human sees.  If stripping those controls
+        # reveals a high-confidence credential pattern, persist only the scrubbed
+        # normalized form.  Ordinary text is left byte-for-byte alone.
+        normalized = "".join(char for char in text if unicodedata.category(char) != "Cf")
+        if normalized != text:
+            normalized_result = self._scrub_patterns(normalized)
+            if normalized_result.changed:
+                return normalized_result
+
+        return direct

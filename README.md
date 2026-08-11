@@ -22,7 +22,7 @@ operator shell:  Rust IRC-style TUI
 status:          release candidate — stable tag not yet cut
 ```
 
-PR #50 (The BBS Wall) is merged. PR #51 is the final documentation and release-candidate reconciliation pass against the exact post-Wall runtime. The `2.0.0` identifiers in this branch describe the intended stable bits; they do **not** by themselves declare a stable release. The `v2.0.0` tag may be created only from the exact merged #51 head after the complete release-candidate matrix and review gate are green.
+PR #50 (The BBS Wall) and PR #51 (documentation/final-RC reconciliation) are merged. A hostile post-merge Grok audit found release-identity, secret-scrubbing, report-binding, matrix-inventory and metadata gaps, so PR #52 is the new final pre-stable audit-closure candidate. The `2.0.0` identifiers describe the intended stable bits; they do **not** by themselves declare a stable release. The `v2.0.0` tag may be created only from the exact merged #52 head after the complete release-candidate matrix and review gate are green.
 
 ## What exists now
 
@@ -108,7 +108,7 @@ The Rust TUI is a replaceable operator interface. Council arithmetic, evidence i
 
 ## Stable 2.0 release boundary
 
-The repository is intentionally strict about the difference between **version alignment** and **release authority**. PR #51 aligns the runtime, Python package, Rust TUI, API docs, architecture, security docs, citation metadata, compatibility statement, and release-hardening matrix on `2.0.0`.
+The repository is intentionally strict about the difference between **version alignment** and **release authority**. PR #51 aligned the release surfaces on `2.0.0`; PR #52 closes the independent post-merge audit findings and becomes the exact candidate that must earn the stable tag.
 
 Stable release still requires all of the following on the exact intended release head:
 
@@ -122,7 +122,7 @@ Stable release still requires all of the following on the exact intended release
 - BBS Wall boundaries preserved;
 - no unresolved release-blocking review finding.
 
-Only after PR #51 is merged green may that exact commit be tagged `v2.0.0`. See [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) and [`docs/RELEASE_SEQUENCE.md`](docs/RELEASE_SEQUENCE.md).
+Only after PR #52 is reviewed, merged, and green may that exact commit be tagged `v2.0.0`. See [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) and [`docs/RELEASE_SEQUENCE.md`](docs/RELEASE_SEQUENCE.md).
 
 ## The Council rule
 
@@ -425,7 +425,7 @@ cargo fmt --manifest-path tui/Cargo.toml -- --check
 
 The repository also carries dedicated security regression, adversarial gauntlet, and live loopback-Ollama workflows.
 
-The alpha10.3 release-prep adds `tests/test_release_wiring.py`, which explicitly checks that the architecture is actually connected: public API identity, full health backend roster, local-role operations, version alignment, and hostile numeric timeout boundaries.
+The release-wiring regression `tests/test_release_wiring.py` explicitly checks that the architecture is actually connected: public API identity, full health backend roster, local-role operations, version alignment, and hostile numeric timeout boundaries.
 
 ## Security posture
 

@@ -80,6 +80,8 @@ They must never be written to:
 
 Authentication material belongs only in adapter authentication or transport fields and must never become semantic prompt content exposed to a model.
 
+Before durable Council/Wall semantic persistence, the deterministic scrubber now treats high-confidence token prefixes case-insensitively where appropriate and performs a second detection pass with Unicode `Cf` format controls removed, blocking zero-width prefix splitting such as `sk\u200b-...`. This remains defence in depth rather than general DLP: unknown secret formats still require operator discipline and provider-specific transport boundaries.
+
 ## WorldStore persistence boundary
 
 File-backed WorldStore roots and object directories are owner-only `0700` on
@@ -471,4 +473,4 @@ Moderation creates an immutable tombstone event rather than rewriting or deletin
 
 ## Stable-release security gate
 
-PR #51 aligns the intended `2.0.0` bits but does not self-authorize a stable release. The stable tag is permitted only from the exact merged #51 commit after full Python/Rust, adversarial/security, clean-archive bootstrap, WorldStore/Ark recovery, Grok R1-R12 closure, Wall-boundary, documentation-coupling, and review gates pass. The hardening report itself has `authority_effect: none` and `stable_release: false`.
+PR #51 aligned the intended `2.0.0` bits, but the hostile post-merge audit found release-blocking gaps and PR #52 is now the final pre-stable audit-closure candidate. The stable tag is permitted only from the exact merged PR #52 commit after full Python/Rust, adversarial/security, clean-archive bootstrap, WorldStore/Ark recovery, Grok R1-R12 closure, post-merge F1-F5/RACE1 closure, Wall-boundary, documentation-coupling, exact commit/tree identity revalidation, and review gates pass. The hardening report itself has `authority_effect: none` and `stable_release: false`.

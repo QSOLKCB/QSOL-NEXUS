@@ -2,8 +2,9 @@
 """NEXUS 2.0 final release-candidate hardening runner.
 
 PR #49 established the pre-Wall baseline and the Grok audit strengthened it.
-PR #51 reruns that complete contract against the post-Wall feature surface,
-rehearses a clean operator archive, and emits a machine-readable candidate
+PR #51 reran that complete contract against the post-Wall feature surface.
+PR #52 closes the hostile post-merge audit findings, revalidates candidate
+identity before and after the matrix, and emits a machine-readable candidate
 report. The report verifies boundaries but carries no governance, evidence,
 or stable-release authority by itself.
 """
@@ -14,6 +15,7 @@ import argparse
 from dataclasses import asdict, dataclass
 import json
 import os
+import re
 from pathlib import Path, PurePosixPath
 import shutil
 import stat
@@ -59,17 +61,20 @@ REQUIRED_REHEARSALS: dict[str, tuple[str, ...]] = {
     ),
 }
 REQUIRED_GROK_FINDING_IDS = frozenset(f"R{index}" for index in range(1, 13))
-EXPECTED_MATRIX_MILESTONE = "PR #51"
+REQUIRED_POST_MERGE_FINDING_IDS = frozenset({"F1", "F2", "F3", "F4", "F5", "RACE1"})
+EXPECTED_PYTHON_TEST_FILES = 81
+EXPECTED_MATRIX_MILESTONE = "PR #52"
 EXPECTED_MATRIX_PROFILE = "final_release_candidate"
-EXPECTED_SCOPE_THROUGH_PR = 50
+EXPECTED_SCOPE_THROUGH_PR = 51
 TARGET_VERSION = "2.0.0"
 REQUIRED_RELEASE_RULE = (
-    "Only the exact merged PR #51 head may be tagged v2.0.0 after the complete "
+    "Only the exact merged PR #52 head may be tagged v2.0.0 after the complete "
     "release-candidate matrix passes with no unresolved release-blocking review findings."
 )
 REQUIRED_CHECK_NAMES = frozenset(
     {
         "candidate-tree-clean",
+        "candidate-commit-binding",
         "matrix-audit",
         "full-python-regression",
         "adversarial-probes",
@@ -79,6 +84,7 @@ REQUIRED_CHECK_NAMES = frozenset(
         "fresh-archive-operator-rehearsal",
         "representative-pre-beta-upgrade-ark-rehearsal",
         "candidate-tree-unchanged",
+        "candidate-identity-unchanged",
     }
 )
 _REHEARSAL_ENV_KEYS = frozenset(
@@ -183,6 +189,8 @@ def _audit_matrix_data(matrix: Any, tests_root: Path) -> str:
         raise ValueError("release-candidate target version mismatch")
     if matrix.get("release_rule") != REQUIRED_RELEASE_RULE:
         raise ValueError("release-candidate stable-tag rule mismatch")
+    if matrix.get("expected_python_test_files") != EXPECTED_PYTHON_TEST_FILES:
+        raise ValueError("release-candidate Python test inventory count mismatch")
     if matrix.get("authority_effect") != "none":
         raise ValueError("hardening matrix cannot create authority")
     gates = matrix.get("gates")
@@ -221,6 +229,19 @@ def _audit_matrix_data(matrix: Any, tests_root: Path) -> str:
             f"missing={missing or 'none'} extra={extra or 'none'}"
         )
 
+    full_inventory = {path for path in tests_root.glob("test_*.py") if path.is_file()}
+    if len(full_inventory) != EXPECTED_PYTHON_TEST_FILES:
+        raise ValueError(
+            f"Python test inventory changed: expected {EXPECTED_PYTHON_TEST_FILES}, found {len(full_inventory)}"
+        )
+    if matched != full_inventory:
+        missing_from_matrix = sorted(path.name for path in full_inventory - matched)
+        extra_matches = sorted(path.name for path in matched - full_inventory)
+        raise ValueError(
+            "hardening matrix must intentionally cover the complete Python test inventory; "
+            f"missing={missing_from_matrix or 'none'} extra={extra_matches or 'none'}"
+        )
+
     rehearsals = matrix.get("rehearsals")
     if not isinstance(rehearsals, list):
         raise ValueError("hardening matrix requires rehearsals")
@@ -254,15 +275,93 @@ def _audit_matrix_data(matrix: Any, tests_root: Path) -> str:
     if verification != "tests/test_release_hardening_grok_audit.py":
         raise ValueError("Grok PR49 audit closure verification target mismatch")
 
+    post_merge = matrix.get("post_merge_audit_closure")
+    if not isinstance(post_merge, dict) or post_merge.get("required_before_stable") is not True:
+        raise ValueError("post-merge Grok audit closure must remain release-blocking")
+    post_ids = post_merge.get("finding_ids")
+    if not isinstance(post_ids, list) or set(post_ids) != REQUIRED_POST_MERGE_FINDING_IDS:
+        raise ValueError("post-merge Grok finding inventory mismatch")
+    if post_merge.get("status") != "resolved_in_pr52":
+        raise ValueError("post-merge Grok findings must be resolved in PR #52")
+    if post_merge.get("verification") != "tests/test_post_merge_grok_audit.py":
+        raise ValueError("post-merge Grok audit verification target mismatch")
+
     release_test = tests_root / "test_release_hardening.py"
     grok_test = tests_root / "test_release_hardening_grok_audit.py"
     upgrade_test = tests_root / "test_release_upgrade_rehearsal.py"
     if release_test not in matched or grok_test not in matched or upgrade_test not in matched:
         raise ValueError("release composition and upgrade/recovery tests are not covered by the hardening matrix")
     return (
-        f"{len(seen)} required gates cover {len(matched)} test files; "
-        f"{len(observed_rehearsals)} required rehearsals and 12/12 Grok findings pinned; "
+        f"{len(seen)} required gates cover {len(matched)}/{EXPECTED_PYTHON_TEST_FILES} test files; "
+        f"{len(observed_rehearsals)} required rehearsals, 12/12 Grok findings (PR49) and 6/6 post-merge findings pinned; "
         f"profile={EXPECTED_MATRIX_PROFILE} target={TARGET_VERSION} scope_through_pr={EXPECTED_SCOPE_THROUGH_PR}"
+    )
+
+
+def _git_identity() -> tuple[str, str]:
+    def rev_parse(spec: str) -> str:
+        proc = subprocess.run(
+            ["git", "rev-parse", spec],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=120,
+            check=False,
+        )
+        value = proc.stdout.strip()
+        if proc.returncode != 0 or re.fullmatch(r"[0-9a-f]{40}", value) is None:
+            raise RuntimeError(f"could not resolve git identity for {spec}: {proc.stdout}")
+        return value
+
+    return rev_parse("HEAD"), rev_parse("HEAD^{tree}")
+
+
+def _commit_binding(expected_commit: str | None, git_commit: str, git_tree: str) -> CheckResult:
+    started = time.monotonic()
+    if expected_commit is not None and expected_commit != git_commit:
+        return CheckResult(
+            "candidate-commit-binding",
+            "fail",
+            time.monotonic() - started,
+            f"expected commit {expected_commit} but checked out {git_commit}; tree={git_tree}",
+        )
+    expectation = expected_commit if expected_commit is not None else "current HEAD"
+    return CheckResult(
+        "candidate-commit-binding",
+        "pass",
+        time.monotonic() - started,
+        f"report bound to commit {git_commit}; tree={git_tree}; expected={expectation}",
+    )
+
+
+def _identity_unchanged(expected_commit: str, expected_tree: str) -> CheckResult:
+    started = time.monotonic()
+    try:
+        current_commit, current_tree = _git_identity()
+    except Exception as exc:
+        return CheckResult(
+            "candidate-identity-unchanged",
+            "fail",
+            time.monotonic() - started,
+            f"final git identity unavailable: {type(exc).__name__}: {exc}",
+        )
+    if current_commit != expected_commit or current_tree != expected_tree:
+        return CheckResult(
+            "candidate-identity-unchanged",
+            "fail",
+            time.monotonic() - started,
+            (
+                "candidate identity changed during hardening: "
+                f"started commit={expected_commit} tree={expected_tree}; "
+                f"ended commit={current_commit} tree={current_tree}"
+            ),
+        )
+    return CheckResult(
+        "candidate-identity-unchanged",
+        "pass",
+        time.monotonic() - started,
+        f"candidate identity remained commit={current_commit}; tree={current_tree}",
     )
 
 
@@ -556,7 +655,14 @@ def _not_run(name: str, reason: str) -> CheckResult:
     return CheckResult(name, "not_run", 0.0, reason)
 
 
-def _build_report(checks: list[CheckResult]) -> dict[str, Any]:
+def _build_report(
+    checks: list[CheckResult],
+    *,
+    git_commit: str | None = None,
+    git_tree: str | None = None,
+) -> dict[str, Any]:
+    if git_commit is None or git_tree is None:
+        git_commit, git_tree = _git_identity()
     observed_names = {check.name for check in checks}
     not_run_required = sorted(REQUIRED_CHECK_NAMES - observed_names)
     rendered_checks = list(checks)
@@ -589,6 +695,8 @@ def _build_report(checks: list[CheckResult]) -> dict[str, Any]:
         "profile": EXPECTED_MATRIX_PROFILE,
         "matrix": str(MATRIX_PATH.relative_to(ROOT)),
         "target_version": TARGET_VERSION,
+        "git_commit": git_commit,
+        "git_tree": git_tree,
         "scope_through_pr": EXPECTED_SCOPE_THROUGH_PR,
         "stable_release": False,
         "authority_effect": "none",
@@ -631,12 +739,21 @@ def main() -> int:
     parser.add_argument("--skip-rust", action="store_true")
     parser.add_argument("--skip-operator", action="store_true")
     parser.add_argument("--iterations", type=int, default=128)
+    parser.add_argument("--expect-commit")
     args = parser.parse_args()
     if args.iterations < 1 or args.iterations > 4096:
         parser.error("--iterations must be between 1 and 4096")
 
+    try:
+        git_commit, git_tree = _git_identity()
+    except Exception as exc:
+        print(json.dumps({"status": "failed", "error": f"git identity unavailable: {exc}"}, indent=2))
+        return 1
+
     checks: list[CheckResult] = [_worktree_audit("candidate-tree-clean")]
     if checks[-1].passed:
+        checks.append(_commit_binding(args.expect_commit, git_commit, git_tree))
+    if checks[-1].name == "candidate-commit-binding" and checks[-1].passed:
         checks.append(_matrix_audit())
     if checks[-1].name == "matrix-audit" and checks[-1].passed:
         checks.append(
@@ -681,7 +798,9 @@ def main() -> int:
             )
         )
 
-    report = _build_report(checks)
+    checks.append(_identity_unchanged(git_commit, git_tree))
+
+    report = _build_report(checks, git_commit=git_commit, git_tree=git_tree)
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.json_out is not None:
         _write_report(args.json_out, rendered)

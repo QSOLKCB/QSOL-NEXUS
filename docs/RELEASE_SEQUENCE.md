@@ -11,13 +11,15 @@ PR #49 — NEXUS 2.0 Hardening — MERGED
         ↓
 PR #50 — The BBS Wall — MERGED
         ↓
-PR #51 — Documentation, Release Candidate & Stable Release Prep — THIS RELEASE CANDIDATE
+PR #51 — Documentation, Release Candidate & Stable Release Prep — MERGED
+        ↓
+PR #52 — Post-Merge Grok Audit Closure — THIS RELEASE CANDIDATE
         ↓
 NEXUS 2.0 STABLE RELEASE
         ↓
-PR #52 — Lean 4 Formal Verification
+PR #53 — Lean 4 Formal Verification
         ↓
-PR #53 — Formalization + Reproducibility + Zenodo Publication
+PR #54 — Formalization + Reproducibility + Zenodo Publication
 ```
 
 ## PR #47 — AI Progression & Civic Life
@@ -98,11 +100,31 @@ Then run the final release candidate rehearsal against the exact intended stable
 - Ark creation, verification and non-destructive restore;
 - final check that #50 introduced no regression against #49's hardening guarantees.
 
-Only after PR #51 is merged and the release-candidate head is green should NEXUS 2.0 be tagged/released as stable.
+PR #51 merged successfully and produced a green candidate, but the subsequent hostile post-merge Grok audit found release-blocking gaps outside the prior test boundary. Stable release therefore remains withheld until PR #52 closes those findings and re-certifies the exact candidate.
 
-## PR #52 — Lean 4 Formal Verification
+## PR #52 — Post-Merge Grok Audit Closure
 
-This is explicitly **post-stable-release verification work**.
+A hostile audit of the exact merged PR #51 commit found defects that existing green CI did not cover. Stable release is therefore deferred until this closure PR is reviewed and green.
+
+Required closure:
+
+- derive the operator-visible Rust TUI version from Cargo package metadata;
+- harden Secret Scrubbing against case variants and Unicode `Cf` / zero-width prefix splitting before Wall/Council persistence;
+- bind the machine-readable hardening report to exact Git commit and tree identities;
+- intentionally inventory the complete Python test-module surface;
+- align release-candidate metadata vocabulary and remove residual present-tense alpha wording;
+- eliminate the fixed dirty-marker race observed under concurrent audit execution;
+- rerun the complete release-candidate matrix on the exact PR #52 head.
+
+Gate:
+
+> **An external audit finding outranks the planned sequence. Fix the candidate before proving the candidate.**
+
+Only the exact merged PR #52 commit may become `v2.0.0`, and only after the complete matrix/review gate passes.
+
+## PR #53 — Lean 4 Formal Verification
+
+This is explicitly **post-stable-release verification work**. The previously parked Lean work is retained, but its PR number moves because the post-merge audit closure consumed #52.
 
 After the NEXUS 2.0 stable tag and commit exist:
 
@@ -110,50 +132,26 @@ After the NEXUS 2.0 stable tag and commit exist:
 - ship a complete runnable Lean project, not isolated snippets;
 - pin the Lean toolchain and compiler release identity;
 - formalize selected constitutional and protocol invariants;
-- maintain an explicit theorem inventory;
+- maintain an explicit theorem inventory, axiom audit and formal-gap ranking;
 - maintain assumptions and non-claims;
 - map formal theorems to the stable Python/Rust implementation and regression tests;
 - prohibit `sorry`, `admit`, or user-declared axioms as substitutes for advertised proofs;
 - require `lake build` to machine-check the complete selected theorem surface in CI.
 
-The formalization does not claim to prove AGI, answer quality, or consensus-as-truth. Its intended claim is narrower:
+The intended claim remains narrow:
 
 > **Selected constitutional and protocol invariants of NEXUS 2.0 are machine-checked in Lean 4 against an explicit formal model, with correspondence to the tested stable runtime.**
 
-PR #52 MUST leave the reviewed runnable Lean source available for independent reproduction.
+PR #53 MUST leave the reviewed runnable Lean source available for independent reproduction.
 
-## PR #53 — Formalization + Reproducibility + Zenodo Publication
+## PR #54 — Formalization + Reproducibility + Zenodo Publication
 
 This is the archival/publication phase. It MUST package the reviewed artifacts rather than silently rewriting them.
 
-The final publication bundle must include, at minimum:
+The final publication bundle must include the NEXUS 2.0 stable tag/commit, stable source, runnable Lean 4 source from reviewed PR #53, pinned toolchain/Lake metadata, theorem inventory, assumptions/non-claims, axiom audit, formal-gap ranking, runtime correspondence, Lean verification record, final hardening/test summaries, reproduction instructions, SHA-256 manifest, Zenodo metadata and DOI.
 
-- the NEXUS 2.0 stable tag and commit identity;
-- a stable-source archive or exact release reference;
-- the runnable Lean 4 source from the reviewed PR #52 head;
-- pinned `lean-toolchain` and Lake project metadata;
-- theorem inventory;
-- assumptions and non-claims;
-- runtime-to-theorem correspondence;
-- Lean build/verification record;
-- final release-hardening/test summaries;
-- reproduction instructions;
-- SHA-256 manifest for the publication payload;
-- Zenodo metadata and final DOI.
-
-A recipient should be able to extract the Lean package and run:
-
-```bash
-cd LEAN4
-lake build
-```
-
-without editing theorem sources.
-
-PR #53 must record the exact NEXUS stable commit and the exact PR #52 formalization commit so the publication has an auditable chain of custody.
-
-Zenodo formalization documents the released system and reviewed proof package. It MUST NOT silently redefine the already-released runtime, constitutional contract, theorem statements, or proofs.
+A recipient should be able to run `cd LEAN4 && lake build` without editing theorem sources. PR #54 must record the exact NEXUS stable commit and exact PR #53 formalization commit.
 
 ## Release principle
 
-> **Build the life and culture of the world, harden the substrate, add the social wall, document and release the exact stable system, prove selected invariants against that stable system, then archive the software + runnable proofs + reproducibility record together.**
+> **Build the life and culture of the world, harden the substrate, add the social wall, document the candidate, close independent audit findings before release, prove selected invariants against the stable system, then archive the software + runnable proofs + reproducibility record together.**

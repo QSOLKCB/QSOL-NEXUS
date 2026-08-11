@@ -248,13 +248,13 @@ class ReleaseHardeningTests(unittest.TestCase):
     def test_hardening_matrix_is_final_release_candidate_and_cannot_self_declare_stable(self) -> None:
         matrix = json.loads((ROOT / "release" / "hardening_matrix.json").read_text(encoding="utf-8"))
         self.assertEqual(matrix["schema"], "nexus-release-hardening-matrix/1")
-        self.assertEqual(matrix["milestone"], "PR #51")
+        self.assertEqual(matrix["milestone"], "PR #52")
         self.assertEqual(matrix["profile"], "final_release_candidate")
         self.assertFalse(matrix["stable_release"])
         self.assertEqual(matrix["authority_effect"], "none")
-        self.assertEqual(matrix["scope_through_pr"], 50)
+        self.assertEqual(matrix["scope_through_pr"], 51)
         self.assertEqual(matrix["target_version"], "2.0.0")
-        self.assertIn("exact merged PR #51 head", matrix["release_rule"])
+        self.assertIn("exact merged PR #52 head", matrix["release_rule"])
         self.assertIn("v2.0.0", matrix["release_rule"])
 
     def test_hardening_runner_requires_exact_eight_gate_inventory(self) -> None:

@@ -35,7 +35,7 @@
     "rust_tui": "2.0.0",
     "stable_2_0": false,
     "release_posture": "release_candidate",
-    "note": "PR #51 aligns the intended stable 2.0 bits after merged PR #50. The v2.0.0 tag is forbidden until the exact merged PR #51 head passes the complete release-candidate and review gates."
+    "note": "PR #51 aligned the intended stable 2.0 bits after merged PR #50. A hostile post-merge Grok audit then made PR #52 the final pre-stable audit-closure candidate. The v2.0.0 tag is forbidden until the exact merged PR #52 head passes the complete release-candidate, post-merge audit, and review gates."
   },
   "normative_precedence": [
     "executable_runtime_behavior_and_validation",
@@ -395,8 +395,8 @@
     "declared": false,
     "green_ci_alone_is_sufficient": false,
     "remaining_high_level_work": [
-      "merge_pr_51_exact_release_candidate_head",
-      "rerun_complete_release_candidate_matrix_and_review_gate",
+      "merge_pr_52_post_merge_audit_closure_head",
+      "rerun_complete_release_candidate_matrix_and_review_gate_on_exact_pr52_head",
       "create_v2.0.0_tag_and_release_from_that_exact_green_commit"
     ]
   },
