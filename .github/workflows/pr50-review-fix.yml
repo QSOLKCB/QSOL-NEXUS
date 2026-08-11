@@ -6,6 +6,7 @@ on:
       - agent/pr50-bbs-wall
     paths:
       - 'tools/pr50_review_fix.py'
+      - 'tools/pr50_review_fix_followup.py'
       - '.github/workflows/pr50-review-fix.yml'
 
 permissions:
@@ -28,35 +29,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/pr50_review_fix.py
-
-      - name: Diagnose non-ASCII AI identity path
-        shell: bash
-        env:
-          PYTHONPATH: src
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-          import tempfile
-          from nexus_runtime import NexusAPI
-
-          with tempfile.TemporaryDirectory() as temporary:
-              base = Path(temporary)
-              api = NexusAPI(
-                  base / 'world',
-                  auth_root=base / 'auth',
-                  trap_root=base / 'trap',
-                  stenographer_root=base / 'stenographer',
-                  guardian_root=base / 'guardian',
-              )
-              member = {
-                  'member_id': 'Alpha / Ω:seat',
-                  'model_id': 'mock/模型 alpha',
-                  'adapter_id': 'mock',
-                  'profile': 'balanced',
-              }
-              print(api.handle({'operation': 'wall.ai_post', 'member': member, 'prompt': 'Leave a short note.'}))
-          PY
+          python3 tools/pr50_review_fix_followup.py
 
       - name: Run focused Python Wall regressions
         shell: bash
@@ -77,7 +50,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git rm --ignore-unmatch tools/pr50_review_fix.py .github/workflows/pr50-review-fix.yml
+          git rm --ignore-unmatch tools/pr50_review_fix.py tools/pr50_review_fix_followup.py .github/workflows/pr50-review-fix.yml
           git config user.name 'QSOL PR50 Review Fixer'
           git config user.email '73952179+EmergentMonk@users.noreply.github.com'
           git add -A
