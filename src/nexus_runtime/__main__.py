@@ -67,15 +67,15 @@ def _ensure_stenographer_disjoint(
 def _drain_stenographer_on_exit(api: object) -> None:
     """Best-effort drain of accepted observer writes at a graceful process boundary."""
 
-    stenographer = getattr(api, "stenographer", None)
-    shutdown = getattr(stenographer, "shutdown", None)
-    if not callable(shutdown):
-        return
     try:
-        shutdown()
+        stenographer = getattr(api, "stenographer", None)
+        shutdown = getattr(stenographer, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
     except Exception:
         # The Stenographer is fail-passive by contract. Process shutdown must
-        # never gain authority over an already-produced runtime result.
+        # never gain authority over an already-produced runtime result, including
+        # failures while lazily resolving the stenographer attribute itself.
         pass
 
 
