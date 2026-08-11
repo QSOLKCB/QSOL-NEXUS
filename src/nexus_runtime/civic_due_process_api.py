@@ -6,9 +6,9 @@ from .civic_due_process import (
     CIVIC_DUE_PROCESS_RESERVED_OBJECT_TYPES,
     CivicDueProcessError,
     CivicDueProcessFailsafe,
-    CivicDueProcessService,
     civic_due_process_policy_snapshot,
 )
+from .civic_due_process_durable import DurableCivicDueProcessService
 from .control_plane import RequestBudgetError, validate_control_request
 from .guardian_api import GuardianNexusAPI
 
@@ -29,7 +29,7 @@ class CivicDueProcessNexusAPI(GuardianNexusAPI):
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.civic_due_process = CivicDueProcessService(
+        self.civic_due_process = DurableCivicDueProcessService(
             self.world,
             self.citizenship,
             self.scrubber,
