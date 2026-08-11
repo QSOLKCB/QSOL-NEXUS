@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import time
-from typing import Any
+from typing import Any, Iterator
 
 
 COMPUTE_EPOCH_SCHEMA = "nexus-compute-epoch/1"
@@ -16,6 +18,10 @@ GROWTH_NUMERATOR = 2
 GROWTH_DENOMINATOR = 1
 BASE_SMALL_MODEL_THRESHOLD_MILLIONS = 20_000
 MAX_ADMITTED_EPOCH = 1_000
+_PINNED_COMPUTE_EPOCH: ContextVar[int | None] = ContextVar(
+    "nexus_pinned_compute_epoch",
+    default=None,
+)
 
 
 @dataclass(frozen=True)
@@ -52,8 +58,23 @@ def resolve_compute_epoch(timestamp_unix: int) -> int:
     return epoch
 
 
-def current_compute_epoch() -> int:
+def _wall_clock_compute_epoch() -> int:
     return resolve_compute_epoch(int(time.time()))
+
+
+def current_compute_epoch() -> int:
+    pinned = _PINNED_COMPUTE_EPOCH.get()
+    return _wall_clock_compute_epoch() if pinned is None else pinned
+
+
+@contextmanager
+def pinned_current_compute_epoch() -> Iterator[int]:
+    resolved = _wall_clock_compute_epoch()
+    token = _PINNED_COMPUTE_EPOCH.set(resolved)
+    try:
+        yield resolved
+    finally:
+        _PINNED_COMPUTE_EPOCH.reset(token)
 
 
 def epoch_record(epoch: int) -> ComputeEpoch:
@@ -88,7 +109,7 @@ def compute_epoch_policy_snapshot(epoch: int | None = None) -> dict[str, Any]:
         "base_small_model_threshold_millions": BASE_SMALL_MODEL_THRESHOLD_MILLIONS,
         "effective_small_model_threshold_millions": small_model_threshold_millions(resolved),
         "scaling_rule": "all_numeric_compute_envelopes_scale_by_the_same_exact_rational_epoch_factor",
-        "clock_rule": "live_admission_uses_current_utc_but_receipts_pin_the_resolved_epoch",
+        "clock_rule": "live_admission_pins_one_utc_epoch_for_the_entire_request",
         "replay_rule": "replay_uses_the_recorded_epoch_never_the_current_wall_clock",
         "equality_rule": "epoch_changes_admission_envelopes_never_vote_weight_or_epistemic_privilege",
         "floor_rule": "epochs_raise_compute_ceilings_never_minimum_model_size",
@@ -110,6 +131,7 @@ __all__ = [
     "compute_epoch_policy_snapshot",
     "current_compute_epoch",
     "epoch_record",
+    "pinned_current_compute_epoch",
     "resolve_compute_epoch",
     "scale_epoch_bound",
     "small_model_threshold_millions",
