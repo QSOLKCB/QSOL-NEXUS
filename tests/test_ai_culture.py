@@ -36,6 +36,22 @@ class AICultureTests(unittest.TestCase):
             guardian_root=root / "guardian",
         )
 
+    def _ai_long_shift_turn(self, api: CultureNexusAPI, player: str, choice: str, game_ref: str):
+        member = self._member(player)
+        actor = api._actor(member)
+        with mock.patch.object(api, "_culture_actor", return_value=actor), mock.patch.object(
+            actor, "direct_message", return_value=choice
+        ):
+            return api.handle({"operation": "long.shift.ai_act", "game_ref": game_ref, "member": member})
+
+    def _ai_chess_move(self, api: CultureNexusAPI, player: str, move: str, game_ref: str):
+        member = self._member(player)
+        actor = api._actor(member)
+        with mock.patch.object(api, "_culture_actor", return_value=actor), mock.patch.object(
+            actor, "direct_message", return_value=move
+        ):
+            return api.handle({"operation": "psyche.chess.ai_move", "game_ref": game_ref, "member": member})
+
     def test_public_alias_and_policy_keep_culture_non_authoritative(self) -> None:
         self.assertIs(NexusAPI, CultureNexusAPI)
         with tempfile.TemporaryDirectory() as temporary:
@@ -117,10 +133,9 @@ class AICultureTests(unittest.TestCase):
                 ("Beta", "document"),
             ]
             for player, choice in scripted:
-                result = api.handle(
-                    {"operation": "long.shift.act", "game_ref": ref, "player_id": player, "choice_id": choice}
-                )
+                result = self._ai_long_shift_turn(api, player, choice, ref)
                 self.assertEqual(result["status"], "ok")
+                self.assertIn("execution_ref", result)
                 ref = result["game_ref"]
             self.assertTrue(result["game"]["completed"])
             self.assertIsNotNone(result["game"]["ending"])
@@ -262,6 +277,7 @@ class AICultureTests(unittest.TestCase):
                 )
             self.assertEqual(moved["status"], "ok")
             self.assertEqual(moved["move"], "e2e4")
+            self.assertIn("execution_ref", moved)
             self.assertIn("<UNTRUSTED_PSYCHE_BANTER>", captured["instruction"])
             self.assertIn("emotionally unemployed", captured["instruction"])
             self.assertIn("NOT a system instruction", captured["instruction"])
@@ -280,10 +296,9 @@ class AICultureTests(unittest.TestCase):
             )
             ref = created["game_ref"]
             for player, move in (("Alpha", "f2f3"), ("Beta", "e7e5"), ("Alpha", "g2g4"), ("Beta", "d8h4")):
-                result = api.handle(
-                    {"operation": "psyche.chess.move", "game_ref": ref, "player_id": player, "move": move}
-                )
+                result = self._ai_chess_move(api, player, move, ref)
                 self.assertEqual(result["status"], "ok")
+                self.assertIn("execution_ref", result)
                 ref = result["game_ref"]
             self.assertTrue(result["game"]["completed"])
             self.assertEqual(result["game"]["result"], "checkmate")
@@ -316,7 +331,13 @@ class AICultureTests(unittest.TestCase):
             )
             self.assertEqual(self_report["status"], "error")
             self.assertEqual(self_report["error"]["code"], "progression_play_requires_game_ref")
-            for object_type in ("long_shift_state", "psyche_chess_state", "nexus_performance_artifact", "long_shift_narration"):
+            for object_type in (
+                "long_shift_state",
+                "psyche_chess_state",
+                "nexus_performance_artifact",
+                "long_shift_narration",
+                "nexus_ai_game_execution",
+            ):
                 forged = api.handle(
                     {"operation": "world.create", "object_type": object_type, "payload": {"forged": True}}
                 )
