@@ -106,6 +106,15 @@ class OperatorToolingTests(unittest.TestCase):
                 self.assertNotIn(forbidden, serialized)
             self.assertEqual(_load_config(paths)["nick"], "Trent")
 
+    @unittest.skipIf(os.name == "nt", "POSIX permission contract")
+    def test_operator_config_with_loose_permissions_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            paths = operator_paths(Path(temporary))
+            _save_config(paths, "Trent")
+            paths.config.chmod(0o644)
+            with self.assertRaisesRegex(OperatorToolError, "0600"):
+                _load_config(paths)
+
     def test_operator_config_rejects_unknown_fields(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             paths = operator_paths(Path(temporary))
@@ -120,6 +129,8 @@ class OperatorToolingTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
+            if os.name != "nt":
+                paths.config.chmod(0o600)
             with self.assertRaisesRegex(OperatorToolError, "invalid closed schema"):
                 _load_config(paths)
 
