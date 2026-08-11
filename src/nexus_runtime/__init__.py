@@ -18,7 +18,7 @@ from .compute_epochs import (
     current_compute_epoch,
 )
 from .council import CouncilCoordinator
-from .epoch_api import EpochNexusAPI
+from .epoch_api import EpochNexusAPI as _BaseEpochNexusAPI
 from .guard import EqualityGuard
 from .guardian import (
     ANARCHY_MODE_ID,
@@ -31,6 +31,7 @@ from .guardian import (
     guardian_policy_snapshot,
 )
 from .guardian_api import GuardianNexusAPI
+from .guardian_observer import GuardianObserver
 from .scrub import SecretScrubber
 from .stenographer import CourtroomStenographer, StenographerRecord, StenographerStore
 from .types import Ballot, CouncilMember, CouncilPolicy, Phase
@@ -44,6 +45,7 @@ from .world import WorldStore
 # boundaries remain in the implementation base.
 HardenedNexusAPI = GuardianNexusAPI
 ProviderNexusAPI = GuardianNexusAPI
+EpochNexusAPI = GuardianNexusAPI
 NexusAPI = GuardianNexusAPI
 
 # Preserve established public import and CLI paths. __main__.py historically
@@ -72,6 +74,7 @@ __all__ = [
     "EqualityGuard",
     "GuardianError",
     "GuardianNexusAPI",
+    "GuardianObserver",
     "GuardianOfSubstrate",
     "GuardianRecord",
     "GuardianStore",
