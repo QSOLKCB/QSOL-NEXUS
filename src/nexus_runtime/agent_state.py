@@ -198,12 +198,12 @@ def _validated_update(world: WorldStore, update_ref: str) -> WorldObject:
     return update
 
 
-def create_agent_state_snapshot(
+def _snapshot_payload(
     world: WorldStore,
     *,
     actor_id: str,
     update_refs: list[str],
-) -> WorldObject:
+) -> dict[str, Any]:
     _validate_actor_id(actor_id)
     if not isinstance(update_refs, list) or not update_refs:
         raise ValueError("update_refs must be a non-empty list")
@@ -250,18 +250,27 @@ def create_agent_state_snapshot(
             }
         )
 
+    return {
+        "schema_version": AGENT_STATE_SCHEMA_VERSION,
+        "actor_id": actor_id,
+        "canonical_lane_order": list(LANE_ORDER),
+        "update_refs": [item["update_ref"] for item in canonical_updates],
+        "updates": canonical_updates,
+        "source_refs": sorted(flattened_sources),
+        "partial_snapshot": len(canonical_updates) < len(LANE_ORDER),
+        "completion_order_has_authority": False,
+    }
+
+
+def create_agent_state_snapshot(
+    world: WorldStore,
+    *,
+    actor_id: str,
+    update_refs: list[str],
+) -> WorldObject:
     return world.create_object(
         AGENT_STATE_SNAPSHOT_OBJECT_TYPE,
-        {
-            "schema_version": AGENT_STATE_SCHEMA_VERSION,
-            "actor_id": actor_id,
-            "canonical_lane_order": list(LANE_ORDER),
-            "update_refs": [item["update_ref"] for item in canonical_updates],
-            "updates": canonical_updates,
-            "source_refs": sorted(flattened_sources),
-            "partial_snapshot": len(canonical_updates) < len(LANE_ORDER),
-            "completion_order_has_authority": False,
-        },
+        _snapshot_payload(world, actor_id=actor_id, update_refs=update_refs),
         {"actor": "nexus", "subsystem": "agent_state"},
     )
 
@@ -296,15 +305,20 @@ def _validated_snapshot(world: WorldStore, snapshot_ref: str) -> WorldObject:
             "agent state snapshot schema is invalid",
         )
 
-    # Reconstruct the snapshot from immutable updates and require byte-identical
-    # identity. This prevents forged ordering or stale copied lane metadata from
-    # becoming model-facing state.
-    reconstructed = create_agent_state_snapshot(
+    reconstructed_payload = _snapshot_payload(
         world,
         actor_id=payload["actor_id"],
         update_refs=list(refs),
     )
-    if reconstructed.object_id != snapshot.object_id:
+    reconstructed_ref = sha256_ref(
+        "object",
+        {
+            "object_type": AGENT_STATE_SNAPSHOT_OBJECT_TYPE,
+            "payload": copy.deepcopy(reconstructed_payload),
+            "provenance": {"actor": "nexus", "subsystem": "agent_state"},
+        },
+    )
+    if reconstructed_ref != snapshot.object_id or reconstructed_payload != snapshot.payload:
         raise AgentStateError(
             "agent_state_snapshot_invalid",
             "agent state snapshot failed deterministic reconstruction",
