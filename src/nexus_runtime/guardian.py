@@ -2,11 +2,14 @@ from __future__ import annotations
 
 from collections import Counter
 import copy
+from contextlib import contextmanager
 from dataclasses import dataclass
+import os
 from pathlib import Path
 import re
+import stat
 import threading
-from typing import Any
+from typing import Any, Iterator
 
 from .canonical import canonical_json, sha256_ref
 from .scrub import SecretScrubber
@@ -68,6 +71,7 @@ def guardian_policy_snapshot() -> dict[str, Any]:
         "repair_rule": "reproduce_then_propose_then_verify_never_auto_patch",
         "scar_rule": "verified_repairs_may_leave_immutable_substrate_scars",
         "geometry_rule": "anarchy_is_a_distinct_room_and_mode_in_existing_commons_region",
+        "writer_rule": "cross_process_lineage_writers_are_serialized_by_owner_only_lock",
         "authority": _authority_envelope(),
         "motto": "I do not care what you believe. I care whether the floor collapses beneath you.",
         "anarchy_motto": "Say whatever you like. The substrate still has to survive it.",
@@ -106,10 +110,80 @@ class GuardianStore:
                 "guardian_store_unavailable",
                 "Guardian storage path is unavailable or unsafe",
             ) from exc
-        self._lock = threading.RLock()
+        self._thread_lock = threading.RLock()
         self._ordered_refs: list[str] = []
         self._head_ref: str | None = None
         self._refresh()
+
+    @property
+    def lock_path(self) -> Path | None:
+        return None if self.root is None else self.root / "guardian-ledger.lock"
+
+    @contextmanager
+    def _locked_ledger(self) -> Iterator[None]:
+        """Serialize lineage selection across threads and NEXUS processes."""
+
+        with self._thread_lock:
+            if self.lock_path is None:
+                yield
+                return
+            descriptor: int | None = None
+            try:
+                if self.lock_path.is_symlink():
+                    raise GuardianError(
+                        "guardian_store_unavailable",
+                        "Guardian ledger lock is unavailable",
+                    )
+                flags = os.O_RDWR | os.O_CREAT
+                flags |= getattr(os, "O_CLOEXEC", 0)
+                flags |= getattr(os, "O_NOFOLLOW", 0)
+                flags |= getattr(os, "O_BINARY", 0)
+                descriptor = os.open(self.lock_path, flags, 0o600)
+                info = os.fstat(descriptor)
+                if not stat.S_ISREG(info.st_mode) or (
+                    os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077
+                ):
+                    raise GuardianError(
+                        "guardian_store_unavailable",
+                        "Guardian ledger lock is unavailable",
+                    )
+                with os.fdopen(descriptor, "r+b", buffering=0) as handle:
+                    descriptor = None
+                    if os.name == "nt":
+                        import msvcrt
+
+                        handle.seek(0)
+                        if handle.read(1) == b"":
+                            handle.write(b"\0")
+                            handle.flush()
+                        handle.seek(0)
+                        msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
+                        try:
+                            yield
+                        finally:
+                            handle.seek(0)
+                            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+                    else:
+                        import fcntl
+
+                        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+                        try:
+                            yield
+                        finally:
+                            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            except GuardianError:
+                raise
+            except OSError as exc:
+                raise GuardianError(
+                    "guardian_store_unavailable",
+                    "Guardian ledger lock is unavailable",
+                ) from exc
+            finally:
+                if descriptor is not None:
+                    try:
+                        os.close(descriptor)
+                    except OSError:
+                        pass
 
     @staticmethod
     def _guardian_ref(object_ref: str) -> str:
@@ -184,28 +258,33 @@ class GuardianStore:
         records.sort(key=lambda record: (record.payload["sequence"], record.record_ref))
         return records
 
+    def _refresh_unlocked(self) -> None:
+        if self.root is None:
+            return
+        records = self._discover()
+        previous: str | None = None
+        ordered: list[str] = []
+        for expected_sequence, record in enumerate(records, start=1):
+            if record.payload["sequence"] != expected_sequence:
+                raise GuardianError(
+                    "guardian_lineage_corrupt",
+                    "Guardian lineage contains a gap or fork",
+                )
+            if record.payload["previous_record_ref"] != previous:
+                raise GuardianError(
+                    "guardian_lineage_corrupt",
+                    "Guardian lineage link is invalid",
+                )
+            ordered.append(record.record_ref)
+            previous = record.record_ref
+        self._ordered_refs = ordered
+        self._head_ref = previous
+
     def _refresh(self) -> None:
         if self.root is None:
             return
-        with self._lock:
-            records = self._discover()
-            previous: str | None = None
-            ordered: list[str] = []
-            for expected_sequence, record in enumerate(records, start=1):
-                if record.payload["sequence"] != expected_sequence:
-                    raise GuardianError(
-                        "guardian_lineage_corrupt",
-                        "Guardian lineage contains a gap or fork",
-                    )
-                if record.payload["previous_record_ref"] != previous:
-                    raise GuardianError(
-                        "guardian_lineage_corrupt",
-                        "Guardian lineage link is invalid",
-                    )
-                ordered.append(record.record_ref)
-                previous = record.record_ref
-            self._ordered_refs = ordered
-            self._head_ref = previous
+        with self._locked_ledger():
+            self._refresh_unlocked()
 
     def append(self, record_type: str, body: dict[str, Any]) -> GuardianRecord:
         if record_type not in _RECORD_TYPES:
@@ -219,9 +298,9 @@ class GuardianStore:
                 "guardian_invalid_record",
                 "Guardian record body is not canonical JSON",
             ) from exc
-        with self._lock:
+        with self._locked_ledger():
             if self.root is not None:
-                self._refresh()
+                self._refresh_unlocked()
             payload = {
                 "schema_version": GUARDIAN_SCHEMA_VERSION,
                 "sequence": len(self._ordered_refs) + 1,
