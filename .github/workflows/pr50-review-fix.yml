@@ -1,0 +1,56 @@
+name: PR50 review-fix builder
+
+on:
+  push:
+    branches:
+      - agent/pr50-bbs-wall
+    paths:
+      - 'tools/pr50_review_fix.py'
+      - '.github/workflows/pr50-review-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  fix-review-comments:
+    if: github.repository == 'QSOLKCB/QSOL-NEXUS'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout exact branch head
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: agent/pr50-bbs-wall
+          fetch-depth: 1
+
+      - name: Apply deterministic review fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/pr50_review_fix.py
+
+      - name: Run focused Python Wall regressions
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p 'test_wall.py' -v
+
+      - name: Run focused Rust Wall regressions and format check
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo test --manifest-path tui/Cargo.toml --test wall
+          cargo fmt --manifest-path tui/Cargo.toml -- --check
+
+      - name: Remove one-shot builder and commit fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm --ignore-unmatch tools/pr50_review_fix.py .github/workflows/pr50-review-fix.yml
+          git config user.name 'QSOL PR50 Review Fixer'
+          git config user.email '73952179+EmergentMonk@users.noreply.github.com'
+          git add -A
+          git commit -m 'fix: address PR50 Wall review findings'
+          git push origin HEAD:agent/pr50-bbs-wall
