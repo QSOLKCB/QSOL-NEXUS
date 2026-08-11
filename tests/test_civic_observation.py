@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import unittest
+from unittest.mock import patch
 
 from nexus_runtime import NexusAPI
 from nexus_runtime.civic_observation import (
@@ -117,6 +118,32 @@ class CivicObservationPolicyTests(unittest.TestCase):
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["error"]["code"], "invalid_request")
 
+    def test_public_world_create_cannot_forge_runtime_council_objects_or_nexus_provenance(self) -> None:
+        api = NexusAPI()
+        for object_type in ("council_session", "evidence_snapshot", "receipt", "world_presence"):
+            with self.subTest(object_type=object_type):
+                result = api.handle(
+                    {
+                        "operation": "world.create",
+                        "object_type": object_type,
+                        "payload": {},
+                        "provenance": {"actor": "nexus"},
+                    }
+                )
+                self.assertEqual(result["status"], "error")
+                self.assertEqual(result["error"]["code"], "invalid_request")
+
+        spoofed_provenance = api.handle(
+            {
+                "operation": "world.create",
+                "object_type": "note",
+                "payload": {"text": "I am definitely official, trust me."},
+                "provenance": {"actor": "nexus"},
+            }
+        )
+        self.assertEqual(spoofed_provenance["status"], "error")
+        self.assertEqual(spoofed_provenance["error"]["code"], "invalid_request")
+
 
 class CivicObservationAccessTests(unittest.TestCase):
     def setUp(self) -> None:
@@ -140,6 +167,9 @@ class CivicObservationAccessTests(unittest.TestCase):
         self.assertFalse(response["proceeding"]["individual_ballots_visible"])
         self.assertNotIn("phase_submissions", response["proceeding"])
         self.assertNotIn("revealed_ballots", response["proceeding"])
+        public_result = response["council"]["result"]
+        self.assertNotIn("minority_reports", public_result)
+        self.assertFalse(public_result["individual_minority_reports_visible"])
         self.assertFalse(response["authority_invariant"]["viewer_gains_vote"])
 
     def test_non_citizen_cannot_view_from_commons_or_game_regions(self) -> None:
@@ -187,6 +217,7 @@ class CivicObservationAccessTests(unittest.TestCase):
         self.assertIn("phase_submissions", response["proceeding"])
         self.assertIn("revealed_ballots", response["proceeding"])
         self.assertIn("telemetry", response["proceeding"])
+        self.assertIn("minority_reports", response["council"]["result"])
         self.assertFalse(response["authority_invariant"]["viewer_can_mutate_proceeding"])
 
     def test_citizen_region_state_must_match_claimed_source_mode(self) -> None:
@@ -283,6 +314,27 @@ class CivicObservationAccessTests(unittest.TestCase):
         )
         self.assertEqual(response["status"], "error")
         self.assertEqual(response["error"]["code"], "council_proceeding_required")
+
+    def test_storage_failures_remain_structured_and_path_free(self) -> None:
+        with patch.object(
+            self.api.world,
+            "inspect",
+            side_effect=OSError("Permission denied: '/private/operator/world/objects/secret.json'"),
+        ):
+            response = self.api.handle(
+                {
+                    "operation": "council.proceedings.view",
+                    "session_ref": self.session_ref,
+                    "source_mode_id": "analytical",
+                }
+            )
+        self.assertEqual(response["status"], "error")
+        self.assertEqual(response["error"]["code"], "adapter_unavailable")
+        self.assertEqual(
+            response["error"]["message"],
+            "adapter or local storage operation is unavailable",
+        )
+        self.assertNotIn("/private/", str(response))
 
 
 if __name__ == "__main__":
