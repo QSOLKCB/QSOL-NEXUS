@@ -7,7 +7,13 @@ import os
 import re
 from typing import Any, Mapping
 
-from .adapters.base import AdapterError, CouncilActor, build_direct_prompt, build_phase_prompt
+from .adapters.base import (
+    AdapterError,
+    AdapterProtocolError,
+    CouncilActor,
+    build_direct_prompt,
+    build_phase_prompt,
+)
 from .adapters.local_ai import (
     LOCAL_AI_ADAPTER_IDS,
     LocalAITransport,
@@ -16,6 +22,7 @@ from .adapters.local_ai import (
     validate_local_ai_endpoint,
 )
 from .auth.types import SecretMaterial, validate_environment_name
+from .scrub import SecretScrubber
 from .types import Ballot, CouncilMember, PhaseContext
 
 
@@ -205,15 +212,31 @@ class LocalRoleActor:
             "local_model_can_change_ballot": False,
             "local_model_can_create_extra_vote": False,
             "local_backend_replayable": False,
+            "output_credential_guard": "configured_exact_plus_secret_shape",
         }
 
     def _session_key(self, context: str) -> str:
         digest = hashlib.sha256(context.encode("utf-8")).hexdigest()[:24]
         return f"nexus-{self.role_id}-{self.member.member_id}-{digest}"[:128]
 
+    def _guard_generated_text(self, text: str) -> str:
+        if not isinstance(text, str):
+            raise AdapterProtocolError("local role response text is invalid")
+        credential = self.transport.credential
+        configured_secret = (
+            credential.access_token
+            if isinstance(credential, SecretMaterial) and credential.access_token
+            else None
+        )
+        if configured_secret is not None and configured_secret in text:
+            raise AdapterProtocolError("local role response contained configured credential material")
+        if SecretScrubber().scrub(text).changed:
+            raise AdapterProtocolError("local role response contained credential-shaped text")
+        return text
+
     def _generate(self, prompt: str, *, session_key: str, fallback: str) -> str:
         try:
-            return self.transport.generate(
+            generated = self.transport.generate(
                 prompt,
                 model=self.backend.model,
                 workspace=self.backend.workspace,
@@ -221,9 +244,11 @@ class LocalRoleActor:
                 session_key=session_key,
                 max_output_tokens=self.backend.max_output_tokens,
             )
+            return self._guard_generated_text(generated)
         except (AdapterError, OSError, TypeError, ValueError):
             # Local enrichment is optional; deterministic system roles remain
-            # available when a local host/model/MCP tool is down or malformed.
+            # available when a local host/model/MCP tool is down, malformed, or
+            # reflects configured/credential-shaped material.
             self.fallback_count += 1
             return fallback
 

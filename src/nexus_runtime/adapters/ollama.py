@@ -3,19 +3,36 @@ from __future__ import annotations
 import ipaddress
 import json
 import math
+import re
 from dataclasses import dataclass, field
+from http.client import HTTPException
 from typing import Any
-from urllib.parse import urlparse
+from urllib.error import HTTPError, URLError
+from urllib.parse import urlsplit
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
 
 from ..types import Ballot, CouncilMember, PhaseContext
-from .base import BALLOT_SCHEMA, build_ballot_prompt, build_direct_prompt, build_phase_prompt, parse_ballot_response
+from .base import (
+    BALLOT_SCHEMA,
+    AdapterError,
+    AdapterProtocolError,
+    build_ballot_prompt,
+    build_direct_prompt,
+    build_phase_prompt,
+    parse_ballot_response,
+)
 
 _PHASE_OPTIONS = {"num_predict": 192}
 _DIRECT_OPTIONS = {"num_predict": 256}
 _ROMAN_ORATOR_PHASE_OPTIONS = {"num_predict": 768}
 _ROMAN_ORATOR_DIRECT_OPTIONS = {"num_predict": 1536}
 _BALLOT_OPTIONS = {"num_predict": 256, "temperature": 0}
+
+OLLAMA_DEFAULT_TIMEOUT_SECONDS = 90.0
+OLLAMA_MAX_TIMEOUT_SECONDS = 1800.0
+OLLAMA_MAX_REQUEST_BYTES = 2 * 1024 * 1024
+OLLAMA_MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+_MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/+\-]{0,191}$")
 
 
 class _NoRedirectHandler(HTTPRedirectHandler):
@@ -27,30 +44,43 @@ class _NoRedirectHandler(HTTPRedirectHandler):
 
 @dataclass
 class OllamaTransport:
-    """Minimal stdlib Ollama transport. Loopback-only unless explicitly overridden."""
+    """Bounded stdlib Ollama transport; loopback-only unless explicitly overridden."""
 
     base_url: str = "http://127.0.0.1:11434"
-    timeout_seconds: float = 90.0
+    timeout_seconds: float = OLLAMA_DEFAULT_TIMEOUT_SECONDS
     allow_remote: bool = False
     _local_opener: Any = field(init=False, repr=False, default=None)
 
     def __post_init__(self) -> None:
-        parsed = urlparse(self.base_url)
+        if not isinstance(self.base_url, str) or not self.base_url:
+            raise ValueError("invalid Ollama base_url")
+        parsed = urlsplit(self.base_url)
         if parsed.scheme not in {"http", "https"} or not parsed.hostname:
             raise ValueError("invalid Ollama base_url")
+        if parsed.username is not None or parsed.password is not None:
+            raise ValueError("Ollama base_url must not contain user-info")
+        if parsed.query or parsed.fragment:
+            raise ValueError("Ollama base_url must not contain a query or fragment")
+        if parsed.path not in {"", "/"}:
+            raise ValueError("Ollama base_url must be an origin without a path")
         if not self.allow_remote and not self._is_loopback(parsed.hostname):
             raise ValueError("Ollama transport is loopback-only by default")
         if isinstance(self.timeout_seconds, bool) or not isinstance(self.timeout_seconds, (int, float)):
-            raise ValueError("Ollama timeout_seconds must be a positive finite number")
+            raise ValueError(
+                f"Ollama timeout_seconds must be between 0 and {int(OLLAMA_MAX_TIMEOUT_SECONDS)}"
+            )
         try:
             timeout_seconds = float(self.timeout_seconds)
         except (OverflowError, ValueError) as exc:
-            raise ValueError("Ollama timeout_seconds must be a positive finite number") from exc
-        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
-            raise ValueError("Ollama timeout_seconds must be a positive finite number")
+            raise ValueError(
+                f"Ollama timeout_seconds must be between 0 and {int(OLLAMA_MAX_TIMEOUT_SECONDS)}"
+            ) from exc
+        if not math.isfinite(timeout_seconds) or not 0 < timeout_seconds <= OLLAMA_MAX_TIMEOUT_SECONDS:
+            raise ValueError(
+                f"Ollama timeout_seconds must be between 0 and {int(OLLAMA_MAX_TIMEOUT_SECONDS)}"
+            )
         self.timeout_seconds = timeout_seconds
-        # Even explicitly configured remote transports retain the hardened HTTP
-        # boundary: no ambient proxies and no redirect following.
+        self.base_url = self.base_url.rstrip("/")
         self._local_opener = build_opener(ProxyHandler({}), _NoRedirectHandler())
 
     @staticmethod
@@ -61,6 +91,26 @@ class OllamaTransport:
             return ipaddress.ip_address(host).is_loopback
         except ValueError:
             return False
+
+    @staticmethod
+    def _read_bounded_response(response: Any) -> bytes:
+        """Prefer a bounded HTTP read while retaining simple test-double compatibility.
+
+        urllib/http.client response objects accept the size argument. Older
+        hermetic NEXUS test doubles expose only ``read()``; those are allowed as
+        a compatibility seam, but their returned byte string is still checked
+        against the exact same hard ceiling before JSON decoding.
+        """
+
+        try:
+            encoded = response.read(OLLAMA_MAX_RESPONSE_BYTES + 1)
+        except TypeError:
+            encoded = response.read()
+        if not isinstance(encoded, (bytes, bytearray)):
+            raise AdapterProtocolError("Ollama returned a non-byte response")
+        if len(encoded) > OLLAMA_MAX_RESPONSE_BYTES:
+            raise AdapterProtocolError("Ollama response exceeded the size limit")
+        return bytes(encoded)
 
     def _open(self, request: Request) -> Any:
         if self._local_opener is None:
@@ -76,25 +126,50 @@ class OllamaTransport:
         options: dict[str, Any] | None = None,
         require_complete: bool = True,
     ) -> str:
+        if not isinstance(model, str) or _MODEL_ID.fullmatch(model) is None or ".." in model:
+            raise ValueError("Ollama model id is invalid")
+        if not isinstance(prompt, str) or not prompt.strip():
+            raise AdapterProtocolError("Ollama prompt must be non-empty text")
+        if len(prompt.encode("utf-8")) > OLLAMA_MAX_REQUEST_BYTES:
+            raise AdapterProtocolError("Ollama prompt exceeds the request limit")
+
         payload: dict[str, Any] = {"model": model, "prompt": prompt, "stream": False}
         if format_schema is not None:
             payload["format"] = format_schema
         if options is not None:
             payload["options"] = options
         raw = json.dumps(payload, separators=(",", ":")).encode("utf-8")
+        if len(raw) > OLLAMA_MAX_REQUEST_BYTES:
+            raise AdapterProtocolError("Ollama request exceeds the request limit")
         request = Request(
-            f"{self.base_url.rstrip('/')}/api/generate",
+            f"{self.base_url}/api/generate",
             data=raw,
-            headers={"Content-Type": "application/json"},
+            headers={"Accept": "application/json", "Content-Type": "application/json"},
             method="POST",
         )
-        with self._open(request) as response:
-            body = json.loads(response.read().decode("utf-8"))
+        try:
+            with self._open(request) as response:
+                encoded = self._read_bounded_response(response)
+        except HTTPError as exc:
+            # The no-redirect handler deliberately surfaces 3xx as HTTPError.
+            # Preserve that established public/test contract while still never
+            # following the redirect or forwarding request material.
+            if 300 <= exc.code < 400:
+                raise
+            raise AdapterError("Ollama inference host rejected the request") from exc
+        except (URLError, TimeoutError, OSError, HTTPException) as exc:
+            raise AdapterError("Ollama inference host is unavailable") from exc
+        try:
+            body = json.loads(encoded.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+            raise AdapterProtocolError("Ollama returned invalid JSON") from exc
+        if not isinstance(body, dict):
+            raise AdapterProtocolError("Ollama returned a non-object response")
         text = body.get("response")
         if not isinstance(text, str) or not text.strip():
-            raise ValueError("Ollama returned no response text")
+            raise AdapterProtocolError("Ollama returned no response text")
         if body.get("done_reason") == "length" and require_complete:
-            raise ValueError("Ollama response truncated by generation limit")
+            raise AdapterProtocolError("Ollama response truncated by generation limit")
         return text.strip()
 
 
@@ -137,11 +212,7 @@ class OllamaActor:
         geometry_region_id: str,
         evidence_context: str = "",
     ) -> str:
-        """One non-Council local DCC-style exchange.
-
-        This path confers no vote, Council phase, or evidence privilege. It is
-        used by the Rust TUI's explicit private Direct Cognitive Channel view.
-        """
+        """One non-Council local DCC-style exchange."""
         options = _ROMAN_ORATOR_DIRECT_OPTIONS if mode_id == "roman_orator" else _DIRECT_OPTIONS
         return self.transport.generate(
             self.model,
