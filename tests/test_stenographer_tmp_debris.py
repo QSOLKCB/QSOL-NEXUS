@@ -63,6 +63,29 @@ class StenographerTmpDebrisTests(unittest.TestCase):
             # could still be writing it. Ignoring the exact pattern is enough.
             self.assertTrue(debris.exists())
 
+    def test_disappearing_legacy_tmp_during_scan_is_benign(self) -> None:
+        """Concurrent cleanup after iterdir() must not become false corruption."""
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "stenographer"
+            store = StenographerStore(root)
+            debris = root / "objects" / f".{('d' * 64)}.tmp-123-456"
+            debris.write_bytes(b"partial")
+            if os.name != "nt":
+                os.chmod(debris, 0o600)
+
+            real_lstat = Path.lstat
+
+            def disappearing_lstat(path: Path):
+                if path == debris:
+                    debris.unlink(missing_ok=True)
+                    raise FileNotFoundError(str(debris))
+                return real_lstat(path)
+
+            with patch("nexus_runtime.stenographer.Path.lstat", new=disappearing_lstat):
+                self.assertEqual(store._all_refs_unlocked(), [])
+            self.assertFalse(debris.exists())
+
     def test_legacy_object_tmp_is_reaped_when_permanent_record_exists(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory) / "stenographer"
@@ -77,6 +100,19 @@ class StenographerTmpDebrisTests(unittest.TestCase):
             reopened = StenographerStore(root)
             self.assertEqual(reopened.verify()["record_count"], 1)
             self.assertFalse(debris.exists())
+
+    def test_unicode_decimal_ids_do_not_match_legacy_tmp_exception(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "stenographer"
+            StenographerStore(root)
+            foreign = root / "objects" / f".{('c' * 64)}.tmp-١-٢"
+            foreign.write_bytes(b"not an historical NEXUS temp name")
+            if os.name != "nt":
+                os.chmod(foreign, 0o600)
+
+            with self.assertRaises(StenographerError) as ctx:
+                StenographerStore(root)
+            self.assertEqual(ctx.exception.code, "stenographer_store_corrupt")
 
     def test_foreign_filename_still_fails_closed(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -200,6 +236,13 @@ class StenographerTmpDebrisTests(unittest.TestCase):
             stenographer = FailingStenographer()
 
         _drain_stenographer_on_exit(FailingAPI())
+
+        class ExplodingPropertyAPI:
+            @property
+            def stenographer(self) -> object:
+                raise RuntimeError("lazy stenographer property failed")
+
+        _drain_stenographer_on_exit(ExplodingPropertyAPI())
 
 
 if __name__ == "__main__":
