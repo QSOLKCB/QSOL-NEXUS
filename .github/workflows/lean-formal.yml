@@ -29,12 +29,16 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Reject proof holes and user-declared axioms
+      - name: Early proof-hole and assumption scan
         shell: bash
         run: |
           set -euo pipefail
-          if grep -R -nE '(^|[^[:alnum:]_])(sorry|admit|axiom)([^[:alnum:]_]|$)' formal/lean --include='*.lean'; then
-            echo 'Lean formalization contains a forbidden proof hole or user-declared axiom.' >&2
+          if grep -R -nE '(^|[^[:alnum:]_])(sorry|admit)([^[:alnum:]_]|$)' formal/lean/Nexus --include='*.lean'; then
+            echo 'Lean formalization contains a forbidden proof hole.' >&2
+            exit 1
+          fi
+          if grep -R -nE '^[[:space:]]*(axiom|constant)[[:space:]]' formal/lean/Nexus --include='*.lean'; then
+            echo 'Lean formalization contains a project-defined axiom/constant declaration.' >&2
             exit 1
           fi
 
@@ -60,16 +64,21 @@ jobs:
           lake --version
           test "$(cat formal/lean/lean-toolchain)" = "leanprover/lean4:v${LEAN_VERSION}"
 
-      - name: Build and kernel-check complete theorem surface
+      - name: Run complete declaration and axiom audit
         shell: bash
         working-directory: formal/lean
         run: |
           set -euo pipefail
-          lake build
+          bash audit.sh formal-verification-report.txt
 
-      - name: Compile aggregate theorem module directly
+      - name: Publish formal verification report to job summary
+        if: always()
         shell: bash
-        working-directory: formal/lean
         run: |
-          set -euo pipefail
-          lake env lean Nexus/Main.lean
+          if [[ -f formal/lean/formal-verification-report.txt ]]; then
+            {
+              echo '```text'
+              cat formal/lean/formal-verification-report.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
