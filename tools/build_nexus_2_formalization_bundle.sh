@@ -60,6 +60,12 @@ mkdir -p "$TMP/reviewed"
 git archive "$PR53_REVIEWED_HEAD" formal/lean | tar -xf - -C "$TMP/reviewed"
 cp -a "$TMP/reviewed/formal/lean/." "$PKG/LEAN4/"
 
+# Run Lean on a disposable second copy. This is deliberate: the published
+# LEAN4/ directory remains byte-for-byte tracked PR #53 source and never absorbs
+# generated .lake build products from the verification run.
+mkdir -p "$TMP/audit-copy"
+cp -a "$TMP/reviewed/formal/lean/." "$TMP/audit-copy/"
+
 # Archive stable software directly from the exact commit behind v2.0.0.
 git archive --format=tar --prefix=QSOL-NEXUS-2.0.0/ "$NEXUS_STABLE_COMMIT" > "$TMP/stable-source.tar"
 gzip -n -9 < "$TMP/stable-source.tar" > "$PKG/SOFTWARE/NEXUS-2.0-stable-source.tar.gz"
@@ -102,8 +108,8 @@ cat > "$PKG/CHAIN_OF_CUSTODY.json" <<EOF
 }
 EOF
 
-# Re-run the complete audit from the extracted archive, outside the Git worktree.
-pushd "$PKG/LEAN4" >/dev/null
+# Re-run the complete audit from the disposable copy, outside the Git worktree.
+pushd "$TMP/audit-copy" >/dev/null
 NEXUS_STABLE_RUNTIME_COMMIT="$NEXUS_STABLE_COMMIT" \
 NEXUS_STABLE_RUNTIME_TAG="$NEXUS_STABLE_TAG" \
 NEXUS_FORMALIZATION_COMMIT="$PR53_REVIEWED_HEAD" \
@@ -125,6 +131,12 @@ sed '/^verification_checkout_commit:/d' "$PKG/VALIDATION/pr53-ci-formal-verifica
 sed '/^verification_checkout_commit:/d' "$PKG/VALIDATION/formal-verification-report.txt" > "$TMP/fresh-normalized.txt"
 diff -u "$TMP/ci-normalized.txt" "$TMP/fresh-normalized.txt" \
   || fail 'fresh archived Lean audit differs from final PR #53 CI evidence'
+
+# Prove the published Lean tree still equals the immutable reviewed source after
+# the verification run. In particular, generated .lake products must be absent.
+diff -qr "$TMP/reviewed/formal/lean" "$PKG/LEAN4" >/dev/null \
+  || fail 'published LEAN4 directory drifted from the reviewed PR #53 source'
+[[ ! -e "$PKG/LEAN4/.lake" ]] || fail 'generated .lake directory leaked into publication source'
 
 # Hash every payload file except the checksum inventory itself.
 (
