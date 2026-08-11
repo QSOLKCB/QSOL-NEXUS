@@ -5,6 +5,7 @@ from .provider_api import ProviderNexusAPI as _BaseProviderNexusAPI
 from . import api as _api
 from . import epoch_api as _epoch_api
 from . import provider_api as _provider_api
+from . import guardian_api as _guardian_api
 from .civilization_api import CivilizationNexusAPI
 from .civilization_gauntlet import (
     CivilizationGauntlet,
@@ -30,37 +31,58 @@ from .guardian import (
     GuardianStore,
     guardian_policy_snapshot,
 )
-from .guardian_api import GuardianNexusAPI
+from .guardian_api import GuardianNexusAPI as _BaseGuardianNexusAPI
 from .guardian_observer import GuardianObserver
+from .civic_due_process import (
+    CIVIC_DUE_PROCESS_POLICY,
+    CIVIC_DUE_PROCESS_SCHEMA,
+    CURSED_XML_EXAM_ID,
+    CivicDueProcessError,
+    CivicDueProcessFailsafe,
+    CivicDueProcessRegistry,
+    CivicDueProcessService,
+    civic_due_process_policy_snapshot,
+)
+from .civic_due_process_api import CivicDueProcessNexusAPI
 from .scrub import SecretScrubber
 from .stenographer import CourtroomStenographer, StenographerRecord, StenographerStore
 from .types import Ballot, CouncilMember, CouncilPolicy, Phase
 from .trap import DecoyAdmissionRequest, DecoyGate, TrapController, TrapStore
 from .world import WorldStore
 
-# PR #43 is the final public runtime overlay. It adds Anarchy Mode and the
-# separate Guardian of the Substrate ledger above PR #42 without granting the
-# Guardian a Council seat, vote, truth role, punishment role, or live repair
-# authority. All earlier equality, epoch, civic, evidence, trap, auth and secret
-# boundaries remain in the implementation base.
-HardenedNexusAPI = GuardianNexusAPI
-ProviderNexusAPI = GuardianNexusAPI
-EpochNexusAPI = GuardianNexusAPI
-NexusAPI = GuardianNexusAPI
+# PR #44 is the final public runtime overlay. It preserves the PR #43 Guardian
+# and Anarchy contracts while separating constitutional citizenship identity
+# from current operational standing. Non-citizen repeat parole may trigger a
+# deterministic bounded XML re-entry exam; citizens retain citizenship through
+# ordinary Failsafe offences and receive restorative rather than admission
+# treatment. No due-process state creates extra votes or epistemic authority.
+HardenedNexusAPI = CivicDueProcessNexusAPI
+ProviderNexusAPI = CivicDueProcessNexusAPI
+EpochNexusAPI = CivicDueProcessNexusAPI
+GuardianNexusAPI = CivicDueProcessNexusAPI
+NexusAPI = CivicDueProcessNexusAPI
 
-# Preserve established public import and CLI paths. __main__.py historically
-# imports EpochNexusAPI directly, so update that module alias as part of the
-# final public overlay just as earlier milestones retained api/provider aliases.
-_api.NexusAPI = GuardianNexusAPI
-_epoch_api.EpochNexusAPI = GuardianNexusAPI
-_provider_api.ProviderNexusAPI = GuardianNexusAPI
+# Preserve established public import and CLI paths through every historical
+# overlay module. __main__.py imports EpochNexusAPI directly.
+_api.NexusAPI = CivicDueProcessNexusAPI
+_epoch_api.EpochNexusAPI = CivicDueProcessNexusAPI
+_provider_api.ProviderNexusAPI = CivicDueProcessNexusAPI
+_guardian_api.GuardianNexusAPI = CivicDueProcessNexusAPI
 
 __all__ = [
     "ANARCHY_MODE_ID",
     "ANARCHY_REGION_ID",
     "AnarchyCourtroomStenographer",
     "Ballot",
+    "CIVIC_DUE_PROCESS_POLICY",
+    "CIVIC_DUE_PROCESS_SCHEMA",
     "COMPUTE_EPOCH_POLICY_ID",
+    "CURSED_XML_EXAM_ID",
+    "CivicDueProcessError",
+    "CivicDueProcessFailsafe",
+    "CivicDueProcessNexusAPI",
+    "CivicDueProcessRegistry",
+    "CivicDueProcessService",
     "CivilizationGauntlet",
     "CivilizationGauntletError",
     "CivilizationNexusAPI",
@@ -91,6 +113,7 @@ __all__ = [
     "TrapController",
     "TrapStore",
     "WorldStore",
+    "civic_due_process_policy_snapshot",
     "civilization_gauntlet_policy_snapshot",
     "compute_epoch_policy_snapshot",
     "current_compute_epoch",
