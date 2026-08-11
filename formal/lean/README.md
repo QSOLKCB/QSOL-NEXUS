@@ -20,7 +20,7 @@ For the full declaration/axiom audit, run:
 bash audit.sh
 ```
 
-That command checks manifest completeness, rejects proof holes and project-defined axiom/constant declarations, builds the project, compiles the aggregate theorem module, runs `#print axioms` across every advertised theorem, validates the imported-axiom allowlist, and writes `formal-verification-report.txt`.
+That command checks manifest completeness, verifies that every advertised declaration has exactly one matching `#print axioms` query, rejects proof holes and project-defined axiom/constant declarations, builds the project, compiles the aggregate theorem module, validates the imported-axiom allowlist, and writes `formal-verification-report.txt`.
 
 ## Bureaucratic proof surface
 
@@ -36,13 +36,13 @@ Current declaration count:
 - **24 theorems**
 - **0 lemmas**
 
-CI fails if the Lean theorem/lemma set and `AUDIT_MANIFEST.tsv` drift apart.
+CI fails if the Lean theorem/lemma set and `AUDIT_MANIFEST.tsv` drift apart, or if the axiom-query target set differs from the advertised manifest.
 
 ## Proof-hole policy
 
 The formalization is intended to contain no `sorry`, `admit`, project-defined `axiom`, or bare project-defined `constant` used in place of a proof. CI scans for those forms before accepting the formal audit.
 
-`Nexus/AxiomAudit.lean` additionally asks Lean to print the dependency axioms for every advertised theorem. The current compact constitutional layer admits only empty dependency sets or Lean's standard `propext`, `Classical.choice`, and `Quot.sound` dependencies; the audit runner rejects anything else pending explicit review.
+`Nexus/AxiomAudit.lean` additionally asks Lean to print the dependency axioms for every advertised theorem. The audit runner verifies that its `#print axioms` target set exactly matches `AUDIT_MANIFEST.tsv`. The current compact constitutional layer admits only empty dependency sets or Lean's standard `propext`, `Classical.choice`, and `Quot.sound` dependencies; the audit runner rejects anything else pending explicit review.
 
 ## Current scope
 
@@ -64,16 +64,22 @@ See `THEOREMS_AND_LEMMAS.md`, `FORMAL_GAP_RANKING.md`, `AXIOM_AUDIT.md`, `ASSUMP
 
 ## PR #53 runtime boundary
 
-PR #53 is the post-release-line formal-verification layer. This branch is based **directly** on the exact merged PR #52 commit:
+PR #53 is the post-stable formal-verification layer. This branch is based **directly** on the exact merged PR #52 commit:
 
 ```text
 cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
 ```
 
-That commit is the repository's designated `v2.0.0` stable-tag candidate. At creation of this PR #53 branch, the `v2.0.0` tag had not yet been published, so the formalization does not pretend otherwise. Before PR #53 is marked ready for final merge, the tag-binding gate must confirm that `v2.0.0` resolves to that exact commit.
+The published stable tag is now frozen as:
 
-The Lean source was transplanted from the parked `agent/pr52-lean4-formal-verification` work after PR #52 displaced the original numbering. The parked branch's final Lean CI was green before transplant. PR #53 preserves that proof surface and rebinds its documentation and CI to the merged #52 runtime.
+```text
+v2.0.0 -> cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
+```
 
-Items proved in the abstract model but still awaiting the final stable-tag/runtime correspondence freeze remain marked `A/R`. They are not promoted to plain `A` merely because the source compiles.
+The dedicated Lean workflow treats that binding as mandatory: an absent `v2.0.0` tag or any different target commit is a hard failure. On pull-request runs, the workflow also records the actual reviewed PR head separately from GitHub's synthetic merge checkout so publication evidence binds to the formalization commit it claims to identify.
 
-PR #53 does **not** change NEXUS runtime semantics. Its dedicated workflow rejects branch changes outside `formal/lean/**` and `.github/workflows/lean-formal.yml` relative to the exact merged PR #52 runtime base.
+The Lean source was transplanted from the parked `agent/pr52-lean4-formal-verification` work after PR #52 displaced the original numbering. The parked branch's final Lean CI was green before transplant. PR #53 preserves that proof surface and rebinds its documentation and CI to the stable #52 runtime.
+
+Items proved in the abstract model but still awaiting complete source/test runtime correspondence remain marked `A/R`. They are not promoted to plain `A` merely because the source compiles or because the stable tag is correctly bound.
+
+PR #53 does **not** change NEXUS runtime semantics. Its dedicated workflow rejects branch changes outside `formal/lean/**` and `.github/workflows/lean-formal.yml` relative to the exact stable NEXUS 2.0 runtime base.
