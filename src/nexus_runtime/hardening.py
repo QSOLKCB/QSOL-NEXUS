@@ -134,6 +134,9 @@ class HardenedNexusAPI(_ProviderNexusAPI):
         actor = super()._actor(item)
         if isinstance(actor, (LocalAIActor, OllamaActor)):
             return _GuardedLocalActor(actor, self.scrubber)
+        # Failsafe/civic LocalRoleActor wrappers are created after this hook.
+        # They therefore enforce the same exact-credential + secret-shape guard
+        # inside LocalRoleActor._generate before generated language can persist.
         return actor
 
 
