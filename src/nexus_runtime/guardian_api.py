@@ -40,7 +40,8 @@ class GuardianNexusAPI(EpochNexusAPI):
     ) -> None:
         super().__init__(world_root, **kwargs)
         if guardian_root is None and world_root is not None:
-            guardian_root = Path(world_root).absolute().with_name(".nexus-guardian")
+            world_path = Path(world_root).absolute()
+            guardian_root = world_path.with_name(f"{world_path.name}-guardian")
         if guardian_root is not None:
             self._ensure_disjoint_storage_roots(self.auth.root, guardian_root, "auth", "guardian")
             if world_root is not None:
@@ -138,6 +139,21 @@ class GuardianNexusAPI(EpochNexusAPI):
             }
         return enriched
 
+    def _validated_scar_verification_ref(self, verification_ref: str) -> str:
+        verification = self.guardian.store.inspect(verification_ref)
+        if verification.record_type != "guardian_reconciliation":
+            raise GuardianError(
+                "guardian_invalid_request",
+                "verification_ref must identify a Guardian reconciliation",
+            )
+        body = verification.payload["body"]
+        if body.get("outcome") != "matched":
+            raise GuardianError(
+                "guardian_invalid_request",
+                "substrate scar requires a successful matched replay",
+            )
+        return verification_ref
+
     def _handle_guardian_operation(
         self,
         request: dict[str, Any],
@@ -200,10 +216,13 @@ class GuardianNexusAPI(EpochNexusAPI):
                     operation,
                     {"defect_ref", "repair_ref", "verification_ref"},
                 )
+                verification_ref = self._validated_scar_verification_ref(
+                    self._require_str(request, "verification_ref")
+                )
                 response = self.guardian.record_scar(
                     self._require_str(request, "defect_ref"),
                     self._require_str(request, "repair_ref"),
-                    self._require_str(request, "verification_ref"),
+                    verification_ref,
                 )
             else:  # pragma: no cover - closed dispatch set
                 return self._error(request_id, "unknown_operation", "operation is not supported")
