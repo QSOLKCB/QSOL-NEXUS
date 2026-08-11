@@ -41,18 +41,10 @@ jobs:
               1,
           )
           runner.write_text(text, encoding='utf-8')
-
-          main = Path('tui/src/main.rs')
-          source = main.read_text(encoding='utf-8')
-          old = '        app.append(&format!("*** NEXUS TUI {} — local room, no IRC server", env!("CARGO_PKG_VERSION")));'
-          new = '''        app.append(&format!(
-              "*** NEXUS TUI {} — local room, no IRC server",
-              env!("CARGO_PKG_VERSION")
-          ));'''
-          if source.count(old) != 1:
-              raise SystemExit('expected exactly one unformatted TUI release banner')
-          main.write_text(source.replace(old, new, 1), encoding='utf-8')
           PY
+          cargo fmt --manifest-path tui/Cargo.toml
+          rust_changes="$(git diff --name-only -- tui)"
+          test "$rust_changes" = "tui/src/main.rs"
           python3 -m unittest \
             tests.test_post_merge_grok_audit \
             tests.test_release_candidate \
