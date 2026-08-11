@@ -130,6 +130,18 @@ Every run commits:
 
 `CivilizationGauntlet.compare()` accepts two verified receipts and reports whether inputs and metrics are byte-identical plus exact recovery deltas. Comparison never grants authority.
 
+## CLI
+
+The deterministic reference benchmark is available as a machine-readable command-line tool:
+
+```bash
+python3 tools/nexus_civilization_gauntlet.py --world .nexus-civilization run
+python3 tools/nexus_civilization_gauntlet.py --world .nexus-civilization verify object:<receipt-digest>
+python3 tools/nexus_civilization_gauntlet.py --world .nexus-civilization compare object:<left-receipt> object:<right-receipt>
+```
+
+Each command emits one compact JSON object on stdout. The same persistent world directory must be used to verify or compare receipts whose lineage lives there.
+
 ## Live / heterogeneous substitutions
 
 The gauntlet does not add another provider transport or bypass existing adapter security. Instead, the programmatic `run()` method accepts mappings of existing provider-neutral `CouncilActor` implementations for the five fixed roles.
