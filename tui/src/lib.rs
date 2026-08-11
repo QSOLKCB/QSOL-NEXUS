@@ -500,20 +500,24 @@ fn wall_limit(raw: &str, default: u64) -> Result<u64, String> {
 }
 
 fn wall_duration(raw: &str) -> Result<u64, String> {
-    if raw.len() < 2 {
+    let (suffix_index, suffix) = raw
+        .char_indices()
+        .next_back()
+        .ok_or_else(|| "Wall duration must look like 30m, 24h or 7d".to_string())?;
+    if suffix_index == 0 {
         return Err("Wall duration must look like 30m, 24h or 7d".to_string());
     }
-    let (digits, suffix) = raw.split_at(raw.len() - 1);
+    let digits = &raw[..suffix_index];
     let value = digits
         .parse::<u64>()
         .map_err(|_| "Wall duration must look like 30m, 24h or 7d".to_string())?;
     if value == 0 {
         return Err("Wall duration must be positive".to_string());
     }
-    let multiplier = match suffix.to_ascii_lowercase().as_str() {
-        "m" => 60u64,
-        "h" => 3_600u64,
-        "d" => 86_400u64,
+    let multiplier = match suffix.to_ascii_lowercase() {
+        'm' => 60u64,
+        'h' => 3_600u64,
+        'd' => 86_400u64,
         _ => return Err("Wall duration must use m, h or d".to_string()),
     };
     let seconds = value

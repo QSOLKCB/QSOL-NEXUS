@@ -69,7 +69,16 @@ class WallNexusAPI(CultureNexusAPI):
         if len(raw_prompt) > 4096:
             raise WallError("wall_prompt_too_large", "Wall AI prompt exceeds the admitted bound")
         prompt = self.scrubber.scrub(raw_prompt)
-        actor = self._culture_actor(request.get("member"))
+        # The Wall is social memory, not progression or civic duty.  Use the
+        # established actor admission path directly instead of routing harmless
+        # Wall speech through Failsafe/Civic Due Process identity gates.
+        actor = self._actor(request.get("member"))
+        for field, identity in (
+            ("member_id", actor.member.member_id),
+            ("model_id", actor.member.model_id),
+        ):
+            if not isinstance(identity, str) or identity == "" or self.scrubber.scrub(identity).changed:
+                raise WallError("wall_invalid_identity", f"{field} must be a non-secret runtime identifier")
         mode = get_mode("meme_casual")
         instruction = (
             mode.prompt_instruction
@@ -196,6 +205,39 @@ class WallNexusAPI(CultureNexusAPI):
         except (KeyError, TypeError, ValueError, RecursionError) as exc:
             return self._error(request_id, "invalid_request", str(exc))
 
+    def _wall_health_snapshot(self) -> dict[str, Any]:
+        policy = wall_policy_snapshot()
+        try:
+            listing = self.wall.list_posts(limit=1)
+        except WallError as exc:
+            return {
+                "status": "degraded",
+                "error_code": exc.code,
+                "policy": policy,
+                "authority_effect": "none",
+            }
+        except WorldContinuityError as exc:
+            return {
+                "status": "unavailable",
+                "error_code": exc.code,
+                "policy": policy,
+                "authority_effect": "none",
+            }
+        except (KeyError, OSError, TypeError, ValueError, RecursionError):
+            return {
+                "status": "unavailable",
+                "error_code": "wall_history_unavailable",
+                "policy": policy,
+                "authority_effect": "none",
+            }
+        return {
+            "status": "ok",
+            "recognized_events": listing["total_events"],
+            "recognized_posts": listing["matched_posts"],
+            "policy": policy,
+            "authority_effect": "none",
+        }
+
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation") if isinstance(request, dict) else None
         request_id = request.get("request_id") if isinstance(request, dict) else None
@@ -227,10 +269,7 @@ class WallNexusAPI(CultureNexusAPI):
         if operation == "system.health" and response.get("status") == "ok":
             return {
                 **response,
-                "bbs_wall": {
-                    "status": "ok",
-                    "policy": wall_policy_snapshot(),
-                },
+                "bbs_wall": self._wall_health_snapshot(),
             }
         if operation == "system.operations" and response.get("status") == "ok":
             operations = list(response.get("operations", []))

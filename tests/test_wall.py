@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from nexus_runtime import NexusAPI
 from nexus_runtime.wall import (
@@ -59,6 +60,96 @@ class WallTests(unittest.TestCase):
             self.assertFalse(policy["authority_invariants"]["popularity_promotes_truth"])
             health = api.handle({"operation": "system.health"})
             self.assertEqual(health["bbs_wall"]["status"], "ok")
+
+    def test_default_ephemeral_runtime_supports_wall_history(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            api = NexusAPI(
+                auth_root=base / "auth",
+                trap_root=base / "trap",
+                stenographer_root=base / "stenographer",
+            )
+            listing = api.handle({"operation": "wall.list"})
+            self.assertEqual(listing["status"], "ok")
+            self.assertEqual(listing["posts"], [])
+            posted = api.handle(
+                {"operation": "wall.post", "author_id": "Ephemeral Operator", "text": "Memory without a disk."}
+            )
+            self.assertEqual(posted["status"], "ok")
+            self.assertEqual(api.handle({"operation": "wall.list"})["posts"][0]["text"], "Memory without a disk.")
+
+    def test_runtime_identity_labels_preserve_unicode_spaces_slashes_and_colons(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            api = self._api(Path(temporary))
+            human_id = "Trent / 操作者:1"
+            posted = api.handle({"operation": "wall.post", "author_id": human_id, "text": "Identity is a label, not a slug."})
+            self.assertEqual(posted["status"], "ok")
+            mine = api.handle({"operation": "wall.list", "author_id": human_id})
+            self.assertEqual(mine["posts"][0]["author"]["author_id"], human_id)
+
+            member = {
+                "member_id": "Alpha / Ω:seat",
+                "model_id": "mock/模型 alpha",
+                "adapter_id": "mock",
+                "profile": "balanced",
+            }
+            ai_post = api.handle({"operation": "wall.ai_post", "member": member, "prompt": "Leave a short note."})
+            self.assertEqual(ai_post["status"], "ok")
+            self.assertEqual(
+                ai_post["post"]["payload"]["author"],
+                {"kind": "model", "author_id": member["member_id"], "model_id": member["model_id"]},
+            )
+
+    def test_wall_rejects_all_python_line_boundaries_before_normalization(self) -> None:
+        separators = ("\n", "\r", "\v", "\f", "\x1c", "\x1d", "\x1e", "\x85", "\u2028", "\u2029")
+        for separator in separators:
+            with self.subTest(separator=repr(separator)):
+                world = WorldStore()
+                wall = WallService(world)
+                with self.assertRaises(WallError):
+                    wall.post_human(author_id="Trent", text=f"first{separator}spoofed")
+                posted = wall.post_human(author_id="Trent", text="safe")
+                with self.assertRaises(WallError):
+                    wall.tombstone(
+                        moderator_id="Trent",
+                        post_ref=posted.object_id,
+                        reason=f"moderation{separator}spoofed",
+                    )
+
+    def test_rebuild_budget_counts_only_wall_events(self) -> None:
+        world = WorldStore()
+        wall = WallService(world)
+        world.create_object("unrelated", {"n": 1}, {"actor": "test"})
+        world.create_object("unrelated", {"n": 2}, {"actor": "test"})
+        with patch("nexus_runtime.wall.MAX_WALL_REBUILD_EVENTS", 1):
+            first = wall.post_human(author_id="Trent", text="Only Wall events consume the cap.")
+            world.create_object("unrelated", {"n": 3}, {"actor": "test"})
+            listing = wall.list_posts()
+            self.assertEqual(listing["posts"][0]["post_ref"], first.object_id)
+            with self.assertRaisesRegex(WallError, "event budget"):
+                wall.post_human(author_id="Trent", text="This would exceed the Wall-event cap.")
+
+    def test_system_health_probes_wall_history_and_reports_forks(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            base = Path(temporary)
+            api = NexusAPI(
+                auth_root=base / "auth",
+                trap_root=base / "trap",
+                stenographer_root=base / "stenographer",
+            )
+            posted = api.handle({"operation": "wall.post", "author_id": "Trent", "text": "canonical"})
+            legitimate = api.world.inspect(posted["post"]["object_id"])
+            forged_payload = deepcopy(legitimate.payload)
+            forged_payload["text"] = "fork"
+            api.world.create_object(
+                WALL_POST_OBJECT_TYPE,
+                forged_payload,
+                {"actor": "nexus", "subsystem": "bbs_wall"},
+            )
+            health = api.handle({"operation": "system.health"})
+            self.assertEqual(health["status"], "ok")
+            self.assertEqual(health["bbs_wall"]["status"], "degraded")
+            self.assertEqual(health["bbs_wall"]["error_code"], "wall_history_fork")
 
     def test_human_posts_are_immutable_chronological_social_memory(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:

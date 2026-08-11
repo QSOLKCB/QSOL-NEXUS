@@ -4,7 +4,6 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 import os
 from pathlib import Path
-import re
 import stat
 import threading
 from typing import Any, Callable, Iterator
@@ -21,10 +20,9 @@ WALL_RESERVED_OBJECT_TYPES = frozenset({WALL_POST_OBJECT_TYPE, WALL_TOMBSTONE_OB
 MAX_WALL_POST_CHARS = 512
 MAX_WALL_REASON_CHARS = 256
 MAX_WALL_LIST_LIMIT = 100
-MAX_WALL_REBUILD_OBJECTS = 100_000
+MAX_WALL_REBUILD_EVENTS = 100_000
 
 _PROVENANCE = {"actor": "nexus", "subsystem": "bbs_wall"}
-_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,127}$")
 _SCRUBBER = SecretScrubber()
 _POST_FIELDS = {
     "schema_version",
@@ -84,8 +82,12 @@ def wall_policy_snapshot() -> dict[str, Any]:
 
 
 def _identity(value: Any, field: str) -> str:
-    if not isinstance(value, str) or _ID_RE.fullmatch(value) is None:
-        raise WallError("wall_invalid_identity", f"{field} must be a bounded identifier")
+    # CouncilMember's established runtime identity contract is deliberately
+    # provider-agnostic: identities are non-empty strings, not ASCII slugs.
+    # Preserve admitted labels exactly so Wall participation cannot silently
+    # narrow the identity space after a model/human is already admitted.
+    if not isinstance(value, str) or value == "":
+        raise WallError("wall_invalid_identity", f"{field} must be a non-empty runtime identifier")
     if _SCRUBBER.scrub(value).changed:
         raise WallError("wall_invalid_identity", f"{field} must not contain credential-shaped material")
     return value
@@ -94,8 +96,13 @@ def _identity(value: Any, field: str) -> str:
 def _bounded_single_line(value: Any, *, field: str, limit: int, code: str) -> str:
     if not isinstance(value, str):
         raise WallError(code, f"{field} must be text")
+    # Check the raw value before strip(): splitlines(keepends=True) recognizes
+    # CR/LF plus VT, FF, NEL and Unicode line/paragraph separators.  Checking
+    # before normalization also rejects a separator placed at either edge.
+    if value.splitlines(keepends=True) != [value]:
+        raise WallError(code, f"{field} must be one non-empty line of at most {limit} characters")
     text = value.strip()
-    if not text or len(text) > limit or "\n" in text or "\r" in text:
+    if not text or len(text) > limit:
         raise WallError(code, f"{field} must be one non-empty line of at most {limit} characters")
     if _SCRUBBER.scrub(text).changed:
         raise WallError(code, f"{field} must not contain credential-shaped material")
@@ -197,18 +204,32 @@ class WallService:
                     os.close(descriptor)
 
     def _snapshot_objects(self) -> dict[str, WorldObject]:
+        snapshot: dict[str, WorldObject] = {}
+
+        def admit_wall_object(obj: WorldObject) -> None:
+            if obj.object_type not in WALL_RESERVED_OBJECT_TYPES:
+                return
+            snapshot[obj.object_id] = obj
+            if len(snapshot) > MAX_WALL_REBUILD_EVENTS:
+                raise WallError("wall_history_too_large", "Wall event budget exceeded")
+
+        # ContinuityWorldStore intentionally supports root=None as the default
+        # ephemeral runtime.  Its continuity helpers exist but there is no HEAD
+        # to resolve, so treat it exactly like the in-memory WorldStore it is.
+        if self.world.root is None:
+            for ref in sorted(getattr(self.world, "_objects", {})):
+                admit_wall_object(self.world.inspect(ref))
+            return snapshot
+
         continuity_lock = getattr(self.world, "_locked_continuity", None)
         resolve_head = getattr(self.world, "_resolve_head", None)
         history = getattr(self.world, "_history", None)
         valid_sources = getattr(self.world, "_valid_object_sources", None)
         quorum = getattr(self.world, "write_quorum", None)
         if all(callable(item) for item in (continuity_lock, resolve_head, history, valid_sources)) and isinstance(quorum, int):
-            snapshot: dict[str, WorldObject] = {}
             with continuity_lock():
                 head_ref, _ = resolve_head(require_chain=True)
                 refs, _ = history(head_ref, require_manifest_quorum=False)
-                if len(refs) > MAX_WALL_REBUILD_OBJECTS:
-                    raise WallError("wall_history_too_large", "Wall rebuild object budget exceeded")
                 for ref in sorted(refs):
                     sources = valid_sources(ref)
                     if len(sources) < quorum:
@@ -218,7 +239,7 @@ class WallService:
                             "world_continuity_read_quorum_unavailable",
                             "recognized object does not currently have a verified read quorum",
                         )
-                    snapshot[ref] = sources[0][1]
+                    admit_wall_object(sources[0][1])
             return snapshot
 
         objects_dir = self.world.objects_dir
@@ -231,11 +252,8 @@ class WallService:
                 for path in entries
                 if len(path.name.removesuffix(".json")) == 64
             ]
-        if len(refs) > MAX_WALL_REBUILD_OBJECTS:
-            raise WallError("wall_history_too_large", "Wall rebuild object budget exceeded")
-        snapshot: dict[str, WorldObject] = {}
         for ref in refs:
-            snapshot[ref] = self.world.inspect(ref)
+            admit_wall_object(self.world.inspect(ref))
         return snapshot
 
     @staticmethod
@@ -306,12 +324,8 @@ class WallService:
 
     def _events(self) -> list[WorldObject]:
         snapshot = self._snapshot_objects()
-        events = [
-            obj
-            for obj in snapshot.values()
-            if obj.object_type in WALL_RESERVED_OBJECT_TYPES
-        ]
-        if len(events) > MAX_WALL_REBUILD_OBJECTS:
+        events = list(snapshot.values())
+        if len(events) > MAX_WALL_REBUILD_EVENTS:
             raise WallError("wall_history_too_large", "Wall event budget exceeded")
         rows: list[tuple[int, WorldObject, str | None]] = []
         seen_sequences: set[int] = set()
@@ -342,6 +356,8 @@ class WallService:
 
     def _create_event(self, object_type: str, fields: dict[str, Any]) -> WorldObject:
         events = self._events()
+        if len(events) >= MAX_WALL_REBUILD_EVENTS:
+            raise WallError("wall_history_too_large", "Wall event budget exceeded")
         previous = events[-1].object_id if events else None
         payload = {
             "schema_version": WALL_SCHEMA_VERSION,
@@ -390,6 +406,8 @@ class WallService:
             raise WallError("wall_tombstone_invalid", "post_ref must be an object reference")
         with self._locked():
             events = self._events()
+            if len(events) >= MAX_WALL_REBUILD_EVENTS:
+                raise WallError("wall_history_too_large", "Wall event budget exceeded")
             posts = {obj.object_id for obj in events if obj.object_type == WALL_POST_OBJECT_TYPE}
             existing = {
                 obj.payload["target_post_ref"]

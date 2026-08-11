@@ -67,5 +67,7 @@ fn wall_parser_rejects_unbounded_limits_and_bad_duration() {
     assert!(parse_input("/wall 0").is_err());
     assert!(parse_input("/wall 101").is_err());
     assert!(parse_input("/wall since yesterday").is_err());
+    assert!(parse_input("/wall since 1é").is_err());
+    assert!(parse_input("/wall since １h").is_err());
     assert!(command_completions("/wal").contains(&"/wall"));
 }
