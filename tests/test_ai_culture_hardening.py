@@ -131,7 +131,7 @@ class AICultureHardeningTests(unittest.TestCase):
                     "operation": "long.shift.new",
                     "seed": "forgery-night",
                     "players": ["Alpha"],
-                    "human_players": [],
+                    "human_players": ["Alpha"],
                 }
             )
             ref = created["game_ref"]
