@@ -1,10 +1,13 @@
-name: NEXUS 2.0 release hardening
+name: NEXUS 2.0 release candidate
 
 on:
   pull_request:
     paths:
       - '.github/workflows/**'
       - 'nexus'
+      - '*.md'
+      - 'CITATION.cff'
+      - 'docs/**'
       - 'pyproject.toml'
       - 'rust-toolchain.toml'
       - 'release/**'
@@ -20,7 +23,7 @@ permissions:
   contents: read
 
 jobs:
-  pre-wall-hardening:
+  release-candidate-hardening:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
@@ -46,7 +49,7 @@ jobs:
           test "$(cargo --version | awk '{print $2}')" = "1.97.1"
           test "$(rustc --version | awk '{print $2}')" = "1.97.1"
 
-      - name: Run pre-stable hardening matrix
+      - name: Run final release-candidate matrix
         env:
           PYTHONPATH: src
         run: |
