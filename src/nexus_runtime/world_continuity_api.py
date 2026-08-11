@@ -1,7 +1,7 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from pathlib import Path
-import threading
 from typing import Any, Sequence
 
 from . import api as _base_api
@@ -10,6 +10,7 @@ from .civic_due_process_api import CivicDueProcessNexusAPI
 from .compute_epochs import ComputeEpochClockError, current_compute_epoch
 from .control_plane import RequestBudgetError, validate_control_request
 from .guardian import GuardianError
+from .trap import TrapError
 from .world_continuity import (
     CONTINUITY_RESERVED_OBJECT_TYPES,
     ContinuityWorldStore,
@@ -30,7 +31,38 @@ _WORLD_CONTINUITY_OPERATIONS = frozenset(
         "world.recovery.restore",
     }
 )
-_WORLDSTORE_FACTORY_LOCK = threading.RLock()
+
+# The historical Core API constructs its WorldStore internally. PR #46 needs a
+# configured ContinuityWorldStore without allowing one constructor to replace a
+# process-global factory with an instance-specific closure. A ContextVar makes
+# the selection local to the active construction context: unrelated historical
+# API constructors in other threads/tasks always see the original factory.
+_CORE_WORLDSTORE_FACTORY = getattr(
+    _base_api,
+    "_nexus_core_worldstore_factory",
+    _base_api.WorldStore,
+)
+setattr(_base_api, "_nexus_core_worldstore_factory", _CORE_WORLDSTORE_FACTORY)
+_WORLDSTORE_CONFIG: ContextVar[
+    tuple[tuple[str | Path, ...], int | None] | None
+] = ContextVar("nexus_worldstore_continuity_config", default=None)
+
+
+def _contextual_world_store(root: str | Path | None = None):
+    configured = _WORLDSTORE_CONFIG.get()
+    if configured is None:
+        return _CORE_WORLDSTORE_FACTORY(root)
+    replicas, quorum = configured
+    return ContinuityWorldStore(
+        root,
+        replica_roots=replicas,
+        write_quorum=quorum,
+    )
+
+
+# Install one stable context-aware factory rather than swapping closures during
+# individual constructors. The default ContextVar value is ordinary WorldStore.
+_base_api.WorldStore = _contextual_world_store  # type: ignore[assignment]
 
 
 def _resolved(path: str | Path) -> Path:
@@ -68,13 +100,20 @@ class WorldContinuityNexusAPI(CivicDueProcessNexusAPI):
 
         if world_root is not None:
             roots: list[tuple[str, str | Path]] = [("world", world_root)]
-            roots.extend((f"world_replica_{index}", root) for index, root in enumerate(replicas, start=1))
+            roots.extend(
+                (f"world_replica_{index}", root)
+                for index, root in enumerate(replicas, start=1)
+            )
             for index, (left_name, left) in enumerate(roots):
                 for right_name, right in roots[index + 1 :]:
                     _assert_disjoint(left, right, left_name, right_name)
 
             auth_broker = kwargs.get("auth_broker")
-            auth_root = getattr(auth_broker, "root", None) if auth_broker is not None else kwargs.get("auth_root")
+            auth_root = (
+                getattr(auth_broker, "root", None)
+                if auth_broker is not None
+                else kwargs.get("auth_root")
+            )
             if auth_root is None:
                 auth_root = default_auth_root()
             trap_root = kwargs.get("trap_root")
@@ -100,24 +139,11 @@ class WorldContinuityNexusAPI(CivicDueProcessNexusAPI):
                             protected_name,
                         )
 
-        def configured_world_store(root: str | Path | None = None) -> ContinuityWorldStore:
-            return ContinuityWorldStore(
-                root,
-                replica_roots=replicas,
-                write_quorum=world_write_quorum,
-            )
-
-        # The historical base API constructs its WorldStore internally. Keep
-        # that API untouched and replace only its module-local factory while
-        # this instance is being built. Construction is serialized so another
-        # thread cannot observe the temporary factory.
-        with _WORLDSTORE_FACTORY_LOCK:
-            previous_factory = _base_api.WorldStore
-            _base_api.WorldStore = configured_world_store  # type: ignore[assignment]
-            try:
-                super().__init__(world_root, guardian_root=guardian_root, **kwargs)
-            finally:
-                _base_api.WorldStore = previous_factory
+        token = _WORLDSTORE_CONFIG.set((replicas, world_write_quorum))
+        try:
+            super().__init__(world_root, guardian_root=guardian_root, **kwargs)
+        finally:
+            _WORLDSTORE_CONFIG.reset(token)
 
         if not isinstance(self.world, ContinuityWorldStore):
             raise WorldContinuityError(
@@ -125,7 +151,11 @@ class WorldContinuityNexusAPI(CivicDueProcessNexusAPI):
                 "public runtime did not receive the continuity WorldStore",
             )
 
-    def _continuity_error(self, request_id: str | None, exc: WorldContinuityError) -> dict[str, Any]:
+    def _continuity_error(
+        self,
+        request_id: str | None,
+        exc: WorldContinuityError,
+    ) -> dict[str, Any]:
         return self._error(request_id, exc.code, str(exc))
 
     def _record_guardian_storage_scar(self, scrub: dict[str, Any]) -> str | None:
@@ -177,7 +207,11 @@ class WorldContinuityNexusAPI(CivicDueProcessNexusAPI):
                         "world_continuity_invalid_request",
                         "repair must be a boolean",
                     )
-                scrub = self.world.scrub(repair=repair)
+                scrub = (
+                    self._run_real_mutation(lambda: self.world.scrub(repair=True))
+                    if repair
+                    else self.world.scrub(repair=False)
+                )
                 guardian_scar_ref = self._record_guardian_storage_scar(scrub) if repair else None
                 response = {
                     "status": "ok",
@@ -198,9 +232,11 @@ class WorldContinuityNexusAPI(CivicDueProcessNexusAPI):
                         "world_continuity_invalid_request",
                         "target_digest_algorithm must be text",
                     )
-                receipt = self.world.create_migration_receipt(
-                    object_ref,
-                    target_digest_algorithm=algorithm,
+                receipt = self._run_real_mutation(
+                    lambda: self.world.create_migration_receipt(
+                        object_ref,
+                        target_digest_algorithm=algorithm,
+                    )
                 )
                 response = {
                     "status": "ok",
@@ -214,7 +250,9 @@ class WorldContinuityNexusAPI(CivicDueProcessNexusAPI):
                     epoch = current_compute_epoch()
                 except ComputeEpochClockError:
                     epoch = None
-                response = self.world.create_ark(destination, compute_epoch=epoch)
+                response = self._run_real_mutation(
+                    lambda: self.world.create_ark(destination, compute_epoch=epoch)
+                )
             elif operation == "world.ark.verify":
                 self._require_exact_fields(request, operation, {"ark_root"})
                 response = self.world.verify_ark(self._require_str(request, "ark_root"))
@@ -223,14 +261,21 @@ class WorldContinuityNexusAPI(CivicDueProcessNexusAPI):
                 response = self.world.inspect_recovery(self._require_str(request, "ark_root"))
             elif operation == "world.recovery.restore":
                 self._require_exact_fields(request, operation, {"ark_root", "target_root"})
-                response = self.world.restore_ark(
-                    self._require_str(request, "ark_root"),
-                    self._require_str(request, "target_root"),
+                ark_root = self._require_str(request, "ark_root")
+                target_root = self._require_str(request, "target_root")
+                response = self._run_real_mutation(
+                    lambda: self.world.restore_ark(ark_root, target_root)
                 )
             else:  # pragma: no cover - closed dispatch set
-                return self._error(request_id, "unknown_operation", "operation is not supported")
+                return self._error(
+                    request_id,
+                    "unknown_operation",
+                    "operation is not supported",
+                )
         except WorldContinuityError as exc:
             return self._continuity_error(request_id, exc)
+        except TrapError as exc:
+            return self._error(request_id, exc.code, str(exc))
         except (KeyError, OSError, TypeError, ValueError, RecursionError) as exc:
             return self._error(request_id, "invalid_request", str(exc))
 
@@ -241,7 +286,9 @@ class WorldContinuityNexusAPI(CivicDueProcessNexusAPI):
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation") if isinstance(request, dict) else None
         request_id = request.get("request_id") if isinstance(request, dict) else None
-        safe_request_id = request_id if self._request_id_is_preflight_safe(request_id) else None
+        safe_request_id = (
+            request_id if self._request_id_is_preflight_safe(request_id) else None
+        )
 
         if isinstance(operation, str) and operation in _WORLD_CONTINUITY_OPERATIONS:
             try:
@@ -258,14 +305,20 @@ class WorldContinuityNexusAPI(CivicDueProcessNexusAPI):
 
         if operation == "world.create" and isinstance(request, dict):
             object_type = request.get("object_type")
-            if isinstance(object_type, str) and object_type in CONTINUITY_RESERVED_OBJECT_TYPES:
+            if (
+                isinstance(object_type, str)
+                and object_type in CONTINUITY_RESERVED_OBJECT_TYPES
+            ):
                 return self._error(
                     safe_request_id,
                     "invalid_request",
                     "reserved continuity objects require validated runtime operations",
                 )
 
-        response = super().handle(request)
+        try:
+            response = super().handle(request)
+        except WorldContinuityError as exc:
+            return self._continuity_error(safe_request_id, exc)
 
         if operation == "system.health" and response.get("status") == "ok":
             try:
@@ -280,7 +333,11 @@ class WorldContinuityNexusAPI(CivicDueProcessNexusAPI):
             return {
                 **response,
                 "world_continuity": {
-                    "status": "ok" if continuity.get("status") != "unavailable" else "unavailable",
+                    "status": (
+                        "ok"
+                        if continuity.get("status") != "unavailable"
+                        else "unavailable"
+                    ),
                     "policy": continuity_policy_snapshot(),
                     "continuity": continuity,
                 },
