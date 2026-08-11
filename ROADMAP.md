@@ -855,11 +855,25 @@ Update and reconcile all stable-release documentation and machine-readable contr
 
 Then rerun the complete final release-candidate matrix against the exact intended stable head, including fresh-clone bootstrap, representative persistent-world upgrade, Ark verify/restore and confirmation that PR #50 introduced no regression against PR #49's hardening guarantees.
 
-Only after PR #51 is merged and the release-candidate head is green should NEXUS 2.0 be tagged/released as stable.
+PR #51 was merged and then subjected to a hostile post-merge Grok audit. Because that audit found release-blocking defects not covered by the green candidate matrix, stable release is deferred to PR #52.
 
-## PR #52 — Lean 4 Formal Verification
+## PR #52 — Post-Merge Grok Audit Closure
 
-Post-stable verification only:
+Final pre-stable correction and re-certification only:
+
+- close the operator-visible TUI identity contradiction;
+- harden Secret Scrubbing against case and Unicode-format-control evasions on durable Council/Wall paths;
+- bind hardening reports to exact commit and tree SHA;
+- make the matrix intentionally cover the complete Python test-module inventory;
+- align release-candidate metadata and remove residual alpha-era present-tense wording;
+- eliminate the concurrent dirty-marker race;
+- rerun the complete final release-candidate matrix against the exact candidate head.
+
+Only after PR #52 is reviewed, merged and green may its exact merge commit be tagged `v2.0.0`.
+
+## PR #53 — Lean 4 Formal Verification
+
+Post-stable verification only. The parked Lean work survives unchanged in purpose; only its planned PR number moves.
 
 - freeze the exact NEXUS 2.0 stable tag and commit as the runtime correspondence target;
 - rebase/update the parked Lean project against that exact stable runtime;
@@ -869,14 +883,12 @@ Post-stable verification only:
 - map each advertised theorem to the tested Python/Rust runtime surface;
 - require the complete selected theorem surface to pass `lake build` with no `sorry`, `admit`, or user-declared proof-substitute axioms.
 
-PR #52 proves the selected formal obligations. It does not publish or silently redefine the already-released runtime.
-
-## PR #53 — Formalization + Reproducibility + Zenodo Publication
+## PR #54 — Formalization + Reproducibility + Zenodo Publication
 
 Archival/publication phase only:
 
 - package the exact NEXUS 2.0 stable source/tag/commit identity;
-- include the reviewed runnable Lean source from the final PR #52 head without rewriting proofs;
+- include the reviewed runnable Lean source from the final PR #53 head without rewriting proofs;
 - bind exact release, formalization, toolchain and checksum identities;
 - include theorem inventory, assumptions/non-claims, axiom audit, formal-gap ranking and runtime correspondence;
 - include final release-hardening/test evidence and reproduction instructions;
@@ -903,7 +915,8 @@ NEXUS 2.0 should not be called stable until:
 12. the persistent world has a verified continuity/Ark recovery path and a rehearsed non-destructive restore procedure;
 13. AI progression, creative performance, RPG play and Psyche-Out Chess remain mechanically incapable of creating extra governance/evidence/tool authority;
 14. the complete PR #49 hardening matrix passes against the final pre-Wall surface;
-15. the complete PR #51 release-candidate matrix passes again after the BBS Wall is present.
+15. the complete PR #51 release-candidate matrix passes after the BBS Wall is present;
+16. the post-merge Grok findings are closed in PR #52 and the commit-bound complete matrix passes again on that exact head.
 
 ## Optimization policy
 
@@ -955,12 +968,14 @@ Grok PR49 R1-R12 closure carried into pre-stable line - Done
   ↓
 BBS WALL - PR #50 - Done
   ↓
-DOCUMENTATION + FINAL RELEASE CANDIDATE - PR #51 - Current
+DOCUMENTATION + FINAL RELEASE CANDIDATE - PR #51 - Done
+  ↓
+POST-MERGE GROK AUDIT CLOSURE - PR #52 - Current
   ↓
 ==============================
           NEXUS 2.0 STABLE
 ==============================
   ↓
-LEAN 4 FORMAL VERIFICATION - PR #52
+LEAN 4 FORMAL VERIFICATION - PR #53
   ↓
-FORMALIZATION + REPRODUCIBILITY + ZENODO - PR #53
+FORMALIZATION + REPRODUCIBILITY + ZENODO - PR #54

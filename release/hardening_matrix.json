@@ -1,9 +1,9 @@
 {
   "schema": "nexus-release-hardening-matrix/1",
-  "milestone": "PR #51",
+  "milestone": "PR #52",
   "profile": "final_release_candidate",
   "stable_release": false,
-  "scope_through_pr": 50,
+  "scope_through_pr": 51,
   "principle": "hardening verifies boundaries; it does not create authority",
   "gates": [
     {
@@ -79,7 +79,9 @@
         "test_readme_contract.py",
         "test_wall*.py",
         "test_release_candidate.py",
-        "test_release_upgrade_rehearsal.py"
+        "test_release_upgrade_rehearsal.py",
+        "test_*.py",
+        "test_post_merge_grok_audit.py"
       ]
     }
   ],
@@ -131,5 +133,20 @@
   "authority_effect": "none",
   "target_version": "2.0.0",
   "base_feature_merge": "1bc078ed266e7fac02d6f905f8ddd0c9061c1d8b",
-  "release_rule": "Only the exact merged PR #51 head may be tagged v2.0.0 after the complete release-candidate matrix passes with no unresolved release-blocking review findings."
+  "release_rule": "Only the exact merged PR #52 head may be tagged v2.0.0 after the complete release-candidate matrix passes with no unresolved release-blocking review findings.",
+  "expected_python_test_files": 81,
+  "post_merge_audit_closure": {
+    "source": "Grok hostile post-merge NEXUS 2.0 audit of dae8e418fd126b4d6e1ae3ce5191dd922013b5f9",
+    "required_before_stable": true,
+    "finding_ids": [
+      "F1",
+      "F2",
+      "F3",
+      "F4",
+      "F5",
+      "RACE1"
+    ],
+    "status": "resolved_in_pr52",
+    "verification": "tests/test_post_merge_grok_audit.py"
+  }
 }

@@ -3,9 +3,8 @@
   "target_version": "2.0.0",
   "target_tag": "v2.0.0",
   "protocol": "nexus/0.14",
-  "base_feature_pr": 50,
   "base_feature_merge": "1bc078ed266e7fac02d6f905f8ddd0c9061c1d8b",
-  "candidate_pr": 51,
+  "candidate_pr": 52,
   "profile": "final_release_candidate",
   "stable_release": false,
   "authority_effect": "none",
@@ -35,9 +34,12 @@
     ],
     "required_status": "closed_and_regression_pinned"
   },
-  "stable_tag_rule": "Tag v2.0.0 only from the exact merged PR #51 commit after all required workflows and release-blocking review findings are green/closed.",
+  "stable_tag_rule": "Tag v2.0.0 only from the exact merged PR #52 commit after all required workflows, the post-merge Grok audit closure, and release-blocking review findings are green/closed.",
   "post_stable": {
-    "pr_52": "Lean 4 Formal Verification",
-    "pr_53": "Formalization + Reproducibility + Zenodo Publication"
-  }
+    "pr_53": "Lean 4 Formal Verification",
+    "pr_54": "Formalization + Reproducibility + Zenodo Publication"
+  },
+  "feature_surface_through_pr": 50,
+  "scope_through_pr": 51,
+  "prior_candidate_merge": "dae8e418fd126b4d6e1ae3ce5191dd922013b5f9"
 }

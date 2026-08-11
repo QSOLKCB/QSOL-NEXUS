@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import os
+import uuid
 from pathlib import Path
 import subprocess
 import sys
@@ -181,7 +183,7 @@ class AdversarialToolTests(unittest.TestCase):
             self.assertIn("expect.contains must be an array", row["detail"])
 
     def test_runner_records_dirty_worktree(self) -> None:
-        marker = ROOT / ".nexus-gauntlet-dirty-test"
+        marker = ROOT / f".nexus-gauntlet-dirty-test-{os.getpid()}-{uuid.uuid4().hex}"
         try:
             marker.write_text("dirty\n", encoding="utf-8")
             with tempfile.TemporaryDirectory() as temp:

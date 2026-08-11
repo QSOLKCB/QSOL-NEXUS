@@ -16,7 +16,7 @@ This checklist is intentionally stricter than “CI is green.” A hardening rep
 - [ ] `CLAIMS.md` includes the Wall/progression/culture evidence boundary.
 - [ ] `HOWTO.md` documents the current launcher, Wall, and Ark/recovery posture.
 - [ ] `README.md` and strict-JSON `README4AI.md` pass their synchronization contract.
-- [ ] `ROADMAP.md` and `docs/RELEASE_SEQUENCE.md` preserve #52 Lean / #53 Zenodo as post-stable phases.
+- [ ] `ROADMAP.md` and `docs/RELEASE_SEQUENCE.md` preserve #53 Lean / #54 Zenodo as post-stable phases.
 - [ ] Historical `archives/v1.0.0/` material remains historical and is not rewritten to impersonate 2.0 documentation.
 
 ## Required automated gates
@@ -24,6 +24,9 @@ This checklist is intentionally stricter than “CI is green.” A hardening rep
 - [ ] candidate-tree pre-audit passes;
 - [ ] exact eight-gate matrix audit passes and covers the release-candidate regression family;
 - [ ] Grok PR #49 R1-R12 closure remains 12/12 pinned;
+- [ ] the post-merge Grok F1-F5 + RACE1 closure remains 6/6 pinned;
+- [ ] the machine-readable report records exact `git_commit` and `git_tree` identities and the CI expected commit matches checkout HEAD;
+- [ ] the hardening matrix intentionally covers the complete expected Python test-module inventory;
 - [ ] full Python regression suite passes;
 - [ ] 30/30 deterministic adversarial probes pass;
 - [ ] Rust all-target tests pass under the pinned release-validation toolchain;
@@ -42,7 +45,7 @@ This checklist is intentionally stricter than “CI is green.” A hardening rep
 
 ## Review gate
 
-- [ ] PR #51 is reviewed on its exact current head;
+- [ ] PR #52 is reviewed on its exact current head;
 - [ ] no unresolved substantive release-blocking review thread remains;
 - [ ] any review fix has been revalidated by the complete exact-head matrix.
 
@@ -50,10 +53,10 @@ This checklist is intentionally stricter than “CI is green.” A hardening rep
 
 Only when every item above is satisfied:
 
-1. merge PR #51;
+1. merge PR #52;
 2. rerun/verify the complete matrix against the exact merged commit where applicable;
 3. create tag `v2.0.0` pointing to that exact green commit;
 4. create the stable GitHub release from the same tag/commit;
-5. record the stable tag and commit for PR #52 Lean correspondence and PR #53 publication chain of custody.
+5. record the stable tag and commit for PR #53 Lean correspondence and PR #54 publication chain of custody.
 
 > **Do not move the tag to make paperwork match. Make the paperwork match the tested commit.**

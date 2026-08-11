@@ -18,10 +18,10 @@ runtime        2.0.0
 Python package 2.0.0
 Rust TUI       2.0.0
 control plane  JSONL over local stdio
-release state  release candidate until exact merged #51 head is tagged
+release state  release candidate until exact merged #52 head is tagged
 ```
 
-A version string is not release authority. The release-hardening report also carries `stable_release: false`; stable 2.0 exists only when the reviewed, green, merged #51 commit is tagged `v2.0.0`.
+A version string is not release authority. The release-hardening report also carries `stable_release: false`; stable 2.0 exists only when the reviewed, green, merged #52 commit is tagged `v2.0.0`.
 
 ## Top-level system
 

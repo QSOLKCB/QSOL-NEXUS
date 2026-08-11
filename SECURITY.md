@@ -80,6 +80,8 @@ They must never be written to:
 
 Authentication material belongs only in adapter authentication or transport fields and must never become semantic prompt content exposed to a model.
 
+Before durable Council/Wall semantic persistence, the deterministic scrubber now treats high-confidence token prefixes case-insensitively where appropriate and performs a second detection pass with Unicode `Cf` format controls removed, blocking zero-width prefix splitting such as `sk\u200b-...`. This remains defence in depth rather than general DLP: unknown secret formats still require operator discipline and provider-specific transport boundaries.
+
 ## WorldStore persistence boundary
 
 File-backed WorldStore roots and object directories are owner-only `0700` on

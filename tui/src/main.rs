@@ -255,7 +255,10 @@ impl App {
             running: true,
         };
         app.load_state();
-        app.append("*** NEXUS TUI 2.0 alpha10.2 — local room, no IRC server");
+        app.append(&format!(
+            "*** NEXUS TUI {} — local room, no IRC server",
+            env!("CARGO_PKG_VERSION")
+        ));
         app.append(
             "*** /help for commands. The mode can change the vibe; it cannot change the vote.",
         );
