@@ -561,6 +561,7 @@ class ConstitutionalAmendmentPersistenceTests(unittest.TestCase):
                 )
             version_ref = result["new_version_ref"]
             self.assertTrue(result["enacted"])
+            self.assertTrue(first.stenographer.shutdown(2.0))
 
             second = NexusAPI(**paths)
             current = second.handle({"operation": "constitution.amendment.current"})
@@ -575,6 +576,7 @@ class ConstitutionalAmendmentPersistenceTests(unittest.TestCase):
             )
             self.assertTrue(verified["action_awareness_verified"])
             self.assertEqual(verified["reconciliation_outcome"], "matched")
+            self.assertTrue(second.stenographer.shutdown(2.0))
 
 
 if __name__ == "__main__":
