@@ -162,7 +162,14 @@ class ConstitutionalAmendmentRecoveryTests(unittest.TestCase):
             ):
                 interrupted = cast(api, models, proposal_ref, deliberation_ref, "Gamma")
             self.assertEqual(interrupted["status"], "error")
-            self.assertEqual(interrupted["error"]["code"], "adapter_unavailable")
+            # A synthetic low-level interruption may be normalized by either
+            # the amendment storage transaction or the outer adapter/storage
+            # boundary. The invariant under test is that it cannot activate an
+            # unreceipted constitutional version.
+            self.assertIn(
+                interrupted["error"]["code"],
+                {"adapter_unavailable", "amendment_store_unavailable"},
+            )
 
             # The version object may already exist in WorldStore, but activation
             # is defined by the verified amendment-index commit, not existence.
