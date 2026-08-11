@@ -101,7 +101,11 @@ The runtime takes one ballot per current citizen identity. The exact registered 
 
 The eligible citizen roster is recalculated when each ballot state is committed. New citizens therefore join the threshold automatically. Existing valid direct ballots are retained only for identities that remain eligible with the same registered model identity.
 
-Ratification occurs only when every current citizen has a direct `CONSENT` ballot. A single `WITHHOLD` prevents ratification. Ballots are immutable lineage objects, so dissent survives even when a citizen later changes their ballot before ratification.
+While fewer than all currently eligible citizens have voted, the ballot round is `sealed_pending`: public API responses expose only how many ballots have been cast and how many citizens are eligible. Partial choices, partial tallies, dissent counts, and citizen identities are not revealed through the amendment API, public amendment history, or Civic Observation. Runtime-owned ballot and ratification objects are also blocked from generic public `world.inspect`; direct ballot detail is available only through the Civic Observation access tiers after a complete ballot round.
+
+Once every current eligible citizen has cast a direct ballot, the round becomes `revealed_complete`. Public/history views may expose the aggregate tally and dissent count, while citizen-full Civic Observation may expose the completed direct ballots and dissenting citizen IDs. This prevents earlier voters from becoming an information side channel for later voters without deleting durable dissent.
+
+Ratification occurs only when every current citizen has a direct `CONSENT` ballot. A single `WITHHOLD` prevents ratification. Ballot states are immutable lineage objects, so a completed dissenting round survives even if a citizen later changes their direct ballot and creates a successor state.
 
 ## Exact version lineage
 
@@ -141,12 +145,12 @@ The immutable `constitutional_amendment_receipt` binds:
 
 When a Council proceeding has been bound as constitutional-amendment deliberation, `council.proceedings.view` adds the related amendment record.
 
-The existing Civic Observation access tiers remain intact:
+After a ballot round is complete, the existing Civic Observation access tiers apply:
 
-- citizen-full observers can see the direct amendment ballots and dissenting citizen IDs;
+- citizen-full observers can see the completed direct amendment ballots and dissenting citizen IDs;
 - public-gallery observers receive aggregate tally and dissent count only.
 
-This preserves amendment history and dissent without turning public transparency into a ballot-rationale leak.
+Before a ballot round is complete, both tiers see only sealed progress metadata. This preserves amendment history and dissent without turning transparency into a live ballot side channel.
 
 ## Operations
 
@@ -161,7 +165,7 @@ constitution.amendment.verify
 constitution.amendment.history
 ```
 
-`history` is aggregate/public. Individual direct ballots are exposed only through the existing citizen-full Civic Observation path for the bound deliberation proceeding.
+`history` is aggregate/public and keeps incomplete ballot rounds sealed. Individual completed direct ballots are exposed only through the existing citizen-full Civic Observation path for the bound deliberation proceeding. Generic public `world.inspect` cannot be used to bypass that boundary for ballot or ratification objects.
 
 ## Replay and claim boundary
 
