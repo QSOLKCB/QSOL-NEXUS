@@ -70,7 +70,10 @@ class PostMergeGrokAuditClosureTests(unittest.TestCase):
             self.assertTrue(result["secret_scrub"]["changed"])
 
     def test_f3_report_is_bound_to_exact_commit_and_tree(self) -> None:
-        checks = [HARDENING.CheckResult(name, "pass", 0.0, "ok") for name in sorted(HARDENING.REQUIRED_CHECK_NAMES)]
+        checks = [
+            HARDENING.CheckResult(name, "pass", 0.0, "ok")
+            for name in sorted(HARDENING.REQUIRED_CHECK_NAMES)
+        ]
         report = HARDENING._build_report(checks)
         commit = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
         tree = subprocess.check_output(["git", "rev-parse", "HEAD^{tree}"], cwd=ROOT, text=True).strip()
@@ -79,13 +82,19 @@ class PostMergeGrokAuditClosureTests(unittest.TestCase):
         self.assertEqual(HARDENING._commit_binding(commit, commit, tree).status, "pass")
         self.assertEqual(HARDENING._commit_binding("0" * 40, commit, tree).status, "fail")
 
+    def test_f3_ci_requires_github_sha_to_match_checked_commit(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release-hardening.yml").read_text(encoding="utf-8")
+        self.assertIn('--expect-commit "$GITHUB_SHA"', workflow)
+        self.assertIn('--json-out "$HARDENING_REPORT"', workflow)
+
     def test_f4_matrix_intentionally_covers_full_python_test_inventory(self) -> None:
         matrix = json.loads((ROOT / "release" / "hardening_matrix.json").read_text(encoding="utf-8"))
         detail = HARDENING._audit_matrix_data(matrix, ROOT / "tests")
         inventory = {path for path in (ROOT / "tests").glob("test_*.py") if path.is_file()}
         self.assertEqual(len(inventory), HARDENING.EXPECTED_PYTHON_TEST_FILES)
         self.assertIn(f"{len(inventory)}/{len(inventory)} test files", detail)
-        self.assertIn("test_*.py", next(g for g in matrix["gates"] if g["id"] == "release_composition")["patterns"])
+        release_gate = next(gate for gate in matrix["gates"] if gate["id"] == "release_composition")
+        self.assertIn("test_*.py", release_gate["patterns"])
 
     def test_f5_candidate_metadata_uses_scope_vocabulary_and_new_sequence(self) -> None:
         candidate = json.loads((ROOT / "release" / "release_candidate.json").read_text(encoding="utf-8"))
