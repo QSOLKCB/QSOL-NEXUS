@@ -2,12 +2,9 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-META_DIR="$REPO_ROOT/publication/nexus-2.0-formalization"
-# shellcheck disable=SC1091
-source "$META_DIR/IDENTITY.env"
-
-OUT_DIR="${1:-$REPO_ROOT/publication/dist}"
+META_REL="publication/nexus-2.0-formalization"
 PUBLICATION_COMMIT="${NEXUS_PUBLICATION_COMMIT:-$(git -C "$REPO_ROOT" rev-parse HEAD)}"
+OUT_DIR="${1:-$REPO_ROOT/publication/dist}"
 
 fail() {
   printf 'publication bundle failed: %s\n' "$1" >&2
@@ -21,11 +18,25 @@ command -v lean >/dev/null 2>&1 || fail 'Lean is not installed on PATH'
 command -v lake >/dev/null 2>&1 || fail 'Lake is not installed on PATH'
 
 cd "$REPO_ROOT"
+git cat-file -e "${PUBLICATION_COMMIT}^{commit}" || fail 'publication commit is unavailable'
+
+TMP="$(mktemp -d)"
+trap 'rm -rf "$TMP"' EXIT
+
+# Bind every publication metadata/input file to the recorded publication commit,
+# never to a potentially dirty working tree. A local build with uncommitted
+# metadata therefore packages the committed bytes named by PUBLICATION_COMMIT.
+COMMITTED_META_ROOT="$TMP/publication-commit"
+mkdir -p "$COMMITTED_META_ROOT"
+git archive "$PUBLICATION_COMMIT" "$META_REL" | tar -xf - -C "$COMMITTED_META_ROOT"
+META_DIR="$COMMITTED_META_ROOT/$META_REL"
+# shellcheck disable=SC1091
+source "$META_DIR/IDENTITY.env"
 
 git cat-file -e "${NEXUS_STABLE_COMMIT}^{commit}" || fail 'stable commit is unavailable'
+git cat-file -e "${PR52_REVIEWED_HEAD}^{commit}" || fail 'PR #52 reviewed head is unavailable'
 git cat-file -e "${PR53_REVIEWED_HEAD}^{commit}" || fail 'PR #53 reviewed head is unavailable'
 git cat-file -e "${PR53_MERGE_COMMIT}^{commit}" || fail 'PR #53 merge commit is unavailable'
-git cat-file -e "${PUBLICATION_COMMIT}^{commit}" || fail 'publication commit is unavailable'
 
 if ! git show-ref --verify --quiet "refs/tags/${NEXUS_STABLE_TAG}"; then
   fail "required stable tag ${NEXUS_STABLE_TAG} is unavailable"
@@ -33,6 +44,12 @@ fi
 TAG_COMMIT="$(git rev-list -n 1 "$NEXUS_STABLE_TAG")"
 [[ "$TAG_COMMIT" == "$NEXUS_STABLE_COMMIT" ]] || \
   fail "${NEXUS_STABLE_TAG} resolves to ${TAG_COMMIT}, expected ${NEXUS_STABLE_COMMIT}"
+
+# The stable release commit must be the actual merge of the reviewed PR #52
+# head, not merely a descendant with a plausible-looking SHA in metadata.
+STABLE_PARENTS=" $(git show -s --format=%P "$NEXUS_STABLE_COMMIT") "
+[[ "$STABLE_PARENTS" == *" ${PR52_REVIEWED_HEAD} "* ]] || \
+  fail 'stable runtime commit does not contain the reviewed PR #52 head as a direct parent'
 
 PARENTS=" $(git show -s --format=%P "$PR53_MERGE_COMMIT") "
 [[ "$PARENTS" == *" ${NEXUS_STABLE_COMMIT} "* ]] || \
@@ -47,11 +64,9 @@ git diff --quiet "$PR53_REVIEWED_HEAD" "$PR53_MERGE_COMMIT" -- formal/lean \
 git diff --quiet "$PR53_REVIEWED_HEAD" "$PUBLICATION_COMMIT" -- formal/lean \
   || fail 'PR #54 modified formal/lean; publication must package the reviewed PR #53 source unchanged'
 
-[[ "$(cat formal/lean/lean-toolchain)" == "leanprover/lean4:v${LEAN_VERSION}" ]] \
-  || fail 'checked-in Lean toolchain does not match publication identity'
+[[ "$(git show "${PR53_REVIEWED_HEAD}:formal/lean/lean-toolchain")" == "leanprover/lean4:v${LEAN_VERSION}" ]] \
+  || fail 'reviewed Lean toolchain does not match publication identity'
 
-TMP="$(mktemp -d)"
-trap 'rm -rf "$TMP"' EXIT
 PKG="$TMP/$BUNDLE_NAME"
 mkdir -p "$PKG/SOFTWARE" "$PKG/LEAN4" "$PKG/VALIDATION" "$OUT_DIR"
 
@@ -151,11 +166,15 @@ SOURCE_DATE_EPOCH="$(git show -s --format=%ct "$PR53_MERGE_COMMIT")"
 ARCHIVE="$OUT_DIR/${BUNDLE_NAME}.tar.gz"
 TARFILE="$TMP/${BUNDLE_NAME}.tar"
 
+# Normalize archive permissions as well as names, ownership and timestamps.
+# This makes the tarball byte-identical across caller umasks such as 022/077
+# while preserving executable bits from Git-tracked executable source files.
 tar --sort=name \
   --format=posix \
   --pax-option=delete=atime,delete=ctime \
   --mtime="@${SOURCE_DATE_EPOCH}" \
   --owner=0 --group=0 --numeric-owner \
+  --mode='u+rwX,go+rX,go-w,a-s' \
   -cf "$TARFILE" -C "$TMP" "$BUNDLE_NAME"
 gzip -n -9 < "$TARFILE" > "$ARCHIVE"
 (
