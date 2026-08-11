@@ -17,41 +17,132 @@ def replace_once(path: str, old: str, new: str) -> None:
 runner = "tools/nexus_release_hardening.py"
 replace_once(
     runner,
-    '        "candidate-tree-unchanged",\n',
-    '        "candidate-tree-unchanged",\n        "candidate-identity-unchanged",\n',
+    '''        "candidate-tree-unchanged",
+    }
+)
+''',
+    '''        "candidate-tree-unchanged",
+        "candidate-identity-unchanged",
+    }
+)
+''',
 )
 replace_once(
     runner,
-    '''def _matrix_audit() -> CheckResult:\n''',
-    '''def _identity_unchanged(expected_commit: str, expected_tree: str) -> CheckResult:\n    started = time.monotonic()\n    try:\n        current_commit, current_tree = _git_identity()\n    except Exception as exc:\n        return CheckResult(\n            "candidate-identity-unchanged",\n            "fail",\n            time.monotonic() - started,\n            f"final git identity unavailable: {type(exc).__name__}: {exc}",\n        )\n    if current_commit != expected_commit or current_tree != expected_tree:\n        return CheckResult(\n            "candidate-identity-unchanged",\n            "fail",\n            time.monotonic() - started,\n            (\n                "candidate identity changed during hardening: "\n                f"started commit={expected_commit} tree={expected_tree}; "\n                f"ended commit={current_commit} tree={current_tree}"\n            ),\n        )\n    return CheckResult(\n        "candidate-identity-unchanged",\n        "pass",\n        time.monotonic() - started,\n        f"candidate identity remained commit={current_commit}; tree={current_tree}",\n    )\n\n\ndef _matrix_audit() -> CheckResult:\n''',
+    '''def _matrix_audit() -> CheckResult:
+''',
+    '''def _identity_unchanged(expected_commit: str, expected_tree: str) -> CheckResult:
+    started = time.monotonic()
+    try:
+        current_commit, current_tree = _git_identity()
+    except Exception as exc:
+        return CheckResult(
+            "candidate-identity-unchanged",
+            "fail",
+            time.monotonic() - started,
+            f"final git identity unavailable: {type(exc).__name__}: {exc}",
+        )
+    if current_commit != expected_commit or current_tree != expected_tree:
+        return CheckResult(
+            "candidate-identity-unchanged",
+            "fail",
+            time.monotonic() - started,
+            (
+                "candidate identity changed during hardening: "
+                f"started commit={expected_commit} tree={expected_tree}; "
+                f"ended commit={current_commit} tree={current_tree}"
+            ),
+        )
+    return CheckResult(
+        "candidate-identity-unchanged",
+        "pass",
+        time.monotonic() - started,
+        f"candidate identity remained commit={current_commit}; tree={current_tree}",
+    )
+
+
+def _matrix_audit() -> CheckResult:
+''',
 )
 replace_once(
     runner,
-    '''    report = _build_report(checks, git_commit=git_commit, git_tree=git_tree)\n''',
-    '''    checks.append(_identity_unchanged(git_commit, git_tree))\n\n    report = _build_report(checks, git_commit=git_commit, git_tree=git_tree)\n''',
+    '''    report = _build_report(checks, git_commit=git_commit, git_tree=git_tree)
+''',
+    '''    checks.append(_identity_unchanged(git_commit, git_tree))
+
+    report = _build_report(checks, git_commit=git_commit, git_tree=git_tree)
+''',
 )
 replace_once(
     runner,
-    '''PR #51 reruns that complete contract against the post-Wall feature surface,\nrehearses a clean operator archive, and emits a machine-readable candidate\nreport.''',
-    '''PR #51 reran that complete contract against the post-Wall feature surface.\nPR #52 closes the hostile post-merge audit findings, revalidates candidate\nidentity before and after the matrix, and emits a machine-readable candidate\nreport.''',
+    '''PR #51 reruns that complete contract against the post-Wall feature surface,
+rehearses a clean operator archive, and emits a machine-readable candidate
+report.''',
+    '''PR #51 reran that complete contract against the post-Wall feature surface.
+PR #52 closes the hostile post-merge audit findings, revalidates candidate
+identity before and after the matrix, and emits a machine-readable candidate
+report.''',
 )
 
 
 tests = "tests/test_post_merge_grok_audit.py"
 replace_once(
     tests,
-    '''import unittest\n''',
-    '''import unittest\nfrom unittest import mock\n''',
+    '''import unittest
+''',
+    '''import unittest
+from unittest import mock
+''',
 )
 replace_once(
     tests,
-    '''    def test_f3_ci_requires_github_sha_to_match_checked_commit(self) -> None:\n''',
-    '''    def test_f3_final_identity_revalidation_rejects_commit_or_tree_drift(self) -> None:\n        commit = "1" * 40\n        tree = "2" * 40\n        with mock.patch.object(HARDENING, "_git_identity", return_value=(commit, tree)):\n            self.assertEqual(HARDENING._identity_unchanged(commit, tree).status, "pass")\n        with mock.patch.object(HARDENING, "_git_identity", return_value=("3" * 40, tree)):\n            changed_commit = HARDENING._identity_unchanged(commit, tree)\n        self.assertEqual(changed_commit.status, "fail")\n        self.assertIn("identity changed", changed_commit.detail)\n        with mock.patch.object(HARDENING, "_git_identity", return_value=(commit, "4" * 40)):\n            changed_tree = HARDENING._identity_unchanged(commit, tree)\n        self.assertEqual(changed_tree.status, "fail")\n        self.assertIn("identity changed", changed_tree.detail)\n\n    def test_f3_ci_requires_github_sha_to_match_checked_commit(self) -> None:\n''',
+    '''    def test_f3_ci_requires_github_sha_to_match_checked_commit(self) -> None:
+''',
+    '''    def test_f3_final_identity_revalidation_rejects_commit_or_tree_drift(self) -> None:
+        commit = "1" * 40
+        tree = "2" * 40
+        with mock.patch.object(HARDENING, "_git_identity", return_value=(commit, tree)):
+            self.assertEqual(HARDENING._identity_unchanged(commit, tree).status, "pass")
+        with mock.patch.object(HARDENING, "_git_identity", return_value=("3" * 40, tree)):
+            changed_commit = HARDENING._identity_unchanged(commit, tree)
+        self.assertEqual(changed_commit.status, "fail")
+        self.assertIn("identity changed", changed_commit.detail)
+        with mock.patch.object(HARDENING, "_git_identity", return_value=(commit, "4" * 40)):
+            changed_tree = HARDENING._identity_unchanged(commit, tree)
+        self.assertEqual(changed_tree.status, "fail")
+        self.assertIn("identity changed", changed_tree.detail)
+
+    def test_f3_ci_requires_github_sha_to_match_checked_commit(self) -> None:
+''',
 )
 replace_once(
     tests,
-    '''    def test_post_merge_finding_inventory_is_machine_pinned(self) -> None:\n''',
-    '''    def test_release_surfaces_share_pr52_tag_gate_and_post_stable_sequence(self) -> None:\n        surfaces = {\n            "SECURITY.md": (ROOT / "SECURITY.md").read_text(encoding="utf-8"),\n            "HOWTO.md": (ROOT / "HOWTO.md").read_text(encoding="utf-8"),\n            "release notes": (ROOT / "docs" / "RELEASE_NOTES_2.0.0.md").read_text(encoding="utf-8"),\n            "changelog": (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"),\n        }\n        for name, text in surfaces.items():\n            self.assertIn("PR #52", text, name)\n            self.assertNotIn("exact merged #51", text, name)\n        self.assertIn("exact merged PR #52", surfaces["SECURITY.md"])\n        self.assertIn("exact merged #52", surfaces["HOWTO.md"])\n        self.assertIn("exact merged PR #52", surfaces["release notes"])\n        self.assertIn("exact merged PR #52", surfaces["changelog"])\n        self.assertIn("PR #53 adds runnable Lean 4", surfaces["release notes"])\n        self.assertIn("PR #54 freezes", surfaces["release notes"])\n        self.assertIn("post-stable PR #53", surfaces["changelog"])\n        self.assertIn("PR #54", surfaces["changelog"])\n        for text in surfaces.values():\n            self.assertNotIn("post-stable PR #52", text)\n            self.assertNotIn("PR #52 adds runnable Lean 4", text)\n\n    def test_post_merge_finding_inventory_is_machine_pinned(self) -> None:\n''',
+    '''    def test_post_merge_finding_inventory_is_machine_pinned(self) -> None:
+''',
+    '''    def test_release_surfaces_share_pr52_tag_gate_and_post_stable_sequence(self) -> None:
+        surfaces = {
+            "SECURITY.md": (ROOT / "SECURITY.md").read_text(encoding="utf-8"),
+            "HOWTO.md": (ROOT / "HOWTO.md").read_text(encoding="utf-8"),
+            "release notes": (ROOT / "docs" / "RELEASE_NOTES_2.0.0.md").read_text(encoding="utf-8"),
+            "changelog": (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"),
+        }
+        for name, text in surfaces.items():
+            self.assertIn("PR #52", text, name)
+            self.assertNotIn("exact merged #51", text, name)
+        self.assertIn("exact merged PR #52", surfaces["SECURITY.md"])
+        self.assertIn("exact merged #52", surfaces["HOWTO.md"])
+        self.assertIn("exact merged PR #52", surfaces["release notes"])
+        self.assertIn("exact merged PR #52", surfaces["changelog"])
+        self.assertIn("PR #53 adds runnable Lean 4", surfaces["release notes"])
+        self.assertIn("PR #54 freezes", surfaces["release notes"])
+        self.assertIn("post-stable PR #53", surfaces["changelog"])
+        self.assertIn("PR #54", surfaces["changelog"])
+        for text in surfaces.values():
+            self.assertNotIn("post-stable PR #52", text)
+            self.assertNotIn("PR #52 adds runnable Lean 4", text)
+
+    def test_post_merge_finding_inventory_is_machine_pinned(self) -> None:
+''',
 )
 
 
@@ -88,7 +179,8 @@ replace_once(
 replace_once(
     "CHANGELOG.md",
     '''- reserve post-stable PR #52 for runnable Lean 4 protocol formalization and PR #53 for reproducibility packaging plus Zenodo publication.''',
-    '''- close the hostile post-merge Grok F1-F5/RACE1 audit in PR #52, including exact commit/tree report binding, final identity revalidation, full Python test-module inventory coverage, stronger durable secret scrubbing, and synchronized release-tag instructions;\n- reserve post-stable PR #53 for runnable Lean 4 protocol formalization and PR #54 for reproducibility packaging plus Zenodo publication.''',
+    '''- close the hostile post-merge Grok F1-F5/RACE1 audit in PR #52, including exact commit/tree report binding, final identity revalidation, full Python test-module inventory coverage, stronger durable secret scrubbing, and synchronized release-tag instructions;
+- reserve post-stable PR #53 for runnable Lean 4 protocol formalization and PR #54 for reproducibility packaging plus Zenodo publication.''',
 )
 replace_once(
     "CHANGELOG.md",
