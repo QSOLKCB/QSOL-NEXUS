@@ -2,8 +2,9 @@
 """NEXUS 2.0 final release-candidate hardening runner.
 
 PR #49 established the pre-Wall baseline and the Grok audit strengthened it.
-PR #51 reruns that complete contract against the post-Wall feature surface,
-rehearses a clean operator archive, and emits a machine-readable candidate
+PR #51 reran that complete contract against the post-Wall feature surface.
+PR #52 closes the hostile post-merge audit findings, revalidates candidate
+identity before and after the matrix, and emits a machine-readable candidate
 report. The report verifies boundaries but carries no governance, evidence,
 or stable-release authority by itself.
 """
@@ -83,6 +84,7 @@ REQUIRED_CHECK_NAMES = frozenset(
         "fresh-archive-operator-rehearsal",
         "representative-pre-beta-upgrade-ark-rehearsal",
         "candidate-tree-unchanged",
+        "candidate-identity-unchanged",
     }
 )
 _REHEARSAL_ENV_KEYS = frozenset(
@@ -330,6 +332,36 @@ def _commit_binding(expected_commit: str | None, git_commit: str, git_tree: str)
         "pass",
         time.monotonic() - started,
         f"report bound to commit {git_commit}; tree={git_tree}; expected={expectation}",
+    )
+
+
+def _identity_unchanged(expected_commit: str, expected_tree: str) -> CheckResult:
+    started = time.monotonic()
+    try:
+        current_commit, current_tree = _git_identity()
+    except Exception as exc:
+        return CheckResult(
+            "candidate-identity-unchanged",
+            "fail",
+            time.monotonic() - started,
+            f"final git identity unavailable: {type(exc).__name__}: {exc}",
+        )
+    if current_commit != expected_commit or current_tree != expected_tree:
+        return CheckResult(
+            "candidate-identity-unchanged",
+            "fail",
+            time.monotonic() - started,
+            (
+                "candidate identity changed during hardening: "
+                f"started commit={expected_commit} tree={expected_tree}; "
+                f"ended commit={current_commit} tree={current_tree}"
+            ),
+        )
+    return CheckResult(
+        "candidate-identity-unchanged",
+        "pass",
+        time.monotonic() - started,
+        f"candidate identity remained commit={current_commit}; tree={current_tree}",
     )
 
 
@@ -765,6 +797,8 @@ def main() -> int:
                 allow_generated_python_cache=True,
             )
         )
+
+    checks.append(_identity_unchanged(git_commit, git_tree))
 
     report = _build_report(checks, git_commit=git_commit, git_tree=git_tree)
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"

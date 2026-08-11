@@ -6,6 +6,7 @@ from pathlib import Path
 import subprocess
 import sys
 import unittest
+from unittest import mock
 
 from nexus_runtime import NexusAPI
 from nexus_runtime.council import CouncilCoordinator
@@ -82,6 +83,20 @@ class PostMergeGrokAuditClosureTests(unittest.TestCase):
         self.assertEqual(HARDENING._commit_binding(commit, commit, tree).status, "pass")
         self.assertEqual(HARDENING._commit_binding("0" * 40, commit, tree).status, "fail")
 
+    def test_f3_final_identity_revalidation_rejects_commit_or_tree_drift(self) -> None:
+        commit = "1" * 40
+        tree = "2" * 40
+        with mock.patch.object(HARDENING, "_git_identity", return_value=(commit, tree)):
+            self.assertEqual(HARDENING._identity_unchanged(commit, tree).status, "pass")
+        with mock.patch.object(HARDENING, "_git_identity", return_value=("3" * 40, tree)):
+            changed_commit = HARDENING._identity_unchanged(commit, tree)
+        self.assertEqual(changed_commit.status, "fail")
+        self.assertIn("identity changed", changed_commit.detail)
+        with mock.patch.object(HARDENING, "_git_identity", return_value=(commit, "4" * 40)):
+            changed_tree = HARDENING._identity_unchanged(commit, tree)
+        self.assertEqual(changed_tree.status, "fail")
+        self.assertIn("identity changed", changed_tree.detail)
+
     def test_f3_ci_requires_github_sha_to_match_checked_commit(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-hardening.yml").read_text(encoding="utf-8")
         self.assertIn('--expect-commit "$GITHUB_SHA"', workflow)
@@ -106,6 +121,28 @@ class PostMergeGrokAuditClosureTests(unittest.TestCase):
         self.assertIn("Zenodo", candidate["post_stable"]["pr_54"])
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotIn("The alpha10.3 release-prep adds", readme)
+
+    def test_release_surfaces_share_pr52_tag_gate_and_post_stable_sequence(self) -> None:
+        surfaces = {
+            "SECURITY.md": (ROOT / "SECURITY.md").read_text(encoding="utf-8"),
+            "HOWTO.md": (ROOT / "HOWTO.md").read_text(encoding="utf-8"),
+            "release notes": (ROOT / "docs" / "RELEASE_NOTES_2.0.0.md").read_text(encoding="utf-8"),
+            "changelog": (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"),
+        }
+        for name, text in surfaces.items():
+            self.assertIn("PR #52", text, name)
+            self.assertNotIn("exact merged #51", text, name)
+        self.assertIn("exact merged PR #52", surfaces["SECURITY.md"])
+        self.assertIn("exact merged #52", surfaces["HOWTO.md"])
+        self.assertIn("exact merged PR #52", surfaces["release notes"])
+        self.assertIn("exact merged PR #52", surfaces["changelog"])
+        self.assertIn("PR #53 adds runnable Lean 4", surfaces["release notes"])
+        self.assertIn("PR #54 freezes", surfaces["release notes"])
+        self.assertIn("post-stable PR #53", surfaces["changelog"])
+        self.assertIn("PR #54", surfaces["changelog"])
+        for text in surfaces.values():
+            self.assertNotIn("post-stable PR #52", text)
+            self.assertNotIn("PR #52 adds runnable Lean 4", text)
 
     def test_post_merge_finding_inventory_is_machine_pinned(self) -> None:
         matrix = json.loads((ROOT / "release" / "hardening_matrix.json").read_text(encoding="utf-8"))

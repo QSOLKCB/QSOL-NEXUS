@@ -2,7 +2,7 @@
 
 ## Status
 
-These are the final release-candidate notes for the intended `v2.0.0` bits. They become stable release notes only when the exact merged PR #51 commit passes the complete release/review gate and is tagged `v2.0.0`.
+These are the final release-candidate notes for the intended `v2.0.0` bits. They become stable release notes only when the exact merged PR #52 commit passes the complete commit/tree-bound release and review gate and is tagged `v2.0.0`.
 
 ## What 2.0 is
 
@@ -40,7 +40,7 @@ NEXUS 2.0 is a local-first model-independent cognitive substrate: multiple heter
 
 ## Hardening and independent audit
 
-PR #49 created the eight-gate hardening harness. An independent Grok audit found R1-R12; surviving findings were fixed before the Wall and pinned as release-blocking regressions. PR #50 then passed the post-Wall matrix plus Codex review fixes. PR #51 reruns that complete contract against the exact intended stable tree.
+PR #49 created the eight-gate hardening harness. An independent Grok audit found R1-R12; surviving findings were fixed before the Wall and pinned as release-blocking regressions. PR #50 then passed the post-Wall matrix plus Codex review fixes. PR #51 reran that complete contract, and a hostile post-merge Grok audit then exposed F1-F5 plus RACE1. PR #52 closes those findings, inventories the full Python test-module surface, binds the report to the exact candidate commit/tree, and revalidates that identity after the long matrix before any stable tag is allowed.
 
 ## Upgrade / compatibility
 
@@ -48,4 +48,4 @@ See `docs/COMPATIBILITY.md`. Existing canonical object identity is preserved. Wo
 
 ## After stable
 
-PR #52 adds runnable Lean 4 formal verification for selected constitutional/protocol invariants against the exact stable runtime. PR #53 freezes the reviewed proof sources, stable software identity, build/test records, hashes, reproduction instructions, and Zenodo DOI.
+PR #53 adds runnable Lean 4 formal verification for selected constitutional/protocol invariants against the exact stable runtime. PR #54 freezes the reviewed proof sources, stable software identity, build/test records, hashes, reproduction instructions, and Zenodo DOI.

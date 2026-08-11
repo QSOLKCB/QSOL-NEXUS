@@ -473,4 +473,4 @@ Moderation creates an immutable tombstone event rather than rewriting or deletin
 
 ## Stable-release security gate
 
-PR #51 aligns the intended `2.0.0` bits but does not self-authorize a stable release. The stable tag is permitted only from the exact merged #51 commit after full Python/Rust, adversarial/security, clean-archive bootstrap, WorldStore/Ark recovery, Grok R1-R12 closure, Wall-boundary, documentation-coupling, and review gates pass. The hardening report itself has `authority_effect: none` and `stable_release: false`.
+PR #51 aligned the intended `2.0.0` bits, but the hostile post-merge audit found release-blocking gaps and PR #52 is now the final pre-stable audit-closure candidate. The stable tag is permitted only from the exact merged PR #52 commit after full Python/Rust, adversarial/security, clean-archive bootstrap, WorldStore/Ark recovery, Grok R1-R12 closure, post-merge F1-F5/RACE1 closure, Wall-boundary, documentation-coupling, exact commit/tree identity revalidation, and review gates pass. The hardening report itself has `authority_effect: none` and `stable_release: false`.

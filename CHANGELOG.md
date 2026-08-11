@@ -11,9 +11,10 @@ All notable changes to QSOL NEXUS are documented here.
 - preserve the BBS Wall invariant that social memory is neither evidence nor governance authority, with append-only tombstones and validated immutable chronology;
 - add a machine-readable release-candidate manifest, compatibility statement, documentation audit, stable-tag checklist, and dedicated release-candidate regression contract;
 - keep `nexus/0.14` as the control-protocol identifier and pin release validation to Rust/Cargo `1.97.1`;
-- reserve post-stable PR #52 for runnable Lean 4 protocol formalization and PR #53 for reproducibility packaging plus Zenodo publication.
+- close the hostile post-merge Grok F1-F5/RACE1 audit in PR #52, including exact commit/tree report binding, final identity revalidation, full Python test-module inventory coverage, stronger durable secret scrubbing, and synchronized release-tag instructions;
+- reserve post-stable PR #53 for runnable Lean 4 protocol formalization and PR #54 for reproducibility packaging plus Zenodo publication.
 
-**Release rule:** this entry describes the intended stable bits. NEXUS 2.0 is not a tagged stable release until PR #51 is merged with every required release/review gate green and that exact commit is tagged `v2.0.0`.
+**Release rule:** this entry describes the intended stable bits. NEXUS 2.0 is not a tagged stable release until PR #52 is merged with every required commit/tree-bound release and review gate green and that exact merged PR #52 commit is tagged `v2.0.0`.
 
 ## 2.0.0-alpha10.3 — Provider federation, local AI roles and release wiring
 
