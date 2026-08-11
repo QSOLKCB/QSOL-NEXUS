@@ -567,7 +567,7 @@ Core invariant:
 
 ### PR #39 — Stenographer Temp-File Durability Hotfix
 
-Implemented / targeted in PR #39:
+Implemented in PR #39:
 
 - [x] recognize only the exact historical NEXUS `objects/.<digest>.tmp-<pid>-<thread>` scratch pattern as non-ledger debris;
 - [x] keep unexpected foreign names, temp-shaped symlinks/directories and unsafe-permission entries fail-closed;
@@ -584,16 +584,20 @@ Core invariant:
 
 ### PR #40 — Constitutional Amendment Protocol
 
-Planned:
+Implemented / targeted in PR #40:
 
-- [ ] let Citizens and admitted models propose bounded constitutional amendments as immutable objects;
-- [ ] separate proposal generation, admission, deliberation, sealed ballot, threshold calculation, ratification and enactment;
-- [ ] keep amendment admission and vote arithmetic deterministic rather than assigning sovereign authority to an Election Manager model;
-- [ ] preserve one-seat/one-vote and existing citizenship equality rules;
-- [ ] require exact constitutional version lineage and reject rollback, forks and forged ratification;
-- [ ] expose amendment history and minority/dissent records to the civic observation system;
-- [ ] use Action Awareness to verify that an enacted constitutional change actually changes the intended runtime policy surface;
-- [ ] define immutable constitutional receipts and replay fixtures.
+- [x] let Citizens and admitted models propose bounded constitutional amendments as immutable objects without granting proposal authors ratification authority;
+- [x] separate proposal generation, deterministic admission, Council deliberation binding, sealed direct ballot, unanimity calculation, ratification, enactment verification and activation;
+- [x] keep amendment admission and vote arithmetic deterministic rather than assigning sovereign authority to an Election Manager model;
+- [x] preserve one-seat/one-vote, vote weight `1`, epistemic privilege `none`, no-proxy-signature and consensus-vs-verification invariants;
+- [x] require exact constitutional version lineage and reject stale-base enactment, forged runtime objects and unverified activation;
+- [x] expose completed amendment history and durable dissent through Civic Observation while keeping incomplete ballots sealed;
+- [x] use Action Awareness to verify the exact enacted constitutional version and require a matched immutable receipt before activation;
+- [x] make Civic Observation consume the verified active constitutional policy so an admitted amendment has a real runtime effect;
+- [x] serialize the final current-citizen roster with citizenship transitions under the existing durable Citizenship Registry lock;
+- [x] add a canonical amendment-only index so routine policy reads do not scan unrelated WorldStore history;
+- [x] make crash-interrupted version/receipt candidates inert until one atomic verified index activation and test deterministic retry recovery;
+- [x] add restart, race, privacy, anti-forgery, Action Awareness, stale-lineage and bounded-read regression fixtures.
 
 Core invariant:
 
