@@ -1,0 +1,33 @@
+import Nexus.Assumptions
+import Nexus.Basic
+import Nexus.Identity
+import Nexus.Council
+import Nexus.SixHats
+import Nexus.Consensus
+import Nexus.Evidence
+import Nexus.Citizenship
+import Nexus.Progression
+import Nexus.Culture
+import Nexus.WorldStore
+import Nexus.ComputeEpoch
+
+namespace Nexus
+
+#check one_member_one_vote
+#check provider_independent_vote_weight
+#check model_size_independent_vote_weight
+#check replacing_model_preserves_seat_weight
+#check every_seat_weight_one
+#check relief_replacement_does_not_create_extra_seat
+#check six_hats_sequence_closed
+#check sealed_phase_payload_immutable
+#check two_thirds_definition_is_exact
+#check consensus_does_not_promote_evidence
+#check citizenship_does_not_change_vote_weight
+#check civic_proxy_does_not_create_extra_vote
+#check progression_creates_no_authority
+#check culture_creates_no_authority
+#check redundancy_creates_no_authority
+#check capability_growth_does_not_change_vote_weight
+
+end Nexus

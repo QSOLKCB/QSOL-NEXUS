@@ -1,0 +1,128 @@
+name: Lean 4 formal verification
+
+on:
+  push:
+    branches:
+      - agent/pr53-lean4-formal-verification
+    paths:
+      - "formal/lean/**"
+      - ".github/workflows/lean-formal.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "formal/lean/**"
+      - ".github/workflows/lean-formal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LEAN_VERSION: "4.33.0"
+  LEAN_LINUX_SHA256: "4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c"
+  NEXUS_STABLE_RUNTIME_COMMIT: "cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a"
+  NEXUS_STABLE_RUNTIME_TAG: "v2.0.0"
+  NEXUS_FORMALIZATION_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+
+jobs:
+  lean:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact NEXUS 2.0 runtime base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${NEXUS_STABLE_RUNTIME_COMMIT}^{commit}"
+          git cat-file -e "${NEXUS_FORMALIZATION_COMMIT}^{commit}"
+
+          # pull_request checkout normally points at GitHub's synthetic merge
+          # commit. Bind the formal evidence to the reviewed PR head instead,
+          # while requiring that reviewed head to be present in this checkout.
+          git merge-base --is-ancestor "$NEXUS_FORMALIZATION_COMMIT" HEAD
+          test "$(git merge-base "$NEXUS_STABLE_RUNTIME_COMMIT" "$NEXUS_FORMALIZATION_COMMIT")" = "$NEXUS_STABLE_RUNTIME_COMMIT"
+
+          unexpected="$({
+            git diff --name-only "$NEXUS_STABLE_RUNTIME_COMMIT" "$NEXUS_FORMALIZATION_COMMIT" \
+              | grep -Ev '^(formal/lean/|\.github/workflows/lean-formal\.yml$)' || true
+          })"
+          if [[ -n "$unexpected" ]]; then
+            echo 'PR #53 changed files outside the formalization boundary:' >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+
+          git fetch --force --tags origin
+          if ! git show-ref --verify --quiet "refs/tags/${NEXUS_STABLE_RUNTIME_TAG}"; then
+            echo "::error::required stable tag ${NEXUS_STABLE_RUNTIME_TAG} is absent; expected ${NEXUS_STABLE_RUNTIME_COMMIT}."
+            echo "stable tag binding: FAIL (${NEXUS_STABLE_RUNTIME_TAG} absent; expected ${NEXUS_STABLE_RUNTIME_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
+          fi
+
+          tag_commit="$(git rev-list -n 1 "$NEXUS_STABLE_RUNTIME_TAG")"
+          if [[ "$tag_commit" != "$NEXUS_STABLE_RUNTIME_COMMIT" ]]; then
+            echo "${NEXUS_STABLE_RUNTIME_TAG} resolves to ${tag_commit}, expected ${NEXUS_STABLE_RUNTIME_COMMIT}" >&2
+            exit 1
+          fi
+          echo "stable tag binding: PASS (${NEXUS_STABLE_RUNTIME_TAG} -> ${NEXUS_STABLE_RUNTIME_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
+          echo "formalization head: ${NEXUS_FORMALIZATION_COMMIT}" >> "$GITHUB_STEP_SUMMARY"
+          echo "verification checkout: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Early proof-hole and assumption scan
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE '(^|[^[:alnum:]_])(sorry|admit)([^[:alnum:]_]|$)' formal/lean/Nexus --include='*.lean'; then
+            echo 'Lean formalization contains a forbidden proof hole.' >&2
+            exit 1
+          fi
+          if grep -R -nE '^[[:space:]]*(axiom|constant)[[:space:]]' formal/lean/Nexus --include='*.lean'; then
+            echo 'Lean formalization contains a project-defined axiom/constant declaration.' >&2
+            exit 1
+          fi
+
+      - name: Install pinned official Lean release
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="/tmp/lean-${LEAN_VERSION}-linux.tar.zst"
+          dist="/tmp/nexus-lean-dist"
+          curl -fsSL --retry 5 --retry-delay 2 \
+            "https://github.com/leanprover/lean4/releases/download/v${LEAN_VERSION}/lean-${LEAN_VERSION}-linux.tar.zst" \
+            -o "$archive"
+          printf '%s  %s\n' "$LEAN_LINUX_SHA256" "$archive" | sha256sum -c -
+          mkdir -p "$dist"
+          tar --zstd -xf "$archive" -C "$dist"
+          printf '%s\n' "$dist/lean-${LEAN_VERSION}-linux/bin" >> "$GITHUB_PATH"
+
+      - name: Verify pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          lean --version
+          lake --version
+          test "$(cat formal/lean/lean-toolchain)" = "leanprover/lean4:v${LEAN_VERSION}"
+
+      - name: Run complete declaration and axiom audit
+        shell: bash
+        working-directory: formal/lean
+        run: |
+          set -euo pipefail
+          bash audit.sh formal-verification-report.txt
+
+      - name: Publish formal verification report to job summary
+        if: always()
+        shell: bash
+        run: |
+          if [[ -f formal/lean/formal-verification-report.txt ]]; then
+            {
+              echo '```text'
+              cat formal/lean/formal-verification-report.txt
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi

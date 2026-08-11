@@ -1,0 +1,26 @@
+import Nexus.Main
+
+#print axioms Nexus.no_agi_assumption
+#print axioms Nexus.consensus_is_not_assumed_truth
+#print axioms Nexus.identity_is_not_assumed_authority
+#print axioms Nexus.one_member_one_vote
+#print axioms Nexus.provider_independent_vote_weight
+#print axioms Nexus.model_size_independent_vote_weight
+#print axioms Nexus.model_identity_independent_vote_weight
+#print axioms Nexus.identity_creates_no_epistemic_privilege
+#print axioms Nexus.replacing_model_preserves_seat_weight
+#print axioms Nexus.every_seat_weight_one
+#print axioms Nexus.relief_replacement_does_not_create_extra_seat
+#print axioms Nexus.six_hats_sequence_closed
+#print axioms Nexus.sealed_phase_payload_immutable
+#print axioms Nexus.sealed_phase_hat_immutable
+#print axioms Nexus.two_thirds_definition_is_exact
+#print axioms Nexus.two_of_three_meets_two_thirds
+#print axioms Nexus.one_of_three_does_not_meet_two_thirds
+#print axioms Nexus.consensus_does_not_promote_evidence
+#print axioms Nexus.citizenship_does_not_change_vote_weight
+#print axioms Nexus.civic_proxy_does_not_create_extra_vote
+#print axioms Nexus.progression_creates_no_authority
+#print axioms Nexus.culture_creates_no_authority
+#print axioms Nexus.redundancy_creates_no_authority
+#print axioms Nexus.capability_growth_does_not_change_vote_weight
