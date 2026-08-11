@@ -13,6 +13,7 @@ from .life_paths import (
 from .modes import get_mode
 from .progression import (
     ACTIVITY_CATALOG,
+    MAX_SOURCE_REFS,
     PROGRESSION_RESERVED_OBJECT_TYPES,
     ProgressionError,
     ProgressionService,
@@ -41,6 +42,16 @@ _PROGRESSION_OPERATIONS = frozenset(
     }
 )
 
+_PROGRESSION_MUTATIONS = frozenset(
+    {
+        "progression.commission.create",
+        "progression.act",
+        "progression.play.record",
+        "life.paths.new",
+        "life.paths.act",
+    }
+)
+
 
 class ProgressionNexusAPI(WorldContinuityNexusAPI):
     """PR #47 overlay: meaningful AI activity and descriptive progression."""
@@ -61,6 +72,16 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
                 "the requested actor is currently represented by Failsafe relief and cannot build personal progression",
             )
         return actor
+
+    def _activity_sources(self, raw: Any) -> list[str]:
+        if not isinstance(raw, list) or not all(isinstance(ref, str) and ref for ref in raw):
+            raise ProgressionError("progression_invalid_sources", "source_refs must be a list of object refs")
+        if len(raw) > MAX_SOURCE_REFS or len(set(raw)) != len(raw):
+            raise ProgressionError(
+                "progression_invalid_sources",
+                f"source_refs must contain at most {MAX_SOURCE_REFS} unique references",
+            )
+        return list(raw)
 
     def _handle_progression_operation(
         self,
@@ -84,7 +105,7 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
                 title = self._require_str(request, "title")
                 activity_id = self._require_str(request, "activity_id")
                 brief = self._require_str(request, "brief")
-                source_refs = request.get("source_refs", [])
+                source_refs = self._activity_sources(request.get("source_refs", []))
                 assignee_id = request.get("assignee_id")
                 if assignee_id is not None and not isinstance(assignee_id, str):
                     raise ProgressionError("progression_invalid_identity", "assignee_id must be text when supplied")
@@ -126,15 +147,38 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
                         "progression_play_requires_game_ref",
                         "play activities must use progression.play.record with an authoritative game state",
                     )
-                actor = self._activity_actor(request.get("member"))
                 raw_prompt = self._require_str(request, "prompt")
                 clean_prompt = self.scrubber.scrub(raw_prompt)
-                source_refs = request.get("source_refs", [])
-                if not isinstance(source_refs, list) or not all(isinstance(ref, str) for ref in source_refs):
-                    raise ProgressionError("progression_invalid_sources", "source_refs must be a list of object refs")
+                source_refs = self._activity_sources(request.get("source_refs", []))
                 commission_ref = request.get("commission_ref")
                 if commission_ref is not None and not isinstance(commission_ref, str):
                     raise ProgressionError("progression_invalid_commission", "commission_ref must be text when supplied")
+                commission = (
+                    None
+                    if commission_ref is None
+                    else self.progression.inspect_commission(commission_ref)
+                )
+                if commission is not None and commission.payload["activity_id"] != activity_id:
+                    raise ProgressionError(
+                        "progression_commission_mismatch",
+                        "commission activity does not match the requested activity",
+                    )
+                actor = self._activity_actor(request.get("member"))
+                if commission is not None:
+                    assignee = commission.payload.get("assignee_id")
+                    if assignee is not None and assignee != actor.member.member_id:
+                        raise ProgressionError(
+                            "progression_commission_mismatch",
+                            "commission is assigned to another actor",
+                        )
+                    for ref in commission.payload["source_refs"]:
+                        if ref not in source_refs:
+                            source_refs.append(ref)
+                    if len(source_refs) > MAX_SOURCE_REFS:
+                        raise ProgressionError(
+                            "progression_invalid_sources",
+                            f"combined activity and commission sources exceed {MAX_SOURCE_REFS} references",
+                        )
                 mode_id = request.get("mode", "analytical")
                 if not isinstance(mode_id, str):
                     raise ProgressionError("progression_invalid_mode", "mode must be text")
@@ -247,15 +291,27 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
                     raise ProgressionError("progression_invalid_play", "Life Paths players must be a list of ids")
                 if not isinstance(human_players, list) or not all(isinstance(item, str) for item in human_players):
                     raise ProgressionError("progression_invalid_play", "Life Paths human_players must be a list of ids")
+                for player in [*players, *human_players]:
+                    if self.scrubber.scrub(player).changed:
+                        raise ProgressionError(
+                            "progression_secret_rejected",
+                            "Life Paths player ids must not contain credential-shaped material",
+                        )
+                clean_seed = self.scrubber.scrub(seed)
                 state = self._run_real_mutation(
                     lambda: new_life_paths(
                         self.world,
-                        seed=seed,
+                        seed=clean_seed.text,
                         players=players,
                         human_players=human_players,
                     )
                 )
-                response = {"status": "ok", "game_ref": state.object_id, "game": state.payload}
+                response = {
+                    "status": "ok",
+                    "game_ref": state.object_id,
+                    "game": state.payload,
+                    "secret_scrub": {"seed_changed": clean_seed.changed},
+                }
             elif operation == "life.paths.inspect":
                 self._require_exact_fields(request, operation, {"game_ref"})
                 state = inspect_life_paths(self.world, self._require_str(request, "game_ref"))
@@ -301,6 +357,11 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
                 return self._error(safe_request_id, "invalid_request", str(exc))
             if request_id is not None and safe_request_id is None:
                 return self._error(None, "invalid_request", "request_id must be a bounded non-secret identifier")
+            if operation in _PROGRESSION_MUTATIONS:
+                try:
+                    self.trap_mutation_gate.assert_mutation_allowed()
+                except TrapError as exc:
+                    return self._error(safe_request_id, exc.code, str(exc))
             return self._handle_progression_operation(request, safe_request_id)
 
         if operation == "world.create" and isinstance(request, dict):
