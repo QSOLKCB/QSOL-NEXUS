@@ -1,0 +1,67 @@
+name: PR52 post-merge audit fixes
+
+on:
+  push:
+    branches:
+      - agent/pr52-post-merge-audit-closure
+    paths:
+      - 'tools/pr52_post_merge_audit_fix.py'
+      - '.github/workflows/pr52-post-merge-audit-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - name: Checkout exact PR52 branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: agent/pr52-post-merge-audit-closure
+          fetch-depth: 1
+
+      - name: Apply post-merge Grok fixes
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python3 tools/pr52_post_merge_audit_fix.py
+          python3 -m unittest \
+            tests.test_post_merge_grok_audit \
+            tests.test_release_candidate \
+            tests.test_release_hardening \
+            tests.test_release_hardening_grok_audit \
+            tests.test_adversarial_tools \
+            -v
+          cargo test --manifest-path tui/Cargo.toml --all-targets
+          cargo check --manifest-path tui/Cargo.toml --all-targets
+          cargo fmt --manifest-path tui/Cargo.toml -- --check
+          git diff --check
+
+      - name: Commit permanent audit closure
+        run: |
+          set -euo pipefail
+          git config user.name 'QSOL PR52 Audit Fixer'
+          git config user.email '73952179+EmergentMonk@users.noreply.github.com'
+          git add \
+            ARCHITECTURE.md \
+            README.md \
+            README4AI.md \
+            ROADMAP.md \
+            SECURITY.md \
+            docs/RELEASE_CHECKLIST.md \
+            docs/RELEASE_SEQUENCE.md \
+            release/hardening_matrix.json \
+            release/release_candidate.json \
+            src/nexus_runtime/scrub.py \
+            tests/test_adversarial_tools.py \
+            tests/test_post_merge_grok_audit.py \
+            tests/test_release_candidate.py \
+            tests/test_release_hardening.py \
+            tools/nexus_release_hardening.py \
+            tui/src/main.rs \
+            tools/pr52_post_merge_audit_fix.py
+          git commit -m 'fix: close post-merge Grok release audit'
+          git push origin HEAD:agent/pr52-post-merge-audit-closure
