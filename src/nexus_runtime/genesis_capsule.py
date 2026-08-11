@@ -52,7 +52,10 @@ def _canonical_payload_bytes() -> bytes:
     ).encode("utf-8")
 
 
-GENESIS_CAPSULE_SHA256 = hashlib.sha256(_canonical_payload_bytes()).hexdigest()
+_COMPUTED_GENESIS_CAPSULE_SHA256 = hashlib.sha256(_canonical_payload_bytes()).hexdigest()
+GENESIS_CAPSULE_SHA256 = "728d6f70aa1e3438292733e3576b5dc02c786ed505357fb70df56bc46d9f87bc"
+if _COMPUTED_GENESIS_CAPSULE_SHA256 != GENESIS_CAPSULE_SHA256:
+    raise RuntimeError("NEXUS Genesis Capsule payload changed without an explicit hash update")
 
 
 def genesis_capsule_status(epoch: int | None = None) -> dict[str, Any]:
