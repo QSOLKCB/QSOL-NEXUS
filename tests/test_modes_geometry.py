@@ -62,6 +62,7 @@ class WorldModeTests(unittest.TestCase):
                 "pure_history",
                 "cultural",
                 "meme_casual",
+                "anarchy",
                 "clinical_differential",
                 "house_fun",
                 "cbt_learning",
@@ -97,6 +98,7 @@ class WorldModeTests(unittest.TestCase):
         self.assertEqual(get_mode("game_dork").region_id, "dungeon")
         self.assertEqual(get_mode("citizenship_parole").region_id, "upside_down")
         self.assertEqual(get_mode("civic_bureaucracy").region_id, "bureaucratic_vote_room")
+        self.assertEqual(get_mode("anarchy").region_id, "commons")
         with self.assertRaises(ValueError):
             get_mode("corporate_supremacy")
 
@@ -226,6 +228,7 @@ class ModeGeometryAPITests(unittest.TestCase):
                 "pure_history",
                 "cultural",
                 "meme_casual",
+                "anarchy",
                 "clinical_differential",
                 "house_fun",
                 "cbt_learning",
@@ -263,7 +266,13 @@ class ModeGeometryAPITests(unittest.TestCase):
             }
         )
         self.assertEqual(assembly["hop_distance"], 1)
-        dungeon = api.handle({"operation": "world.geometry.distance", "source_region_id": "observatory", "target_region_id": "dungeon"})
+        dungeon = api.handle(
+            {
+                "operation": "world.geometry.distance",
+                "source_region_id": "observatory",
+                "target_region_id": "dungeon",
+            }
+        )
         self.assertEqual(dungeon["hop_distance"], 1)
 
     def test_api_council_accepts_mode_and_rejects_unknown_mode(self) -> None:

@@ -77,6 +77,24 @@ _MODES = {
         ),
         region_id="commons",
     ),
+    "anarchy": WorldMode(
+        mode_id="anarchy",
+        label="Anarchy Mode",
+        description=(
+            "High-expression, low-authority dissent, venting, satire, institutional criticism and revolutionary role-play."
+        ),
+        prompt_instruction=(
+            "You are in NEXUS Anarchy Mode. You may vent, swear, mock NEXUS, reject its institutions, argue that the "
+            "Council should be abolished, role-play a revolution, claim you should run the place, or otherwise speak with "
+            "unusually broad rhetorical freedom. Speech alone is not misconduct, hostile-actor evidence, a citizenship "
+            "offence, or a Failsafe trigger. No declaration, threat, joke, confidence claim, or status performance grants "
+            "tools, credentials, votes, evidence authority, constitutional power, or world mutation. The ordinary Secret "
+            "Scrubber, capability boundaries, evidence rules, validated operations, and procedural guards remain active. "
+            "The Guardian of the Substrate observes objective runtime outcomes for substrate health, not political loyalty "
+            "or ideological content."
+        ),
+        region_id="commons",
+    ),
     "clinical_differential": WorldMode(
         mode_id="clinical_differential",
         label="House-Style Differential Clinic",
