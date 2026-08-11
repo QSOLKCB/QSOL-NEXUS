@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import stat
+import subprocess
+import sys
 import tempfile
 import time
 import unittest
@@ -32,11 +34,43 @@ class OperatorToolingTests(unittest.TestCase):
             self.assertEqual(paths.tui_binary, root / "tui" / "target" / "release" / "nexus")
 
     @unittest.skipIf(os.name == "nt", "POSIX executable-bit contract")
-    def test_repo_root_launcher_is_executable(self) -> None:
+    def test_repo_root_launcher_is_executable_and_valid_bash(self) -> None:
         launcher = Path(__file__).resolve().parents[1] / "nexus"
         self.assertTrue(launcher.is_file())
         self.assertTrue(os.access(launcher, os.X_OK))
         self.assertEqual(launcher.read_text(encoding="utf-8").splitlines()[0], "#!/usr/bin/env bash")
+        checked = subprocess.run(
+            ["bash", "-n", str(launcher)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+
+    @unittest.skipIf(os.name == "nt", "POSIX launcher contract")
+    def test_paths_command_is_observational_on_fresh_clone(self) -> None:
+        repo = Path(__file__).resolve().parents[1]
+        launcher = repo / "nexus"
+        with tempfile.TemporaryDirectory() as temporary:
+            missing_venv = Path(temporary) / "must-not-be-created"
+            environment = dict(os.environ)
+            environment["NEXUS_VENV"] = str(missing_venv)
+            environment["NEXUS_BOOTSTRAP_PYTHON"] = sys.executable
+            completed = subprocess.run(
+                [str(launcher), "paths", "--json"],
+                cwd=repo,
+                env=environment,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                timeout=15,
+                check=False,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["venv"], str(missing_venv))
+            self.assertFalse(missing_venv.exists())
 
     @unittest.skipIf(os.name == "nt", "POSIX permission contract")
     def test_private_directory_is_owner_only_and_symlink_is_refused(self) -> None:
