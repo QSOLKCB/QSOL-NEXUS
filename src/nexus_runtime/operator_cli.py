@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import argparse
 from dataclasses import dataclass
-import importlib.metadata
 import json
 import os
 from pathlib import Path
@@ -104,11 +103,11 @@ def _ensure_private_directory(path: Path, *, fix_permissions: bool = True) -> No
 
 def _ensure_disjoint(paths: OperatorPaths) -> None:
     named = {
-        "venv": paths.venv.resolve(),
-        "world": paths.world.resolve(),
-        "trap": paths.trap.resolve(),
-        "stenographer": paths.stenographer.resolve(),
-        "operator_config": paths.config_dir.resolve(),
+        "venv": paths.venv.resolve(strict=False),
+        "world": paths.world.resolve(strict=False),
+        "trap": paths.trap.resolve(strict=False),
+        "stenographer": paths.stenographer.resolve(strict=False),
+        "operator_config": paths.config_dir.resolve(strict=False),
     }
     items = list(named.items())
     for index, (left_name, left) in enumerate(items):
@@ -119,14 +118,26 @@ def _ensure_disjoint(paths: OperatorPaths) -> None:
                 )
 
 
+def _operator_config_stat(path: Path) -> os.stat_result | None:
+    try:
+        info = path.lstat()
+    except FileNotFoundError:
+        return None
+    if stat.S_ISLNK(info.st_mode):
+        raise OperatorToolError(f"refusing symlinked operator config: {path}")
+    if not stat.S_ISREG(info.st_mode):
+        raise OperatorToolError(f"operator config must be a regular file: {path}")
+    return info
+
+
 def _load_config(paths: OperatorPaths) -> dict[str, object]:
-    if not paths.config.exists():
+    info = _operator_config_stat(paths.config)
+    if info is None:
         return {"schema_version": OPERATOR_CONFIG_SCHEMA, "nick": _default_nick()}
-    if paths.config.is_symlink():
-        raise OperatorToolError(f"refusing symlinked operator config: {paths.config}")
-    if os.name != "nt" and _mode(paths.config) != 0o600:
+    if os.name != "nt" and stat.S_IMODE(info.st_mode) != 0o600:
         raise OperatorToolError(
-            f"operator config must have mode 0600: {paths.config} (found {_mode(paths.config):04o})"
+            f"operator config must have mode 0600: {paths.config} "
+            f"(found {stat.S_IMODE(info.st_mode):04o})"
         )
     try:
         raw = json.loads(paths.config.read_text(encoding="utf-8"))
@@ -142,8 +153,7 @@ def _load_config(paths: OperatorPaths) -> dict[str, object]:
 
 def _save_config(paths: OperatorPaths, nick: str) -> None:
     _ensure_private_directory(paths.config_dir)
-    if paths.config.is_symlink():
-        raise OperatorToolError(f"refusing symlinked operator config: {paths.config}")
+    _operator_config_stat(paths.config)
     payload = {
         "schema_version": OPERATOR_CONFIG_SCHEMA,
         "nick": _bounded_nick(nick),
@@ -189,13 +199,25 @@ def _cargo() -> str:
     return executable
 
 
+def _cargo_target_dir(paths: OperatorPaths) -> Path:
+    return paths.repo / "tui" / "target"
+
+
 def _build_tui(paths: OperatorPaths, *, force: bool = False) -> bool:
     stale = _source_newer_than_binary(paths)
     if not force and not stale:
         return False
     print("[nexus] building Rust TUI release binary...", file=sys.stderr)
     subprocess.run(
-        [_cargo(), "build", "--manifest-path", str(paths.tui_manifest), "--release"],
+        [
+            _cargo(),
+            "build",
+            "--manifest-path",
+            str(paths.tui_manifest),
+            "--release",
+            "--target-dir",
+            str(_cargo_target_dir(paths)),
+        ],
         cwd=paths.repo,
         check=True,
     )
@@ -222,6 +244,8 @@ def _runtime_command(paths: OperatorPaths, extra: Sequence[str]) -> list[str]:
 
 
 def _health(paths: OperatorPaths) -> dict[str, object]:
+    """Run the real runtime health probe only from explicitly mutating paths."""
+
     completed = subprocess.run(
         _runtime_command(paths, []),
         cwd=paths.repo,
@@ -245,11 +269,23 @@ def _health(paths: OperatorPaths) -> dict[str, object]:
     return response
 
 
-def _package_version() -> str:
+def _declared_release_identity(paths: OperatorPaths) -> dict[str, object]:
     try:
-        return importlib.metadata.version("qsol-nexus-runtime")
-    except importlib.metadata.PackageNotFoundError:
-        return "not-installed"
+        raw = json.loads((paths.repo / "README4AI.md").read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError):
+        return {}
+    release = raw.get("release_identity") if isinstance(raw, dict) else None
+    return dict(release) if isinstance(release, dict) else {}
+
+
+def _declared_python_package_version(paths: OperatorPaths) -> str:
+    try:
+        with (paths.repo / "pyproject.toml").open("rb") as handle:
+            project = tomllib.load(handle).get("project", {})
+        version = project.get("version") if isinstance(project, dict) else None
+        return version if isinstance(version, str) else "unknown"
+    except (OSError, tomllib.TOMLDecodeError):
+        return "unknown"
 
 
 def _tui_version(paths: OperatorPaths) -> str:
@@ -295,13 +331,38 @@ def _doctor(paths: OperatorPaths, *, fix: bool) -> int:
     else:
         add("FAIL", "Python", f"requires >=3.11, found {sys.version.split()[0]}")
 
+    try:
+        _ensure_disjoint(paths)
+        add("OK", "Storage topology", "venv/config/world/trap/stenographer are disjoint")
+    except OperatorToolError as exc:
+        add("FAIL", "Storage topology", str(exc))
+
     if paths.python.is_file():
-        add("OK", "Virtualenv", str(paths.venv))
+        probe = subprocess.run(
+            [
+                str(paths.python),
+                "-P",
+                "-c",
+                "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}') ; "
+                "raise SystemExit(0 if sys.version_info >= (3, 11) else 1)",
+            ],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=10,
+            check=False,
+        )
+        if probe.returncode == 0:
+            add("OK", "Virtualenv", f"{paths.venv} (Python {probe.stdout.strip()})")
+        else:
+            add("FAIL", "Virtualenv", "existing virtualenv must use Python 3.11 or newer")
     else:
         add("FAIL", "Virtualenv", f"missing {paths.python}")
 
-    package_version = _package_version()
-    add("OK" if package_version != "not-installed" else "FAIL", "Runtime package", package_version)
+    if paths.runtime_cli.is_file():
+        add("OK", "Runtime package", f"CLI installed ({_declared_python_package_version(paths)})")
+    else:
+        add("FAIL", "Runtime package", f"missing {paths.runtime_cli}")
 
     for label, path in (
         ("WorldStore", paths.world),
@@ -322,17 +383,14 @@ def _doctor(paths: OperatorPaths, *, fix: bool) -> int:
             add("FAIL", label, str(exc))
 
     try:
-        if paths.config.exists():
-            if paths.config.is_symlink():
-                raise OperatorToolError("operator config is a symlink")
-            if fix and os.name != "nt" and _mode(paths.config) != 0o600:
+        info = _operator_config_stat(paths.config)
+        if info is None:
+            add("WARN", "Operator config file", "not created yet; setup/TUI will create it")
+        else:
+            if fix and os.name != "nt" and stat.S_IMODE(info.st_mode) != 0o600:
                 paths.config.chmod(0o600)
-            if os.name != "nt" and _mode(paths.config) != 0o600:
-                raise OperatorToolError(f"mode {_mode(paths.config):04o}; expected 0600")
             _load_config(paths)
             add("OK", "Operator config file", f"{paths.config} (closed/private)")
-        else:
-            add("WARN", "Operator config file", "not created yet; setup/TUI will create it")
     except (OSError, OperatorToolError) as exc:
         add("FAIL", "Operator config file", str(exc))
 
@@ -346,16 +404,24 @@ def _doctor(paths: OperatorPaths, *, fix: bool) -> int:
     if not any(name == "Rust TUI" for _, name, _ in rows):
         if paths.tui_binary.is_file() and not stale:
             add("OK", "Rust TUI", f"{_tui_version(paths)} release binary ready")
-        elif paths.tui_binary.is_file():
-            add("WARN", "Rust TUI", "release binary exists but source is newer")
-        else:
-            add("WARN", "Rust TUI", "release binary not built")
+        elif stale:
+            try:
+                _cargo()
+            except OperatorToolError as exc:
+                add("FAIL", "Rust TUI", f"build required but unavailable: {exc}")
+            else:
+                detail = (
+                    "release binary exists but source is newer; Cargo can rebuild it"
+                    if paths.tui_binary.is_file()
+                    else "release binary not built; Cargo is available"
+                )
+                add("WARN", "Rust TUI", detail)
 
     storage_failed = any(
-        level == "FAIL" and name in {"WorldStore", "Trap Base", "Stenographer"}
+        level == "FAIL" and name in {"WorldStore", "Trap Base", "Stenographer", "Storage topology"}
         for level, name, _ in rows
     )
-    if not storage_failed and paths.runtime_cli.is_file():
+    if fix and not storage_failed and paths.runtime_cli.is_file():
         try:
             health = _health(paths)
             protocol = health.get("protocol_version", health.get("protocol", "?"))
@@ -363,8 +429,10 @@ def _doctor(paths: OperatorPaths, *, fix: bool) -> int:
             add("OK", "Runtime health", f"protocol={protocol} runtime={runtime}")
         except (OSError, subprocess.SubprocessError, OperatorToolError) as exc:
             add("FAIL", "Runtime health", str(exc))
+    elif paths.runtime_cli.is_file():
+        add("WARN", "Runtime health", "not started by observational doctor; no stores were opened")
     else:
-        add("WARN", "Runtime health", "skipped until runtime/storage prerequisites are healthy")
+        add("WARN", "Runtime health", "skipped until runtime prerequisites are healthy")
 
     print("QSOL NEXUS DOCTOR")
     print("=" * 72)
@@ -403,7 +471,7 @@ def _launch_tui(paths: OperatorPaths, *, nick: str | None) -> int:
     _prepare_storage(paths)
     config = _load_config(paths)
     selected_nick = _bounded_nick(nick) if nick is not None else str(config["nick"])
-    if not paths.config.exists() or selected_nick != config["nick"]:
+    if _operator_config_stat(paths.config) is None or selected_nick != config["nick"]:
         _save_config(paths, selected_nick)
     _build_tui(paths)
     environment = dict(os.environ)
@@ -433,9 +501,10 @@ def _runtime_passthrough(paths: OperatorPaths, arguments: Sequence[str]) -> int:
 
 
 def _update(paths: OperatorPaths) -> int:
+    _ensure_disjoint(paths)
     print("[nexus] refreshing editable Python runtime...", file=sys.stderr)
     subprocess.run(
-        [str(paths.python), "-m", "pip", "install", "-e", str(paths.repo)],
+        [str(paths.python), "-P", "-m", "pip", "install", "-e", str(paths.repo)],
         cwd=paths.repo,
         check=True,
     )
@@ -446,14 +515,21 @@ def _update(paths: OperatorPaths) -> int:
 
 def _test(paths: OperatorPaths) -> int:
     python = subprocess.run(
-        [str(paths.python), "-m", "unittest", "discover", "-s", "tests", "-v"],
+        [str(paths.python), "-P", "-m", "unittest", "discover", "-s", "tests", "-v"],
         cwd=paths.repo,
         check=False,
     )
     if python.returncode != 0:
         return python.returncode
     rust = subprocess.run(
-        [_cargo(), "test", "--manifest-path", str(paths.tui_manifest)],
+        [
+            _cargo(),
+            "test",
+            "--manifest-path",
+            str(paths.tui_manifest),
+            "--target-dir",
+            str(_cargo_target_dir(paths)),
+        ],
         cwd=paths.repo,
         check=False,
     )
@@ -461,17 +537,15 @@ def _test(paths: OperatorPaths) -> int:
 
 
 def _version(paths: OperatorPaths, *, as_json: bool) -> int:
+    release = _declared_release_identity(paths)
     payload: dict[str, object] = {
         "operator_tooling": "nexus-operator-tooling/1",
-        "python_package": _package_version(),
+        "python_package": _declared_python_package_version(paths),
         "rust_tui": _tui_version(paths),
+        "protocol": release.get("protocol", "unknown"),
+        "runtime": release.get("runtime", "unknown"),
+        "runtime_health": "not_started_observational_command",
     }
-    try:
-        health = _health(paths)
-        payload["protocol"] = health.get("protocol_version", health.get("protocol"))
-        payload["runtime"] = health.get("runtime_version", health.get("runtime"))
-    except (OSError, subprocess.SubprocessError, OperatorToolError):
-        payload["runtime_health"] = "unavailable"
     if as_json:
         print(json.dumps(payload, indent=2, sort_keys=True))
     else:
@@ -502,7 +576,7 @@ def _parser() -> argparse.ArgumentParser:
     paths = sub.add_parser("paths", help="show resolved runtime and storage paths")
     paths.add_argument("--json", action="store_true")
 
-    version = sub.add_parser("version", help="show component versions")
+    version = sub.add_parser("version", help="show declared component versions without opening stores")
     version.add_argument("--json", action="store_true")
 
     sub.add_parser("update", help="refresh the editable runtime and rebuild the TUI")
