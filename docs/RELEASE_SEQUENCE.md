@@ -100,7 +100,7 @@ Then run the final release candidate rehearsal against the exact intended stable
 - Ark creation, verification and non-destructive restore;
 - final check that #50 introduced no regression against #49's hardening guarantees.
 
-Only after PR #51 is merged and the release-candidate head is green should NEXUS 2.0 be tagged/released as stable.
+PR #51 merged successfully and produced a green candidate, but the subsequent hostile post-merge Grok audit found release-blocking gaps outside the prior test boundary. Stable release therefore remains withheld until PR #52 closes those findings and re-certifies the exact candidate.
 
 ## PR #52 — Post-Merge Grok Audit Closure
 
@@ -154,4 +154,4 @@ A recipient should be able to run `cd LEAN4 && lake build` without editing theor
 
 ## Release principle
 
-> **Build the life and culture of the world, harden the substrate, add the social wall, document and release the exact stable system, prove selected invariants against that stable system, then archive the software + runnable proofs + reproducibility record together.**
+> **Build the life and culture of the world, harden the substrate, add the social wall, document the candidate, close independent audit findings before release, prove selected invariants against the stable system, then archive the software + runnable proofs + reproducibility record together.**
