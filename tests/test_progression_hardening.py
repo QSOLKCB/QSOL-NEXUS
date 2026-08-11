@@ -57,6 +57,47 @@ class ProgressionHardeningTests(unittest.TestCase):
             self.assertEqual(response["status"], "error")
             self.assertEqual(response["error"]["code"], "progression_play_requires_game_ref")
 
+    def test_generic_world_create_cannot_forge_progression_game_states(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            api = self._api(Path(temporary))
+            for object_type in ("monopoly_game_state", "life_paths_state"):
+                response = api.handle(
+                    {
+                        "operation": "world.create",
+                        "object_type": object_type,
+                        "payload": {},
+                        "provenance": {"actor": "nexus_game_engine", "reason": "forged"},
+                    }
+                )
+                self.assertEqual(response["status"], "error")
+
+    def test_copied_monopoly_payload_with_wrong_provenance_cannot_count(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            api = self._api(Path(temporary))
+            legitimate = api.handle(
+                {
+                    "operation": "game.monopoly.new",
+                    "seed": "provenance-table",
+                    "players": ["operator", "Alpha"],
+                    "human_players": ["operator"],
+                }
+            )
+            copied = api.world.create_object(
+                "monopoly_game_state",
+                legitimate["game"],
+                {"actor": "human_operator", "reason": "copied_payload"},
+            )
+            response = api.handle(
+                {
+                    "operation": "progression.play.record",
+                    "member": self._alpha(),
+                    "game_kind": "monopoly",
+                    "game_ref": copied.object_id,
+                }
+            )
+            self.assertEqual(response["status"], "error")
+            self.assertEqual(response["error"]["code"], "progression_game_provenance_invalid")
+
     def test_commission_sources_enter_model_context_before_completion(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             api = self._api(Path(temporary))
