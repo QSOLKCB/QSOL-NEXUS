@@ -11,7 +11,13 @@ from .civilization_gauntlet import (
     ReferenceCivilizationActor,
     civilization_gauntlet_policy_snapshot,
 )
+from .compute_epochs import (
+    COMPUTE_EPOCH_POLICY_ID,
+    compute_epoch_policy_snapshot,
+    current_compute_epoch,
+)
 from .council import CouncilCoordinator
+from .epoch_api import EpochNexusAPI
 from .guard import EqualityGuard
 from .scrub import SecretScrubber
 from .stenographer import CourtroomStenographer, StenographerRecord, StenographerStore
@@ -19,21 +25,23 @@ from .types import Ballot, CouncilMember, CouncilPolicy, Phase
 from .trap import DecoyAdmissionRequest, DecoyGate, TrapController, TrapStore
 from .world import WorldStore
 
-# PR #41 is the final public runtime overlay. It subclasses the existing
-# hardened provider-aware API and adds only the Civilization Gauntlet surface;
-# all prior control-plane, civic, auth, trap, and secret boundaries remain in
-# the implementation base.
-HardenedNexusAPI = CivilizationNexusAPI
-ProviderNexusAPI = CivilizationNexusAPI
-NexusAPI = CivilizationNexusAPI
+# PR #42 is the final public runtime overlay. It subclasses the Civilization
+# Gauntlet surface and adds Temporal Compute Equality, pinned epoch-admission
+# receipts, the Centennial Genesis Capsule and inert defensive Purgatory policy.
+# All prior control-plane, civic, auth, trap, evidence and secret boundaries
+# remain in the implementation base.
+HardenedNexusAPI = EpochNexusAPI
+ProviderNexusAPI = EpochNexusAPI
+NexusAPI = EpochNexusAPI
 
 # Preserve the established public import paths while keeping lower-level base
 # classes as implementation details beneath the final public runtime overlay.
-_api.NexusAPI = CivilizationNexusAPI
-_provider_api.ProviderNexusAPI = CivilizationNexusAPI
+_api.NexusAPI = EpochNexusAPI
+_provider_api.ProviderNexusAPI = EpochNexusAPI
 
 __all__ = [
     "Ballot",
+    "COMPUTE_EPOCH_POLICY_ID",
     "CivilizationGauntlet",
     "CivilizationGauntletError",
     "CivilizationNexusAPI",
@@ -43,6 +51,7 @@ __all__ = [
     "CourtroomStenographer",
     "DecoyAdmissionRequest",
     "DecoyGate",
+    "EpochNexusAPI",
     "EqualityGuard",
     "HardenedNexusAPI",
     "NexusAPI",
@@ -58,4 +67,6 @@ __all__ = [
     "TrapStore",
     "WorldStore",
     "civilization_gauntlet_policy_snapshot",
+    "compute_epoch_policy_snapshot",
+    "current_compute_epoch",
 ]
