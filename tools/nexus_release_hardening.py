@@ -48,12 +48,14 @@ REQUIRED_REHEARSALS: dict[str, tuple[str, ...]] = {
         "./nexus doctor",
         "./nexus demo",
     ),
-    "representative_world_ark_round_trip": (
-        "create persistent world state including AI progression/culture history",
+    "representative_pre_beta_upgrade_ark_round_trip": (
+        "create a representative pre-beta plain WorldStore with cognitive/evidence history",
+        "open it through current Continuity/NEXUS without changing legacy object refs",
+        "exercise current progression, culture and BBS Wall state on the upgraded world",
         "create and verify a World Ark",
         "restore into a new empty target",
-        "reopen NEXUS without mutable progression cache",
-        "reconstruct the same portfolio from immutable restored history",
+        "remove mutable progression cache and reopen current NEXUS",
+        "reconstruct the same legacy refs, progression portfolio, culture artifact and Wall history from immutable restored history",
     ),
 }
 REQUIRED_GROK_FINDING_IDS = frozenset(f"R{index}" for index in range(1, 13))
@@ -75,6 +77,7 @@ REQUIRED_CHECK_NAMES = frozenset(
         "rust-check",
         "rust-format",
         "fresh-archive-operator-rehearsal",
+        "representative-pre-beta-upgrade-ark-rehearsal",
         "candidate-tree-unchanged",
     }
 )
@@ -253,8 +256,9 @@ def _audit_matrix_data(matrix: Any, tests_root: Path) -> str:
 
     release_test = tests_root / "test_release_hardening.py"
     grok_test = tests_root / "test_release_hardening_grok_audit.py"
-    if release_test not in matched or grok_test not in matched:
-        raise ValueError("release composition tests are not covered by the hardening matrix")
+    upgrade_test = tests_root / "test_release_upgrade_rehearsal.py"
+    if release_test not in matched or grok_test not in matched or upgrade_test not in matched:
+        raise ValueError("release composition and upgrade/recovery tests are not covered by the hardening matrix")
     return (
         f"{len(seen)} required gates cover {len(matched)} test files; "
         f"{len(observed_rehearsals)} required rehearsals and 12/12 Grok findings pinned; "
@@ -509,6 +513,20 @@ def _operator_rehearsal() -> CheckResult:
         )
 
 
+def _pre_beta_upgrade_ark_rehearsal() -> CheckResult:
+    return _run(
+        "representative-pre-beta-upgrade-ark-rehearsal",
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            "tests.test_release_upgrade_rehearsal.PreBetaUpgradeArkRehearsalTests.test_representative_pre_beta_world_upgrades_and_ark_round_trips",
+            "-v",
+        ],
+        env={"PYTHONPATH": str(ROOT / "src")},
+    )
+
+
 def _adversarial_probes(iterations: int) -> CheckResult:
     with tempfile.TemporaryDirectory(prefix="nexus-adversary-report-") as temporary:
         report_path = Path(temporary) / "report.json"
@@ -655,6 +673,7 @@ def main() -> int:
             )
         else:
             checks.append(_operator_rehearsal())
+        checks.append(_pre_beta_upgrade_ark_rehearsal())
         checks.append(
             _worktree_audit(
                 "candidate-tree-unchanged",

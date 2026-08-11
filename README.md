@@ -488,8 +488,10 @@ The previous browser workbench remains preserved under [`archives/v1.0.0/`](arch
 
 Green CI does not by itself make NEXUS stable 2.0.
 
-The project still intends to complete the remaining architecture criteria in the roadmap before removing the alpha/beta qualification, including the broader instrument layer, persistent-world/migration hardening, formal release alignment, and beta-level security/adaptor hardening. The explicit alpha11 shared-world demonstration itself is already merged in PR #31.
+The implementation criteria listed in the roadmap are complete on the intended 2.0 feature surface through merged PR #50. The remaining stable-release gate is narrower and explicit: the exact merged PR #51 commit must pass the complete final release-candidate matrix with no unresolved substantive release-blocking review finding, and `v2.0.0` must then be created from that same commit.
 
-Until then:
+PR #52 Lean verification and PR #53 reproducibility/Zenodo publication are intentionally post-stable work; they do not retroactively create the 2.0 release.
+
+Until the stable tag exists:
 
 > **Build the smallest correct path. Keep the world durable. Keep the models equal. Keep claims typed.**

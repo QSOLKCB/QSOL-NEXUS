@@ -378,15 +378,22 @@ Current intent:
 world kernel             outbound: none
 receipt service          outbound: none
 Secret Scrubber          outbound: none
-JSONL mock control API   outbound: none
+JSONL control transport  outbound: none
 Ollama actor             loopback by default
-auth browser/device flow explicit provider descriptor only
+LM Studio actor          loopback by default
+AnythingLLM actor        loopback by default
+OpenAI-compatible local  loopback by default
+auth browser/setup flow  explicit provider descriptor only
 auth external helper     explicit operator configuration only
 xAI adapter              fixed api.x.ai HTTPS, explicit profile only
-other remote providers   not implemented
+OpenAI adapter           fixed api.openai.com HTTPS, explicit profile only
+Anthropic adapter        fixed api.anthropic.com HTTPS, explicit profile only
+Gemini adapter           fixed generativelanguage.googleapis.com HTTPS, explicit profile only
+Groq adapter             fixed api.groq.com HTTPS, explicit profile only
+Together adapter         fixed api.together.ai HTTPS, explicit profile only
 ```
 
-The JSONL control transport itself remains stdio. `auth.list` is local-only. `auth.test xai`, `models.list` for xAI, and an explicitly configured xAI actor can perform fixed-destination network I/O. A custom broker can also perform registered auth operations against descriptor-allowlisted endpoints. `system.health` reports that category even when the stock xAI descriptor is the only configured remote provider. Enrollment remains a direct `nexus auth add` action rather than a raw-secret JSONL operation.
+The JSONL control transport itself remains local stdio. `auth.list` is local-only. Provider connection tests, model discovery, and explicitly configured remote actors may perform fixed-destination HTTPS only through their admitted provider descriptors. Redirects and caller-supplied endpoint overrides are rejected by the stock remote transports. A custom broker may perform registered auth operations only against descriptor-allowlisted endpoints. Enrollment remains a direct `nexus auth add` action rather than a raw-secret JSONL operation.
 
 ## Logging
 

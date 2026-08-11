@@ -857,18 +857,33 @@ Then rerun the complete final release-candidate matrix against the exact intende
 
 Only after PR #51 is merged and the release-candidate head is green should NEXUS 2.0 be tagged/released as stable.
 
-## PR #52 — Formalization & Zenodo Publication
+## PR #52 — Lean 4 Formal Verification
 
-Post-release only:
+Post-stable verification only:
 
-- freeze the released source/version identity;
-- formalize architecture/protocol description;
-- prepare archival metadata;
-- bind exact release/tag/commit/checksums;
-- publish the formal NEXUS 2.0 record on Zenodo;
-- record the DOI back into project documentation later if required.
+- freeze the exact NEXUS 2.0 stable tag and commit as the runtime correspondence target;
+- rebase/update the parked Lean project against that exact stable runtime;
+- ship runnable Lean source with pinned toolchain/Lake metadata;
+- formalize selected constitutional and protocol invariants;
+- maintain theorem/lemma inventory, assumptions/non-claims, axiom audit and formal-gap ranking;
+- map each advertised theorem to the tested Python/Rust runtime surface;
+- require the complete selected theorem surface to pass `lake build` with no `sorry`, `admit`, or user-declared proof-substitute axioms.
 
-Zenodo formalization documents the released system. It must not silently redefine the already-released runtime or constitutional contract.
+PR #52 proves the selected formal obligations. It does not publish or silently redefine the already-released runtime.
+
+## PR #53 — Formalization + Reproducibility + Zenodo Publication
+
+Archival/publication phase only:
+
+- package the exact NEXUS 2.0 stable source/tag/commit identity;
+- include the reviewed runnable Lean source from the final PR #52 head without rewriting proofs;
+- bind exact release, formalization, toolchain and checksum identities;
+- include theorem inventory, assumptions/non-claims, axiom audit, formal-gap ranking and runtime correspondence;
+- include final release-hardening/test evidence and reproduction instructions;
+- generate a SHA-256 manifest for the publication payload;
+- publish the reproducibility/formalization record on Zenodo and record the final DOI.
+
+Zenodo formalization documents the released system and reviewed proof package. It must not silently redefine either artifact.
 
 ## 2.0 release criterion
 

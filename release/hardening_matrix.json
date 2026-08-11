@@ -78,7 +78,8 @@
         "test_release_hardening_grok_audit.py",
         "test_readme_contract.py",
         "test_wall*.py",
-        "test_release_candidate.py"
+        "test_release_candidate.py",
+        "test_release_upgrade_rehearsal.py"
       ]
     }
   ],
@@ -94,14 +95,16 @@
       ]
     },
     {
-      "id": "representative_world_ark_round_trip",
+      "id": "representative_pre_beta_upgrade_ark_round_trip",
       "required": true,
       "sequence": [
-        "create persistent world state including AI progression/culture history",
+        "create a representative pre-beta plain WorldStore with cognitive/evidence history",
+        "open it through current Continuity/NEXUS without changing legacy object refs",
+        "exercise current progression, culture and BBS Wall state on the upgraded world",
         "create and verify a World Ark",
         "restore into a new empty target",
-        "reopen NEXUS without mutable progression cache",
-        "reconstruct the same portfolio from immutable restored history"
+        "remove mutable progression cache and reopen current NEXUS",
+        "reconstruct the same legacy refs, progression portfolio, culture artifact and Wall history from immutable restored history"
       ]
     }
   ],

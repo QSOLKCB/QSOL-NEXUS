@@ -42,6 +42,8 @@ class NEXUS20ReleaseCandidateTests(unittest.TestCase):
         self.assertIn("PR #50 — The BBS Wall — MERGED", sequence)
         self.assertIn("PR #52 — Lean 4 Formal Verification", sequence)
         self.assertIn("PR #53 — Formalization + Reproducibility + Zenodo Publication", sequence)
+        self.assertIn("## PR #52 — Lean 4 Formal Verification", roadmap)
+        self.assertIn("## PR #53 — Formalization + Reproducibility + Zenodo Publication", roadmap)
         self.assertIn("LEAN 4 FORMAL VERIFICATION - PR #52", roadmap)
         self.assertIn("ZENODO - PR #53", roadmap)
 
@@ -56,6 +58,12 @@ class NEXUS20ReleaseCandidateTests(unittest.TestCase):
         self.assertNotIn("Rust CLI/TUI (future)", architecture)
         self.assertNotIn("xAI is the first fixed-destination remote adapter", architecture)
         self.assertNotIn("xAI is the first admitted remote adapter", security)
+        self.assertNotIn("other remote providers   not implemented", security)
+        self.assertIn("api.openai.com", security)
+        self.assertIn("api.anthropic.com", security)
+        self.assertIn("generativelanguage.googleapis.com", security)
+        self.assertIn("api.groq.com", security)
+        self.assertIn("api.together.ai", security)
         self.assertNotIn("remote providers other than xAI", threat)
         self.assertNotIn("when the executable protocol is implemented", claims)
         self.assertNotIn("version: 2.0.0-alpha0", citation)
@@ -74,6 +82,9 @@ class NEXUS20ReleaseCandidateTests(unittest.TestCase):
         release_gate = next(g for g in matrix["gates"] if g["id"] == "release_composition")
         self.assertIn("test_wall*.py", release_gate["patterns"])
         self.assertIn("test_release_candidate.py", release_gate["patterns"])
+        self.assertIn("test_release_upgrade_rehearsal.py", release_gate["patterns"])
+        rehearsal_ids = {item["id"] for item in matrix["rehearsals"]}
+        self.assertIn("representative_pre_beta_upgrade_ark_round_trip", rehearsal_ids)
         self.assertEqual(set(matrix["external_audit_closure"]["finding_ids"]), {f"R{i}" for i in range(1, 13)})
 
     def test_release_docs_and_wall_claims_are_coupled(self) -> None:
@@ -82,6 +93,8 @@ class NEXUS20ReleaseCandidateTests(unittest.TestCase):
         notes = (ROOT / "docs" / "RELEASE_NOTES_2.0.0.md").read_text(encoding="utf-8")
         checklist = (ROOT / "docs" / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
         self.assertIn("status:          release candidate", readme)
+        self.assertNotIn("broader instrument layer, persistent-world/migration hardening", readme)
+        self.assertIn("exact merged PR #51 commit must pass the complete final release-candidate matrix", readme)
         self.assertEqual(ai["bbs_wall"]["evidence_effect"], "none")
         self.assertEqual(ai["bbs_wall"]["authority_effect"], "none")
         self.assertIn("social memory", notes)
