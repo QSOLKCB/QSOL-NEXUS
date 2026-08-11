@@ -17,27 +17,31 @@ The envelope includes:
 - maximum JSONL line bytes;
 - maximum request nesting depth;
 - maximum structural node count;
-- maximum string length;
+- maximum individual string length;
+- maximum aggregate UTF-8 bytes across request keys and string values;
+- maximum request-key length;
 - maximum list/object cardinality;
 - bounded Council questions and direct messages;
 - at most 32 evidence references per Council/direct request;
 - a closed evidence-state vocabulary.
 
+The aggregate text-byte ceiling applies to direct `NexusAPI.handle` callers as well as the JSONL entrypoint, so a structurally valid request cannot evade the line budget by supplying many individually bounded strings.
+
 Oversized JSONL lines are consumed only through bounded reads and the input stream is resynchronized at the following newline. One malformed or oversized line therefore does not require allocating an unbounded Python string and does not poison the next request.
 
 ## Evidence-state vocabulary
 
-The legacy default remains `UNTESTED`. Additional admitted values mirror the machine-manifest epistemic vocabulary:
+The legacy runtime default remains uppercase `UNTESTED`. Additional admitted values are the exact lowercase epistemic labels published by `README4AI.md`:
 
 ```text
 UNTESTED
-OBSERVED
-EXECUTED
-VERIFIED
-INFERRED
-SIMULATED
-NOT_TESTED
-UNKNOWN
+observed
+executed
+verified
+inferred
+simulated
+not_tested
+unknown
 ```
 
 A Council vote or consensus result still does not promote evidence state.
@@ -55,6 +59,7 @@ High-confidence model-output secret handling is now consistent at the public/dir
 - `actor.chat` scrubs returned model text and reports separate `response_secret_scrub` events;
 - Ollama and loopback-local AI actors reject credential-shaped generated text before Council persistence;
 - local AI actors with a configured credential also reject exact reflection of that credential;
+- post-admission `failsafe_relief` and `civic_proxy` local-role wrappers enforce the same exact-configured-credential and credential-shape guard before their generated language can be persisted, falling back to the deterministic authoritative role on a guard failure;
 - Groq `gsk_...` and Hugging Face `hf_...` token shapes are recognized by `SecretScrubber`;
 - path-ish raw `OSError` text is not returned through public `adapter_unavailable` JSON.
 
