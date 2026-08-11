@@ -5,6 +5,8 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$ROOT"
 
 REPORT="${1:-formal-verification-report.txt}"
+STABLE_RUNTIME_COMMIT="${NEXUS_STABLE_RUNTIME_COMMIT:-unbound}"
+STABLE_RUNTIME_TAG_EXPECTED="${NEXUS_STABLE_RUNTIME_TAG:-unbound}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -94,7 +96,9 @@ fi
 {
   printf 'NEXUS FORMAL VERIFICATION REPORT\n'
   printf '================================\n'
-  printf 'commit: %s\n' "$COMMIT"
+  printf 'formalization_commit: %s\n' "$COMMIT"
+  printf 'stable_runtime_commit_expected: %s\n' "$STABLE_RUNTIME_COMMIT"
+  printf 'stable_runtime_tag_expected: %s\n' "$STABLE_RUNTIME_TAG_EXPECTED"
   printf 'toolchain: %s\n' "$(cat lean-toolchain)"
   printf 'lean: %s\n' "$(lean --version | head -n 1)"
   printf 'lake: %s\n' "$(lake --version | head -n 1)"

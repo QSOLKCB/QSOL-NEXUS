@@ -1,41 +1,64 @@
 # Runtime Correspondence
 
-This file maps abstract Lean invariants to the NEXUS implementation areas they are intended to model. It is a correspondence/audit aid, **not** a claim that the Python/Rust runtime has been extracted from Lean.
+This file maps abstract Lean invariants to the NEXUS implementation areas and regression families they are intended to model. It is a correspondence/audit aid, **not** a claim that the Python/Rust runtime has been extracted from Lean or that a Lean theorem automatically proves arbitrary implementation code.
 
-The table below is provisional on this future-#52 branch. It must be re-audited against the exact post-PR-#51 stable head before publication.
+## Frozen runtime target
 
-| Lean invariant | Runtime area | Regression area |
+PR #53 is based directly on the exact merged PR #52 commit:
+
+```text
+runtime commit: cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
+expected tag:   v2.0.0
+formal PR:      #53
+publication PR: #54
+```
+
+At creation of the PR #53 branch, `v2.0.0` had not yet been published. The dedicated Lean workflow therefore treats the tag binding as **PENDING** while the tag is absent, but fails if the tag exists and resolves anywhere other than the exact runtime commit above. PR #53 should not be promoted from draft/ready-for-review state until that binding is satisfied.
+
+The workflow also requires the runtime commit to remain an ancestor of the PR head and rejects any PR #53 change outside `formal/lean/**` and `.github/workflows/lean-formal.yml`. The formal-verification layer therefore cannot silently rewrite the runtime it claims to describe.
+
+## Correspondence table
+
+| Lean invariant | Runtime area | Regression evidence |
 |---|---|---|
-| `one_member_one_vote`, `every_seat_weight_one` | `src/nexus_runtime/council.py` and Council roster/admission layers | Council/runtime equality tests; civilization equality regressions |
-| provider/model-size independence | provider-neutral Council admission and compute-epoch layers | adapter, compute-epoch, Council hardening tests |
-| same-seat replacement preserves seat count | Failsafe/relief actor and Civic Due Process layers | failsafe and civic due-process regressions |
-| closed Six Hats ordering | Council cognitive phase sequencing | Council/cognitive-mode tests |
-| sealed phase immutability | committed Council/session and immutable WorldStore artifacts | Council persistence and WorldStore identity tests |
-| exact two-thirds threshold | Council consensus arithmetic | Council consensus and Trap utility-vote tests |
-| consensus does not promote evidence | evidence/Council separation and Civilization Gauntlet | civilization gauntlet and evidence-boundary tests |
-| Citizenship does not change vote weight | Citizenship Registry / Civic Due Process | citizenship and due-process tests |
-| civic proxy creates no extra vote | civic proxy / amendment direct-consent logic | constitutional amendment and civic tests |
-| progression creates no authority | `src/nexus_runtime/progression*.py` | `tests/test_progression*.py` |
-| culture creates no authority | `src/nexus_runtime/culture*.py` and game/culture overlays | culture/progression hardening tests |
-| redundancy creates no authority | WorldStore Continuity / Ark Protocol | `tests/test_world_continuity.py` |
-| compute growth does not change vote weight | Compute Epoch admission policy | `tests/test_compute_epochs.py` |
+| `one_member_one_vote`, `every_seat_weight_one` | `src/nexus_runtime/council.py` and Council roster/admission layers | `tests/test_runtime.py`, `tests/test_civilization_gauntlet.py` |
+| provider/model-size/model-identity independence | provider-neutral Council admission plus adapter and compute-epoch policy layers | `tests/test_third_party_adapters.py`, `tests/test_compute_epochs.py`, Council/runtime regressions |
+| `replacing_model_preserves_seat_weight`, `relief_replacement_does_not_create_extra_seat` | Failsafe relief and Civic Due Process same-seat replacement paths | `tests/test_failsafe.py`, `tests/test_civic_due_process.py`, `tests/test_civic_due_process_codex_regressions.py` |
+| closed Six Hats ordering and sealed phase immutability | Council cognitive-phase sequencing and committed phase/session state | `tests/test_hat_isolation.py`, `tests/test_runtime.py`, `tests/test_local_ai_sealed_ballots.py` |
+| exact two-thirds threshold | Council consensus arithmetic | `tests/test_runtime.py`, `tests/test_civilization_gauntlet.py` |
+| `consensus_does_not_promote_evidence` | Council/evidence separation and immutable runtime records | `tests/test_civilization_gauntlet.py`, `tests/test_runtime.py` |
+| `citizenship_does_not_change_vote_weight` | Citizenship Registry and Civic Due Process | `tests/test_citizenship.py`, `tests/test_civic_due_process.py` |
+| `civic_proxy_does_not_create_extra_vote` | civic-proxy and constitutional direct-consent paths | `tests/test_citizenship.py`, `tests/test_constitutional_amendments.py`, `tests/test_civic_due_process.py` |
+| `progression_creates_no_authority` | `src/nexus_runtime/progression*.py` and progression overlays | `tests/test_progression.py`, `tests/test_progression_codex_review.py`, `tests/test_progression_hardening.py` |
+| `culture_creates_no_authority` | culture/game/performance overlays | `tests/test_ai_culture.py`, `tests/test_ai_culture_codex_review.py`, `tests/test_ai_culture_hardening.py` |
+| `redundancy_creates_no_authority` | WorldStore Continuity / Ark Protocol | `tests/test_world_continuity.py`, `tests/test_release_upgrade_rehearsal.py` |
+| `capability_growth_does_not_change_vote_weight` | Compute Epoch admission policy | `tests/test_compute_epochs.py` |
 
-## Publication rule
+The table deliberately names implementation and test surfaces rather than claiming line-by-line refinement. Review of PR #53 must treat any mismatch between the abstract definition and the executable behavior as a correspondence gap, not as permission to reinterpret the runtime.
 
-Before the formalization is published or described as corresponding to NEXUS 2.0 stable:
+## Formal claims versus runtime claims
 
-1. rebase/merge the future-#52 branch onto the exact stable release head;
-2. re-audit every row above against concrete source symbols and tests;
-3. add stable commit/tag identifiers;
-4. run the complete Python/Rust release matrix and `lake build` on the same candidate;
-5. record any gap as a gap rather than silently treating the abstract theorem as runtime proof.
-
-The intended evidence chain is:
+The evidence chain is intentionally layered:
 
 ```text
 Lean theorem
   -> explicit formal definition
   -> documented runtime correspondence
-  -> executable Python/Rust regression
-  -> stable release commit
+  -> executable Python/Rust regression evidence
+  -> exact merged PR #52 runtime commit
+  -> v2.0.0 tag bound to that exact commit
 ```
+
+A successful Lean proof establishes the theorem for the Lean definitions. Runtime correspondence additionally requires source/test evidence for the implementation. Neither layer proves empirical claims about model quality or factual correctness of Council outputs.
+
+## PR #53 completion rule
+
+Before the formalization is described as corresponding to NEXUS 2.0 stable:
+
+1. `v2.0.0` must resolve to `cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a`;
+2. the PR #53 diff from that commit must remain formalization/workflow-only;
+3. every `A/R` theorem must retain an explicit runtime/test correspondence or remain marked with an `R` gap;
+4. the complete declaration/axiom audit must pass on the final PR #53 head under the pinned Lean toolchain;
+5. the final PR #53 commit SHA and audit output must be handed to PR #54 without rewriting theorem definitions or proofs.
+
+Any unresolved mismatch remains a documented gap. It is not silently upgraded into a formal verification claim.

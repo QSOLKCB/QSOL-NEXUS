@@ -13,7 +13,7 @@ Current count:
 Status notation follows `FORMAL_GAP_RANKING.md`:
 
 - `A` — formally established in Lean;
-- `A/R` — formally established, but exact NEXUS 2.0 stable-runtime correspondence is still pending the post-stable #52 re-audit.
+- `A/R` — formally established, but final NEXUS 2.0 stable-runtime/source/test/tag correspondence is still pending completion of the PR #53 audit.
 
 ## Nexus.Assumptions
 
@@ -103,4 +103,4 @@ Status notation follows `FORMAL_GAP_RANKING.md`:
 
 This file is descriptive; `AUDIT_MANIFEST.tsv` is the machine-checkable inventory. CI derives the theorem/lemma declarations from `Nexus/*.lean` and requires exact equality with the manifest.
 
-A successful audit therefore means that the published declaration count cannot quietly drift away from the checked source surface.
+A successful audit therefore means that the published declaration count cannot quietly drift away from the checked source surface. It does not, by itself, discharge any separate `R` runtime-correspondence obligation.

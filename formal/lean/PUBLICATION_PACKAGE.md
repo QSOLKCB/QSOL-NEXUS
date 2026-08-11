@@ -1,6 +1,6 @@
-# PR #53 Publication & Reproducibility Contract
+# PR #54 Publication & Reproducibility Contract
 
-This document defines the publication boundary that follows the NEXUS 2.0 stable release and PR #52 Lean 4 formal verification.
+This document defines the publication boundary that follows the NEXUS 2.0 stable release line and PR #53 Lean 4 formal verification.
 
 ## Fixed sequence
 
@@ -9,14 +9,16 @@ PR #50 — The BBS Wall
   ↓
 PR #51 — Final docs + release candidate + complete regression/recovery
   ↓
+PR #52 — Post-Merge Grok Audit Closure
+  ↓
 NEXUS 2.0 STABLE
   ↓
-PR #52 — Lean 4 Formal Verification
+PR #53 — Lean 4 Formal Verification
   ↓
-PR #53 — Formalization + Reproducibility + Zenodo Publication
+PR #54 — Formalization + Reproducibility + Zenodo Publication
 ```
 
-PR #52 proves selected protocol invariants. PR #53 does not invent new proofs or silently edit the reviewed formal model. It freezes and publishes the reviewed artifacts together with the stable runtime they describe.
+PR #53 proves selected protocol invariants in the explicit Lean model and audits their runtime correspondence. PR #54 does not invent new proofs or silently edit the reviewed formal model. It freezes and publishes the reviewed artifacts together with the exact stable runtime they describe.
 
 ## Mandatory publication payload
 
@@ -52,9 +54,15 @@ NEXUS-2.0-FORMALIZATION/
 └── SHA256SUMS
 ```
 
-The `LEAN4/` directory MUST be byte-for-byte derived from the reviewed PR #52 formalization head, except for publication metadata that cannot change theorem definitions or proofs.
+The `LEAN4/` directory MUST be byte-for-byte derived from the reviewed final PR #53 formalization head, except for publication metadata that cannot change theorem definitions or proofs.
 
-The `SOFTWARE/` archive MUST identify the actual NEXUS 2.0 stable tag and commit. A release candidate, moving branch head, or unrelated development snapshot is not an acceptable substitute.
+The `SOFTWARE/` archive MUST identify the actual NEXUS 2.0 stable tag and commit. For this release line, `v2.0.0` must resolve to the exact merged PR #52 runtime commit:
+
+```text
+cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
+```
+
+A release candidate, moving branch head, or unrelated development snapshot is not an acceptable substitute.
 
 ## Reproduction targets
 
@@ -73,7 +81,7 @@ bash audit.sh
 
 using the pinned `lean-toolchain` and obtain successful results without editing theorem sources or the audit manifest.
 
-PR #53 SHOULD also record the exact Lean compiler release asset digest used by CI so that a verifier can reproduce the compiler/toolchain boundary as well as the source tree.
+PR #54 SHOULD also record the exact Lean compiler release asset digest used by CI so that a verifier can reproduce the compiler/toolchain boundary as well as the source tree.
 
 ## Proof-integrity boundary
 
@@ -97,7 +105,7 @@ The publication must preserve the status vocabulary:
 - `E` — empirical rather than theorem-level;
 - `N` — explicit non-claim.
 
-Composite `A/R` entries may become plain `A` only after the exact stable source/test correspondence has been frozen and audited in #52.
+Composite `A/R` entries may become publication-facing plain `A` only after the exact stable source/test correspondence and `v2.0.0` tag binding have been frozen and audited in PR #53.
 
 ## Runtime correspondence
 
@@ -109,7 +117,7 @@ Each advertised runtime-correspondence entry must identify:
 4. runtime regression test(s);
 5. stable release tag;
 6. stable release commit;
-7. PR #52 formalization commit.
+7. PR #53 final formalization commit.
 
 This prevents the publication from claiming that a theorem about one formal model automatically proves an unrelated implementation.
 
@@ -132,11 +140,11 @@ The intended claim is:
 
 ## Chain of custody
 
-PR #53 must record and publish:
+PR #54 must record and publish:
 
 - NEXUS 2.0 stable tag;
-- NEXUS 2.0 stable commit SHA;
-- PR #52 final formalization commit SHA;
+- NEXUS 2.0 stable commit SHA (`cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a` for this release line);
+- PR #53 final formalization commit SHA;
 - Lean version;
 - official Lean release asset SHA-256;
 - theorem/lemma counts from the final manifest audit;

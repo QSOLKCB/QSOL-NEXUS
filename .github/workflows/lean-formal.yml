@@ -3,7 +3,7 @@ name: Lean 4 formal verification
 on:
   push:
     branches:
-      - agent/pr52-lean4-formal-verification
+      - agent/pr53-lean4-formal-verification
     paths:
       - "formal/lean/**"
       - ".github/workflows/lean-formal.yml"
@@ -21,6 +21,8 @@ permissions:
 env:
   LEAN_VERSION: "4.33.0"
   LEAN_LINUX_SHA256: "4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c"
+  NEXUS_STABLE_RUNTIME_COMMIT: "cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a"
+  NEXUS_STABLE_RUNTIME_TAG: "v2.0.0"
 
 jobs:
   lean:
@@ -28,6 +30,38 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Verify exact NEXUS 2.0 runtime base
+        shell: bash
+        run: |
+          set -euo pipefail
+          git cat-file -e "${NEXUS_STABLE_RUNTIME_COMMIT}^{commit}"
+          test "$(git merge-base "$NEXUS_STABLE_RUNTIME_COMMIT" HEAD)" = "$NEXUS_STABLE_RUNTIME_COMMIT"
+
+          unexpected="$({
+            git diff --name-only "$NEXUS_STABLE_RUNTIME_COMMIT" HEAD \
+              | grep -Ev '^(formal/lean/|\.github/workflows/lean-formal\.yml$)' || true
+          })"
+          if [[ -n "$unexpected" ]]; then
+            echo 'PR #53 changed files outside the formalization boundary:' >&2
+            printf '%s\n' "$unexpected" >&2
+            exit 1
+          fi
+
+          git fetch --force --tags origin
+          if git show-ref --verify --quiet "refs/tags/${NEXUS_STABLE_RUNTIME_TAG}"; then
+            tag_commit="$(git rev-list -n 1 "$NEXUS_STABLE_RUNTIME_TAG")"
+            if [[ "$tag_commit" != "$NEXUS_STABLE_RUNTIME_COMMIT" ]]; then
+              echo "${NEXUS_STABLE_RUNTIME_TAG} resolves to ${tag_commit}, expected ${NEXUS_STABLE_RUNTIME_COMMIT}" >&2
+              exit 1
+            fi
+            echo "stable tag binding: PASS (${NEXUS_STABLE_RUNTIME_TAG} -> ${NEXUS_STABLE_RUNTIME_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "::warning::${NEXUS_STABLE_RUNTIME_TAG} is not present yet; PR #53 remains pre-ready until it resolves to ${NEXUS_STABLE_RUNTIME_COMMIT}."
+            echo "stable tag binding: PENDING (${NEXUS_STABLE_RUNTIME_TAG} not present; expected ${NEXUS_STABLE_RUNTIME_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
+          fi
 
       - name: Early proof-hole and assumption scan
         shell: bash

@@ -6,11 +6,11 @@ The status vocabulary is intentionally terse and auditable:
 
 - **A — formally established.** A Lean theorem is present and kernel-checked.
 - **D — defined/targeted, proof outstanding.** The intended obligation is recorded but is not advertised as proved.
-- **R — runtime correspondence pending.** The abstract theorem exists, but the exact NEXUS 2.0 stable source/test binding has not yet been frozen.
+- **R — runtime correspondence pending.** The abstract theorem exists, but the exact stable source/test/tag binding has not yet been completely frozen.
 - **E — empirical.** The proposition is a matter for experiment or evaluation, not theorem proving from the present protocol definitions.
 - **N — explicit non-claim.** NEXUS does not assert the proposition.
 
-Statuses may be combined. `A/R`, for example, means the theorem is already proved in the abstract Lean model while the exact stable-runtime correspondence remains to be completed after NEXUS 2.0 is tagged.
+Statuses may be combined. `A/R`, for example, means the theorem is already proved in the abstract Lean model while the final stable-runtime correspondence or tag binding remains open.
 
 ## Current formally established surface
 
@@ -43,7 +43,7 @@ Statuses may be combined. `A/R`, for example, means the theorem is already prove
 
 ## D — formal targets not yet advertised as proved
 
-These are candidate obligations for the post-stable #52 formalization. Recording them here does **not** assert that they have already been proved.
+These are candidate obligations for PR #53 or a later formal extension. Recording them here does **not** assert that they have already been proved.
 
 | Status | Candidate obligation |
 |---|---|
@@ -53,21 +53,27 @@ These are candidate obligations for the post-stable #52 formalization. Recording
 | D | AI game progression credit requires a matching execution receipt for the claimed model, not merely an AI-labelled seat. |
 | D | Content-addressed progression/culture history cannot create constitutional authority through reconstruction or replay. |
 | D | WorldStore quorum selection and Ark restoration preserve selected immutable object identities under the formalized recovery model. |
-| D | BBS Wall history, once #50 is stable, remains social memory and cannot directly transition evidence or governance authority. |
+| D | BBS Wall history remains social memory and cannot directly transition evidence or governance authority. |
 
 ## R — stable-runtime correspondence work
 
-The current branch was cut before #50 and #51. Therefore the exact post-release binding remains intentionally open.
+The parked Lean project has now been transplanted onto a branch whose direct parent is the exact merged PR #52 runtime commit:
+
+```text
+cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
+```
+
+The formal branch does not alter runtime files. The remaining correspondence work is deliberately explicit because the `v2.0.0` tag had not yet been published when PR #53 was created.
 
 | Status | Correspondence obligation |
 |---|---|
-| R | Rebase/update the Lean model against the exact NEXUS 2.0 stable commit. |
-| R | Bind every `A/R` theorem to stable Python/Rust source locations. |
+| R | Confirm `v2.0.0` resolves to `cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a`. |
+| R | Bind every `A/R` theorem to stable Python/Rust source locations or retain the gap. |
 | R | Bind every `A/R` theorem to regression tests exercising the corresponding runtime invariant. |
-| R | Record the final stable tag, stable commit SHA, and final #52 formalization SHA. |
-| R | Re-run the theorem inventory and axiom audit on the final #52 head. |
+| R | Record the final PR #53 formalization commit SHA. |
+| R | Re-run the theorem inventory and axiom audit on the final PR #53 head. |
 
-An `A/R` item may be promoted to `A` in the publication-facing matrix only after this correspondence audit is complete.
+An `A/R` item may be promoted to publication-facing `A` only after the correspondence audit and stable-tag binding are complete. Abstract proof status itself is not downgraded by an open runtime correspondence item; the `/R` suffix records the separate implementation-binding obligation.
 
 ## E — empirical questions, not Lean theorems
 
@@ -96,10 +102,10 @@ These require experiments, datasets, metrics, and statistical analysis. They are
 The expected progression is bureaucratically explicit:
 
 ```text
-D  --proof completed + audited-->  A/R
-A/R --stable runtime correspondence frozen--> A
-E  --experiment performed--> remains empirical, with evidence recorded elsewhere
-N  --> remains a non-claim unless the project constitution is explicitly changed
+D   --proof completed + audited-->                  A/R
+A/R --runtime correspondence + tag binding frozen--> A
+E   --experiment performed-->                       remains empirical, with evidence recorded elsewhere
+N   -->                                               remains a non-claim unless the project constitution is explicitly changed
 ```
 
-No status is upgraded merely because documentation says so. `A` requires checked Lean source; runtime correspondence requires exact stable source/test references.
+No status is upgraded merely because documentation says so. `A` requires checked Lean source; runtime correspondence additionally requires exact stable source/test/tag references.

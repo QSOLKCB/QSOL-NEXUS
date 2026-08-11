@@ -24,7 +24,7 @@ That command checks manifest completeness, rejects proof holes and project-defin
 
 ## Bureaucratic proof surface
 
-The current branch maintains four separate records rather than collapsing everything into a single “verified” claim:
+The project maintains four separate records rather than collapsing everything into a single “verified” claim:
 
 - `THEOREMS_AND_LEMMAS.md` — exhaustive human-readable declaration inventory with full signatures;
 - `AUDIT_MANIFEST.tsv` — machine-readable declaration ledger checked against the Lean source;
@@ -62,8 +62,18 @@ The initial theorem set covers:
 
 See `THEOREMS_AND_LEMMAS.md`, `FORMAL_GAP_RANKING.md`, `AXIOM_AUDIT.md`, `ASSUMPTIONS_AND_NONCLAIMS.md`, and `RUNTIME_CORRESPONDENCE.md`.
 
-## Release status
+## PR #53 runtime boundary
 
-This branch is an early future-PR-#52 work branch cut after merged PR #49. It is runnable now, but the runtime-correspondence table must be re-audited against the exact stable NEXUS 2.0 head after PR #50 (Wall) and PR #51 (final release-candidate pass) land.
+PR #53 is the post-release-line formal-verification layer. This branch is based **directly** on the exact merged PR #52 commit:
 
-Items currently proved in the abstract model but awaiting that exact stable binding are marked `A/R`. The publication-facing status is not promoted to plain `A` until the stable source/test correspondence is frozen.
+```text
+cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
+```
+
+That commit is the repository's designated `v2.0.0` stable-tag candidate. At creation of this PR #53 branch, the `v2.0.0` tag had not yet been published, so the formalization does not pretend otherwise. Before PR #53 is marked ready for final merge, the tag-binding gate must confirm that `v2.0.0` resolves to that exact commit.
+
+The Lean source was transplanted from the parked `agent/pr52-lean4-formal-verification` work after PR #52 displaced the original numbering. The parked branch's final Lean CI was green before transplant. PR #53 preserves that proof surface and rebinds its documentation and CI to the merged #52 runtime.
+
+Items proved in the abstract model but still awaiting the final stable-tag/runtime correspondence freeze remain marked `A/R`. They are not promoted to plain `A` merely because the source compiles.
+
+PR #53 does **not** change NEXUS runtime semantics. Its dedicated workflow rejects branch changes outside `formal/lean/**` and `.github/workflows/lean-formal.yml` relative to the exact merged PR #52 runtime base.
