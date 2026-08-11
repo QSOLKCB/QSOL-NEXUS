@@ -1,0 +1,106 @@
+{
+  "schema": "nexus-release-hardening-matrix/1",
+  "milestone": "PR #49",
+  "profile": "pre_wall",
+  "stable_release": false,
+  "scope_through_pr": 48,
+  "principle": "hardening verifies boundaries; it does not create authority",
+  "gates": [
+    {
+      "id": "adapter_and_credentials",
+      "required": true,
+      "patterns": [
+        "test_auth.py",
+        "test_third_party*.py",
+        "test_xai_adapter.py",
+        "test_security_audit_remediation.py",
+        "test_alpha_security_hardening.py"
+      ]
+    },
+    {
+      "id": "council_and_authority",
+      "required": true,
+      "patterns": [
+        "test_runtime.py",
+        "test_council_chair.py",
+        "test_parallel_council.py",
+        "test_hat_isolation.py",
+        "test_failsafe.py"
+      ]
+    },
+    {
+      "id": "operator_bootstrap",
+      "required": true,
+      "patterns": [
+        "test_operator_tooling.py",
+        "test_release_wiring.py"
+      ]
+    },
+    {
+      "id": "worldstore_and_ark",
+      "required": true,
+      "patterns": [
+        "test_world_continuity.py",
+        "test_guardian*.py",
+        "test_stenographer*.py"
+      ]
+    },
+    {
+      "id": "progression_and_civic_life",
+      "required": true,
+      "patterns": [
+        "test_progression*.py"
+      ]
+    },
+    {
+      "id": "culture_rpg_and_psyche_chess",
+      "required": true,
+      "patterns": [
+        "test_ai_culture*.py",
+        "test_psyche_chess_rules.py"
+      ]
+    },
+    {
+      "id": "trap_and_civic_durability",
+      "required": true,
+      "patterns": [
+        "test_trap*.py",
+        "test_civic*.py",
+        "test_citizenship*.py"
+      ]
+    },
+    {
+      "id": "release_composition",
+      "required": true,
+      "patterns": [
+        "test_release_hardening.py",
+        "test_readme_contract.py"
+      ]
+    }
+  ],
+  "rehearsals": [
+    {
+      "id": "fresh_archive_operator_bootstrap",
+      "required": true,
+      "sequence": [
+        "archive candidate tree into a clean temporary directory",
+        "./nexus setup --nick ReleaseProbe",
+        "./nexus doctor",
+        "./nexus demo"
+      ]
+    },
+    {
+      "id": "representative_world_ark_round_trip",
+      "required": true,
+      "sequence": [
+        "create persistent world state including AI progression/culture history",
+        "create and verify a World Ark",
+        "restore into a new empty target",
+        "reopen NEXUS without mutable progression cache",
+        "reconstruct the same portfolio from immutable restored history"
+      ]
+    }
+  ],
+  "post_wall_rule": "PR #51 must rerun this complete matrix after PR #50 changes the final feature surface",
+  "authority_effect": "none"
+}
