@@ -33,11 +33,18 @@ NEXUS-2.0-FORMALIZATION/
 │   ├── lakefile.toml
 │   ├── Nexus.lean
 │   ├── Nexus/
+│   │   └── AxiomAudit.lean
+│   ├── audit.sh
+│   ├── AUDIT_MANIFEST.tsv
 │   ├── THEOREMS.md
+│   ├── THEOREMS_AND_LEMMAS.md
+│   ├── FORMAL_GAP_RANKING.md
+│   ├── AXIOM_AUDIT.md
 │   ├── ASSUMPTIONS_AND_NONCLAIMS.md
-│   └── RUNTIME_CORRESPONDENCE.md
+│   ├── RUNTIME_CORRESPONDENCE.md
+│   └── PUBLICATION_PACKAGE.md
 ├── VALIDATION/
-│   ├── lean-build-report.txt
+│   ├── formal-verification-report.txt
 │   ├── release-hardening-report.json
 │   └── test-summary.txt
 ├── REPRODUCIBILITY.md
@@ -49,24 +56,48 @@ The `LEAN4/` directory MUST be byte-for-byte derived from the reviewed PR #52 fo
 
 The `SOFTWARE/` archive MUST identify the actual NEXUS 2.0 stable tag and commit. A release candidate, moving branch head, or unrelated development snapshot is not an acceptable substitute.
 
-## Reproduction target
+## Reproduction targets
 
-A recipient must be able to extract the archive and run:
+A recipient must be able to extract the archive and run the minimal kernel build:
 
 ```bash
 cd LEAN4
 lake build
 ```
 
-using the pinned `lean-toolchain` and obtain a successful build without editing theorem sources.
+They must also be able to run the complete declaration/axiom audit:
+
+```bash
+bash audit.sh
+```
+
+using the pinned `lean-toolchain` and obtain successful results without editing theorem sources or the audit manifest.
 
 PR #53 SHOULD also record the exact Lean compiler release asset digest used by CI so that a verifier can reproduce the compiler/toolchain boundary as well as the source tree.
 
 ## Proof-integrity boundary
 
-The publication package MUST NOT contain theorem proof holes such as `sorry` or `admit`, and MUST NOT introduce user-declared axioms merely to make an advertised theorem compile.
+The publication package MUST NOT contain theorem proof holes such as `sorry` or `admit`, and MUST NOT introduce project-defined `axiom` or bare `constant` declarations merely to make an advertised theorem compile.
 
-Every theorem advertised in `THEOREMS.md` must be present in the shipped Lean source and accepted by the pinned Lean toolchain.
+Every `A` or `A/R` theorem/lemma advertised in `AUDIT_MANIFEST.tsv` must be present in the shipped Lean source and accepted by the pinned Lean toolchain.
+
+The shipped `Nexus/AxiomAudit.lean` must run Lean's `#print axioms` command across every advertised theorem. `formal-verification-report.txt` must record the resulting dependency audit.
+
+For the compact constitutional layer, imported dependencies outside the explicitly reviewed standard Lean set (`propext`, `Classical.choice`, `Quot.sound`, or no axioms) require a documented trust-boundary change before publication.
+
+## Formal gap/status record
+
+`FORMAL_GAP_RANKING.md` MUST remain part of the publication package so that unresolved or empirical matters are not silently upgraded into theorem claims.
+
+The publication must preserve the status vocabulary:
+
+- `A` — formally established;
+- `D` — proof obligation outstanding;
+- `R` — exact stable-runtime correspondence pending;
+- `E` — empirical rather than theorem-level;
+- `N` — explicit non-claim.
+
+Composite `A/R` entries may become plain `A` only after the exact stable source/test correspondence has been frozen and audited in #52.
 
 ## Runtime correspondence
 
@@ -108,17 +139,19 @@ PR #53 must record and publish:
 - PR #52 final formalization commit SHA;
 - Lean version;
 - official Lean release asset SHA-256;
+- theorem/lemma counts from the final manifest audit;
+- axiom-dependency audit output;
 - SHA-256 for every publication payload file;
 - the final Zenodo DOI.
 
-The checksums are publication integrity metadata. They create no NEXUS authority, evidence promotion, vote weight, Citizenship, or governance privilege.
+The checksums and audit records are publication integrity metadata. They create no NEXUS authority, evidence promotion, vote weight, Citizenship, or governance privilege.
 
 ## Handoff package
 
 The final research handoff is intentionally three-part:
 
 1. finished NEXUS 2.0 stable software;
-2. runnable Lean 4 source that an independent recipient can execute;
-3. an immutable Zenodo record containing the formalization, reproducibility metadata, validation evidence, hashes, and stable software reference.
+2. runnable Lean 4 source plus declaration/axiom audit that an independent recipient can execute;
+3. an immutable Zenodo record containing the formalization, gap/status record, reproducibility metadata, validation evidence, hashes, and stable software reference.
 
-The recipient should not need to trust screenshots, prose summaries, or a claim that the proofs were run elsewhere. They receive the source and can run the checker themselves.
+The recipient should not need to trust screenshots, prose summaries, or a claim that the proofs were run elsewhere. They receive the source, the audit machinery, the exact declaration ledger, and can run the checker themselves.
