@@ -47,7 +47,10 @@ def _repo_root() -> Path:
 
 def operator_paths(repo: Path | None = None) -> OperatorPaths:
     root = (repo or _repo_root()).resolve()
-    venv = root / ".venv"
+    if repo is None and os.environ.get("NEXUS_VENV"):
+        venv = Path(os.environ["NEXUS_VENV"]).expanduser().resolve()
+    else:
+        venv = root / ".venv"
     return OperatorPaths(
         repo=root,
         venv=venv,
@@ -116,6 +119,10 @@ def _load_config(paths: OperatorPaths) -> dict[str, object]:
         return {"schema_version": OPERATOR_CONFIG_SCHEMA, "nick": _default_nick()}
     if paths.config.is_symlink():
         raise OperatorToolError(f"refusing symlinked operator config: {paths.config}")
+    if os.name != "nt" and _mode(paths.config) != 0o600:
+        raise OperatorToolError(
+            f"operator config must have mode 0600: {paths.config} (found {_mode(paths.config):04o})"
+        )
     try:
         raw = json.loads(paths.config.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
@@ -130,6 +137,8 @@ def _load_config(paths: OperatorPaths) -> dict[str, object]:
 
 def _save_config(paths: OperatorPaths, nick: str) -> None:
     _ensure_private_directory(paths.config_dir)
+    if paths.config.is_symlink():
+        raise OperatorToolError(f"refusing symlinked operator config: {paths.config}")
     payload = {
         "schema_version": OPERATOR_CONFIG_SCHEMA,
         "nick": _bounded_nick(nick),
@@ -293,7 +302,7 @@ def _doctor(paths: OperatorPaths, *, fix: bool) -> int:
         ("WorldStore", paths.world),
         ("Trap Base", paths.trap),
         ("Stenographer", paths.stenographer),
-        ("Operator config", paths.config_dir),
+        ("Operator config dir", paths.config_dir),
     ):
         try:
             if fix:
@@ -306,6 +315,21 @@ def _doctor(paths: OperatorPaths, *, fix: bool) -> int:
             add("OK", label, f"{path} (private)")
         except (OSError, OperatorToolError) as exc:
             add("FAIL", label, str(exc))
+
+    try:
+        if paths.config.exists():
+            if paths.config.is_symlink():
+                raise OperatorToolError("operator config is a symlink")
+            if fix and os.name != "nt" and _mode(paths.config) != 0o600:
+                paths.config.chmod(0o600)
+            if os.name != "nt" and _mode(paths.config) != 0o600:
+                raise OperatorToolError(f"mode {_mode(paths.config):04o}; expected 0600")
+            _load_config(paths)
+            add("OK", "Operator config file", f"{paths.config} (closed/private)")
+        else:
+            add("WARN", "Operator config file", "not created yet; setup/TUI will create it")
+    except (OSError, OperatorToolError) as exc:
+        add("FAIL", "Operator config file", str(exc))
 
     stale = _source_newer_than_binary(paths)
     if stale and fix:
@@ -340,7 +364,7 @@ def _doctor(paths: OperatorPaths, *, fix: bool) -> int:
     print("QSOL NEXUS DOCTOR")
     print("=" * 72)
     for level, name, detail in rows:
-        print(f"[{level:<4}] {name:<18} {detail}")
+        print(f"[{level:<4}] {name:<20} {detail}")
     failures = sum(level == "FAIL" for level, _, _ in rows)
     warnings = sum(level == "WARN" for level, _, _ in rows)
     print("=" * 72)
@@ -478,6 +502,7 @@ def _parser() -> argparse.ArgumentParser:
 
     sub.add_parser("update", help="refresh the editable runtime and rebuild the TUI")
     sub.add_parser("test", help="run Python and Rust regression suites")
+    sub.add_parser("help", help="show this help message")
 
     runtime = sub.add_parser("runtime", help="pass arguments to the underlying Python NEXUS CLI")
     runtime.add_argument("args", nargs=argparse.REMAINDER)
@@ -485,10 +510,14 @@ def _parser() -> argparse.ArgumentParser:
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    parser = _parser()
+    args = parser.parse_args(argv)
     command = args.command or "tui"
     paths = operator_paths()
     try:
+        if command == "help":
+            parser.print_help()
+            return 0
         if command == "setup":
             return _setup(paths, nick=args.nick, build=not args.no_build)
         if command == "doctor":
