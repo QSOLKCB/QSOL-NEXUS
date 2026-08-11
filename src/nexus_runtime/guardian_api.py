@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .anarchy_mode import ANARCHY_WORLD_GEOMETRY  # noqa: F401 - import installs built-in mode/geometry
 from .control_plane import RequestBudgetError, validate_control_request
 from .epoch_api import EpochNexusAPI
 from .guardian import (
@@ -43,12 +42,27 @@ class GuardianNexusAPI(EpochNexusAPI):
             world_path = Path(world_root).absolute()
             guardian_root = world_path.with_name(f"{world_path.name}-guardian")
         if guardian_root is not None:
-            self._ensure_disjoint_storage_roots(self.auth.root, guardian_root, "auth", "guardian")
+            self._ensure_disjoint_storage_roots(
+                self.auth.root,
+                guardian_root,
+                "auth",
+                "guardian",
+            )
             if world_root is not None:
-                self._ensure_disjoint_storage_roots(world_root, guardian_root, "world", "guardian")
+                self._ensure_disjoint_storage_roots(
+                    world_root,
+                    guardian_root,
+                    "world",
+                    "guardian",
+                )
             trap_root = kwargs.get("trap_root")
             if trap_root is not None:
-                self._ensure_disjoint_storage_roots(trap_root, guardian_root, "trap", "guardian")
+                self._ensure_disjoint_storage_roots(
+                    trap_root,
+                    guardian_root,
+                    "trap",
+                    "guardian",
+                )
             stenographer_root = kwargs.get("stenographer_root")
             if stenographer_root is not None:
                 self._ensure_disjoint_storage_roots(
@@ -62,7 +76,9 @@ class GuardianNexusAPI(EpochNexusAPI):
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation") if isinstance(request, dict) else None
         request_id = request.get("request_id") if isinstance(request, dict) else None
-        safe_request_id = request_id if self._request_id_is_preflight_safe(request_id) else None
+        safe_request_id = (
+            request_id if self._request_id_is_preflight_safe(request_id) else None
+        )
 
         if isinstance(operation, str) and operation in _GUARDIAN_OPERATIONS:
             try:
@@ -99,9 +115,12 @@ class GuardianNexusAPI(EpochNexusAPI):
 
     @staticmethod
     def _is_anarchy_runtime_request(request: object) -> bool:
+        if not isinstance(request, dict):
+            return False
+        operation = request.get("operation")
         return (
-            isinstance(request, dict)
-            and request.get("operation") in {"actor.chat", "council.run"}
+            isinstance(operation, str)
+            and operation in {"actor.chat", "council.run"}
             and request.get("mode", "analytical") == ANARCHY_MODE_ID
         )
 
@@ -139,21 +158,6 @@ class GuardianNexusAPI(EpochNexusAPI):
             }
         return enriched
 
-    def _validated_scar_verification_ref(self, verification_ref: str) -> str:
-        verification = self.guardian.store.inspect(verification_ref)
-        if verification.record_type != "guardian_reconciliation":
-            raise GuardianError(
-                "guardian_invalid_request",
-                "verification_ref must identify a Guardian reconciliation",
-            )
-        body = verification.payload["body"]
-        if body.get("outcome") != "matched":
-            raise GuardianError(
-                "guardian_invalid_request",
-                "substrate scar requires a successful matched replay",
-            )
-        return verification_ref
-
     def _handle_guardian_operation(
         self,
         request: dict[str, Any],
@@ -163,20 +167,35 @@ class GuardianNexusAPI(EpochNexusAPI):
         try:
             if operation == "guardian.policy":
                 self._require_exact_fields(request, operation, set())
-                response: dict[str, Any] = {"status": "ok", "policy": guardian_policy_snapshot()}
+                response: dict[str, Any] = {
+                    "status": "ok",
+                    "policy": guardian_policy_snapshot(),
+                }
             elif operation == "guardian.status":
                 self._require_exact_fields(request, operation, set())
                 response = self.guardian.status()
             elif operation == "guardian.list":
-                self._require_exact_fields(request, operation, {"limit", "record_type"})
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"limit", "record_type"},
+                )
                 limit = request.get("limit", 100)
                 record_type = request.get("record_type")
                 if record_type is not None and not isinstance(record_type, str):
-                    raise GuardianError("guardian_invalid_request", "record_type must be text when supplied")
-                response = self.guardian.store.list_records(limit=limit, record_type=record_type)
+                    raise GuardianError(
+                        "guardian_invalid_request",
+                        "record_type must be text when supplied",
+                    )
+                response = self.guardian.store.list_records(
+                    limit=limit,
+                    record_type=record_type,
+                )
             elif operation == "guardian.inspect":
                 self._require_exact_fields(request, operation, {"record_ref"})
-                record = self.guardian.store.inspect(self._require_str(request, "record_ref"))
+                record = self.guardian.store.inspect(
+                    self._require_str(request, "record_ref")
+                )
                 response = {"status": "ok", "record": record.as_dict()}
             elif operation == "guardian.verify":
                 self._require_exact_fields(request, operation, set())
@@ -188,7 +207,10 @@ class GuardianNexusAPI(EpochNexusAPI):
                     {"observation_ref", "expected_status", "expected_error_code"},
                 )
                 expected_error_code = request.get("expected_error_code")
-                if expected_error_code is not None and not isinstance(expected_error_code, str):
+                if expected_error_code is not None and not isinstance(
+                    expected_error_code,
+                    str,
+                ):
                     raise GuardianError(
                         "guardian_invalid_request",
                         "expected_error_code must be text or null",
@@ -208,7 +230,10 @@ class GuardianNexusAPI(EpochNexusAPI):
                     self._require_str(request, "defect_ref"),
                     summary=self._require_str(request, "summary"),
                     invariant=self._require_str(request, "invariant"),
-                    regression_fixture=self._require_str(request, "regression_fixture"),
+                    regression_fixture=self._require_str(
+                        request,
+                        "regression_fixture",
+                    ),
                 )
             elif operation == "guardian.scar.record":
                 self._require_exact_fields(
@@ -216,16 +241,17 @@ class GuardianNexusAPI(EpochNexusAPI):
                     operation,
                     {"defect_ref", "repair_ref", "verification_ref"},
                 )
-                verification_ref = self._validated_scar_verification_ref(
-                    self._require_str(request, "verification_ref")
-                )
                 response = self.guardian.record_scar(
                     self._require_str(request, "defect_ref"),
                     self._require_str(request, "repair_ref"),
-                    verification_ref,
+                    self._require_str(request, "verification_ref"),
                 )
             else:  # pragma: no cover - closed dispatch set
-                return self._error(request_id, "unknown_operation", "operation is not supported")
+                return self._error(
+                    request_id,
+                    "unknown_operation",
+                    "operation is not supported",
+                )
         except GuardianError as exc:
             return self._error(request_id, exc.code, str(exc))
         except (KeyError, TypeError, ValueError, RecursionError) as exc:
