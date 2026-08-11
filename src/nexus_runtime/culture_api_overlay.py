@@ -3,8 +3,15 @@ from __future__ import annotations
 from typing import Any
 
 from .control_plane import RequestBudgetError, validate_control_request
+from .culture import LONG_SHIFT_NARRATION_OBJECT_TYPE, PERFORMANCE_OBJECT_TYPE
 from .culture_api import CultureNexusAPI as _BaseCultureNexusAPI
-from .progression import CULTURE_DEDICATED_ACTIVITY_IDS, CULTURE_PLAY_ACTIVITY_IDS, ProgressionError
+from .progression import (
+    CULTURE_ARTIFACT_ACTIVITY_IDS,
+    CULTURE_DEDICATED_ACTIVITY_IDS,
+    CULTURE_PLAY_ACTIVITY_IDS,
+    ProgressionError,
+    ProgressionService,
+)
 from .trap import TrapError
 
 
@@ -14,8 +21,56 @@ _CULTURE_PLAY_KIND_TO_ACTIVITY = {
 }
 
 
+class _CultureProgressionService(ProgressionService):
+    """Adapter used by the culture API to bind runtime-created artifacts."""
+
+    def record_activity(self, *, actor_id: str, model_id: str, activity_id: str, prompt: str, output: str, source_refs: list[str], commission_ref: str | None = None):
+        if activity_id not in CULTURE_ARTIFACT_ACTIVITY_IDS:
+            return super().record_activity(
+                actor_id=actor_id,
+                model_id=model_id,
+                activity_id=activity_id,
+                prompt=prompt,
+                output=output,
+                source_refs=source_refs,
+                commission_ref=commission_ref,
+            )
+        if commission_ref is not None:
+            raise ProgressionError(
+                "progression_dedicated_surface_required",
+                "culture artifact activities do not use generic progression commissions",
+            )
+        expected_type = LONG_SHIFT_NARRATION_OBJECT_TYPE if activity_id == "narrate_long_shift" else PERFORMANCE_OBJECT_TYPE
+        matching: list[str] = []
+        for ref in source_refs:
+            try:
+                obj = self.world.inspect(ref)
+            except KeyError:
+                continue
+            if obj.object_type == expected_type and obj.provenance == {"actor": "nexus", "subsystem": "ai_culture"}:
+                matching.append(ref)
+        if len(matching) != 1:
+            raise ProgressionError(
+                "progression_culture_artifact_mismatch",
+                "culture contribution must bind exactly one matching runtime-created culture artifact",
+            )
+        return self.record_culture_activity(
+            actor_id=actor_id,
+            model_id=model_id,
+            activity_id=activity_id,
+            prompt=prompt,
+            output=output,
+            artifact_ref=matching[0],
+            source_refs=list(source_refs),
+        )
+
+
 class CultureNexusAPI(_BaseCultureNexusAPI):
     """Final PR #48 overlay binding culture activity into hardened progression."""
+
+    def __init__(self, world_root=None, **kwargs: Any) -> None:
+        super().__init__(world_root, **kwargs)
+        self.progression = _CultureProgressionService(self.world)
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation") if isinstance(request, dict) else None
