@@ -18,14 +18,18 @@ on:
 permissions:
   contents: read
 
+env:
+  LEAN_VERSION: "4.33.0"
+  LEAN_LINUX_SHA256: "4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c"
+
 jobs:
   lean:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Reject proof holes
+      - name: Reject proof holes and user-declared axioms
         shell: bash
         run: |
           set -euo pipefail
@@ -34,12 +38,38 @@ jobs:
             exit 1
           fi
 
-      - name: Build and kernel-check Lean project
-        uses: leanprover/lean-action@38fbc41a8c28c4cbaec22d7f7de508ec2e7c0dd9
-        with:
-          lake-package-directory: formal/lean
-          build: true
-          test: false
-          lint: false
-          use-mathlib-cache: false
-          leanchecker: true
+      - name: Install pinned official Lean release
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="/tmp/lean-${LEAN_VERSION}-linux.tar.zst"
+          dist="/tmp/nexus-lean-dist"
+          curl -fsSL --retry 5 --retry-delay 2 \
+            "https://github.com/leanprover/lean4/releases/download/v${LEAN_VERSION}/lean-${LEAN_VERSION}-linux.tar.zst" \
+            -o "$archive"
+          printf '%s  %s\n' "$LEAN_LINUX_SHA256" "$archive" | sha256sum -c -
+          mkdir -p "$dist"
+          tar --zstd -xf "$archive" -C "$dist"
+          printf '%s\n' "$dist/lean-${LEAN_VERSION}-linux/bin" >> "$GITHUB_PATH"
+
+      - name: Verify pinned toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          lean --version
+          lake --version
+          test "$(cat formal/lean/lean-toolchain)" = "leanprover/lean4:v${LEAN_VERSION}"
+
+      - name: Build and kernel-check complete theorem surface
+        shell: bash
+        working-directory: formal/lean
+        run: |
+          set -euo pipefail
+          lake build
+
+      - name: Compile aggregate theorem module directly
+        shell: bash
+        working-directory: formal/lean
+        run: |
+          set -euo pipefail
+          lake env lean Nexus/Main.lean
