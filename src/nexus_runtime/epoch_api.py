@@ -7,6 +7,7 @@ from .civilization_api import CivilizationNexusAPI
 from .compute_epochs import (
     compute_epoch_policy_snapshot,
     current_compute_epoch,
+    pinned_current_compute_epoch,
     small_model_threshold_millions,
 )
 from .control_plane import RequestBudgetError, validate_control_request
@@ -57,6 +58,17 @@ class EpochNexusAPI(CivilizationNexusAPI):
                     "Compute Epoch admission receipts require validated runtime operations",
                 )
 
+        if operation == "council.run":
+            # Resolve the wall clock exactly once. Provider admission, the
+            # returned Chair summary and the durable admission receipt all see
+            # this same ContextVar-pinned epoch even if a slow live Council
+            # happens to cross an epoch boundary while inference is running.
+            with pinned_current_compute_epoch():
+                response = super().handle(request)
+                if response.get("status") == "ok":
+                    return self._attach_epoch_admission_receipt(response)
+                return response
+
         if isinstance(operation, str) and operation in _EPOCH_OPERATIONS:
             safe_request_id = request_id if self._request_id_is_preflight_safe(request_id) else None
             try:
@@ -82,8 +94,6 @@ class EpochNexusAPI(CivilizationNexusAPI):
             operations = list(response.get("operations", []))
             operations.extend(sorted(_EPOCH_OPERATIONS))
             response["operations"] = sorted(set(operations))
-        elif operation == "council.run" and response.get("status") == "ok":
-            response = self._attach_epoch_admission_receipt(response)
         return response
 
     def _attach_epoch_admission_receipt(self, response: dict[str, Any]) -> dict[str, Any]:
