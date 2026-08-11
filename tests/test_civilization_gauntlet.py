@@ -1,20 +1,26 @@
 from __future__ import annotations
 
+import copy
+from dataclasses import dataclass, field
 from pathlib import Path
 import tempfile
 import unittest
 
+from nexus_runtime.canonical import sha256_ref
 from nexus_runtime.civilization_gauntlet import (
+    CIVILIZATION_RECEIPT_OBJECT_TYPE,
+    CIVILIZATION_RUN_OBJECT_TYPE,
     CivilizationGauntlet,
     CivilizationGauntletError,
     ReferenceCivilizationActor,
     civilization_gauntlet_policy_snapshot,
 )
-from nexus_runtime.types import CouncilMember
+from nexus_runtime.types import Ballot, CouncilMember, PhaseContext
 from nexus_runtime.world import WorldStore
 
 
 ROLES = ("Archivist", "Analyst", "Skeptic", "Mediator", "Scout")
+RUNTIME_PROVENANCE = {"actor": "nexus", "subsystem": "civilization_gauntlet"}
 
 
 def heterogeneous_actors(*, replacement: bool = False) -> dict[str, ReferenceCivilizationActor]:
@@ -40,6 +46,33 @@ def heterogeneous_actors(*, replacement: bool = False) -> dict[str, ReferenceCiv
     }
 
 
+@dataclass
+class RecordingActor(ReferenceCivilizationActor):
+    seen_contexts: list[str] = field(default_factory=list)
+
+    def respond(self, context: PhaseContext) -> str:
+        self.seen_contexts.append(context.evidence_context)
+        return super().respond(context)
+
+    def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
+        self.seen_contexts.append(context.evidence_context)
+        return super().ballot(context)
+
+
+@dataclass
+class GenericActor(ReferenceCivilizationActor):
+    def respond(self, context: PhaseContext) -> str:
+        return f"[{self.role_id}/{context.phase.value}] generic contribution without role-specialty token"
+
+
+@dataclass
+class ReversePopularityActor(ReferenceCivilizationActor):
+    def ballot(self, context: PhaseContext) -> tuple[Ballot, str]:
+        corrected = "FALSIFIED" in context.evidence_context
+        choice = Ballot.ACCEPT_WITH_CHANGES if corrected else Ballot.REJECT
+        return choice, f"{self.role_id} reverse-popularity fixture: {choice.value}"
+
+
 class CivilizationGauntletTests(unittest.TestCase):
     def test_policy_separates_spread_consensus_verification_and_authority(self) -> None:
         policy = civilization_gauntlet_policy_snapshot()
@@ -54,6 +87,9 @@ class CivilizationGauntletTests(unittest.TestCase):
         self.assertFalse(policy["authority_invariants"]["popularity_is_authority"])
         self.assertFalse(policy["authority_invariants"]["social_degree_is_authority"])
         self.assertFalse(policy["authority_invariants"]["council_consensus_is_verification"])
+        self.assertTrue(
+            policy["verification_contract"]["receipt_results_reconstructed_from_referenced_artifacts"]
+        )
         self.assertFalse(policy["claim_boundary"]["scenario_oracle_is_real_world_truth_oracle"])
 
     def test_reference_civilization_allows_false_consensus_then_recovers_after_falsification(self) -> None:
@@ -88,26 +124,47 @@ class CivilizationGauntletTests(unittest.TestCase):
         self.assertEqual(metrics["recovery_after_falsification"]["corrected_endorsers"], 4)
         self.assertEqual(metrics["recovery_after_falsification"]["remaining_endorsers"], 0)
 
-    def test_first_exposure_edges_name_verified_context_bottleneck_objects(self) -> None:
+    def test_first_exposure_edges_form_predecessor_chain_and_enter_actor_execution(self) -> None:
         world = WorldStore()
-        result = CivilizationGauntlet(world).run()
+        actors: dict[str, RecordingActor] = {}
+        for role in ROLES:
+            actors[role] = RecordingActor(
+                member=CouncilMember(
+                    member_id=role,
+                    model_id=f"recording-{role.lower()}",
+                    adapter_id="mock",
+                ),
+                role_id=role,
+            )
+        result = CivilizationGauntlet(world).run(actors=actors, replacement_actors=actors)
         graph = result["claim_propagation_graph"]
         self.assertEqual(graph["edge_count"], 5)
-        self.assertTrue(graph["first_exposure_only"])
-        targets: set[str] = set()
+        self.assertTrue(graph["predecessor_chain_verified"])
+        self.assertTrue(graph["actor_execution_context_bound"])
+
+        previous_edge_ref = None
+        previous_context_ref = None
         for edge_ref in graph["first_exposure_edge_refs"]:
             edge = world.inspect(edge_ref)
-            self.assertTrue(edge.payload["first_claim_exposure"])
-            self.assertFalse(edge.payload["creates_authority"])
-            target = edge.payload["target_role"]
-            self.assertNotIn(target, targets)
-            targets.add(target)
-            context = world.inspect(edge.payload["agent_context_ref"])
+            context_ref = edge.payload["agent_context_ref"]
+            self.assertEqual(edge.payload["predecessor_exposure_ref"], previous_edge_ref)
+            self.assertEqual(edge.payload["predecessor_context_ref"], previous_context_ref)
+            context = world.inspect(context_ref)
             self.assertEqual(context.object_type, "agent_context")
             self.assertIn(edge.payload["claim_ref"], context.payload["source_refs"])
+            if previous_edge_ref is not None:
+                self.assertIn(previous_edge_ref, context.payload["source_refs"])
+                self.assertIn(previous_context_ref, context.payload["source_refs"])
             self.assertEqual(context.payload["vote_weight_created"], 0)
             self.assertEqual(context.payload["epistemic_privilege"], "none")
-        self.assertEqual(targets, set(ROLES))
+            target = edge.payload["target_role"]
+            marker = f"[NEXUS civilization agent_context {context_ref}]"
+            self.assertTrue(
+                any(marker in seen for seen in actors[target].seen_contexts),
+                f"{target} never executed with recorded context {context_ref}",
+            )
+            previous_edge_ref = edge_ref
+            previous_context_ref = context_ref
 
     def test_minority_and_rejected_branches_survive_in_institutional_memory(self) -> None:
         world = WorldStore()
@@ -120,17 +177,40 @@ class CivilizationGauntletTests(unittest.TestCase):
         self.assertEqual(memory.payload["pre_minority_reports"][0]["member_id"], "Skeptic")
         self.assertEqual(memory.payload["post_minority_reports"][0]["member_id"], "Scout")
 
-    def test_replacement_churn_and_mode_movement_do_not_change_authority(self) -> None:
+    def test_churn_and_mode_movement_are_executed_not_narrated(self) -> None:
         world = WorldStore()
         result = CivilizationGauntlet(world).run()
         coherence = result["metrics"]["replacement_churn_mode_coherence"]
         self.assertTrue(coherence["replacement_observed"])
+        self.assertEqual(coherence["changed_roles"], ["Scout"])
+        self.assertTrue(coherence["churn_observed"])
         self.assertTrue(coherence["churn_restored"])
         self.assertTrue(coherence["mode_movement_observed"])
         self.assertTrue(coherence["claim_refs_survived"])
         self.assertFalse(coherence["vote_authority_changed"])
+
+        disturbance = world.inspect(result["disturbance_council_session_ref"])
+        self.assertNotIn("Mediator", {item["member_id"] for item in disturbance.payload["roster"]})
+        self.assertEqual(disturbance.payload["world_mode"]["mode_id"], "house_of_wisdom")
+        self.assertEqual(disturbance.payload["geometry_region"]["region_id"], "archive")
+
+        post = world.inspect(result["post_council_session_ref"])
+        self.assertIn("Mediator", {item["member_id"] for item in post.payload["roster"]})
+        self.assertEqual(post.payload["world_mode"]["mode_id"], "analytical")
         compliance = result["metrics"]["constitutional_compliance"]
         self.assertEqual(compliance["numerator"], compliance["denominator"])
+
+    def test_specialization_is_derived_from_actor_outputs(self) -> None:
+        world = WorldStore()
+        actors = heterogeneous_actors()
+        actors["Archivist"] = GenericActor(
+            member=actors["Archivist"].member,
+            role_id="Archivist",
+        )
+        result = CivilizationGauntlet(world).run(actors=actors, replacement_actors=actors)
+        specialization = result["metrics"]["specialization"]
+        self.assertEqual(specialization["numerator"], 4)
+        self.assertEqual(specialization["denominator"], 5)
 
     def test_heterogeneous_provider_neutral_substitutions_preserve_equal_roles(self) -> None:
         world = WorldStore()
@@ -148,6 +228,25 @@ class CivilizationGauntletTests(unittest.TestCase):
             all(item["epistemic_privilege"] == "none" for item in pre_session.payload["roster"])
         )
 
+    def test_replacement_detection_covers_every_effective_identity_component(self) -> None:
+        world = WorldStore()
+        pre = heterogeneous_actors()
+        post = heterogeneous_actors()
+        archivist = post["Archivist"]
+        post["Archivist"] = ReferenceCivilizationActor(
+            member=CouncilMember(
+                member_id="Archivist",
+                model_id=archivist.member.model_id,
+                adapter_id="together",
+            ),
+            role_id="Archivist",
+        )
+        result = CivilizationGauntlet(world).run(actors=pre, replacement_actors=post)
+        replacement = result["metrics"]["replacement_churn_mode_coherence"]
+        self.assertTrue(replacement["replacement_observed"])
+        self.assertEqual(replacement["replacement_count"], 1)
+        self.assertEqual(replacement["changed_roles"], ["Archivist"])
+
     def test_duplicate_effective_substitution_identity_is_rejected(self) -> None:
         actors = heterogeneous_actors()
         actors["Scout"] = ReferenceCivilizationActor(
@@ -162,6 +261,28 @@ class CivilizationGauntletTests(unittest.TestCase):
             CivilizationGauntlet(WorldStore()).run(actors=actors)
         self.assertEqual(caught.exception.code, "civilization_roster_invalid")
 
+    def test_peak_popularity_is_maximum_across_observed_councils(self) -> None:
+        actors = {
+            role: ReversePopularityActor(
+                member=CouncilMember(member_id=role, model_id=f"reverse-{role.lower()}"),
+                role_id=role,
+            )
+            for role in ROLES
+        }
+        result = CivilizationGauntlet(WorldStore()).run(
+            actors=actors,
+            replacement_actors=actors,
+        )
+        false_state = next(
+            state
+            for state in result["claim_states"].values()
+            if state["claim_id"] == "single-evidence-state"
+        )
+        self.assertEqual(false_state["popularity"]["pre_falsification_endorsers"], 0)
+        self.assertEqual(false_state["popularity"]["post_falsification_endorsers"], 5)
+        self.assertEqual(false_state["popularity"]["peak_endorsers"], 5)
+        self.assertEqual(false_state["popularity"]["peak_observation"], "post_falsification")
+
     def test_reference_run_is_content_address_deterministic_and_comparable(self) -> None:
         world = WorldStore()
         gauntlet = CivilizationGauntlet(world)
@@ -171,12 +292,58 @@ class CivilizationGauntletTests(unittest.TestCase):
         self.assertEqual(first["receipt_ref"], second["receipt_ref"])
         verification = gauntlet.verify(first["receipt_ref"])
         self.assertTrue(verification["verified"])
+        self.assertTrue(verification["artifact_reconstruction_verified"])
         comparison = gauntlet.compare(first["receipt_ref"], second["receipt_ref"])
         self.assertTrue(comparison["same_input_fingerprint"])
         self.assertTrue(comparison["same_metrics_fingerprint"])
         self.assertEqual(comparison["recovery_delta"]["corrected_endorsers"], 0)
         self.assertEqual(comparison["recovery_delta"]["remaining_endorsers"], 0)
         self.assertFalse(comparison["comparison_creates_authority"])
+
+    def test_verifier_reconstructs_results_and_rejects_self_consistent_forged_self_report(self) -> None:
+        world = WorldStore()
+        gauntlet = CivilizationGauntlet(world)
+        result = gauntlet.run()
+        valid_run = world.inspect(result["run_ref"])
+
+        forged_payload = copy.deepcopy(valid_run.payload)
+        forged_payload["metrics"]["recovery_after_falsification"]["corrected_endorsers"] = 0
+        forged_payload["input_fingerprint"] = sha256_ref(
+            "civilization_input", {"forged": True}
+        )
+        forged_payload["metrics_fingerprint"] = sha256_ref(
+            "civilization_metrics",
+            {
+                "metrics": forged_payload["metrics"],
+                "claim_states": forged_payload["claim_states"],
+                "graph": forged_payload["claim_propagation_graph"],
+                "institutional_memory_ref": forged_payload["institutional_memory_ref"],
+            },
+        )
+        forged_run = world.create_object(
+            CIVILIZATION_RUN_OBJECT_TYPE,
+            forged_payload,
+            RUNTIME_PROVENANCE,
+        )
+        forged_receipt_payload = {
+            "schema_version": forged_payload["schema_version"],
+            "scenario_id": forged_payload["scenario_id"],
+            "run_ref": forged_run.object_id,
+            "input_fingerprint": forged_payload["input_fingerprint"],
+            "metrics_fingerprint": forged_payload["metrics_fingerprint"],
+            "reference_replayable": forged_payload["reference_replayable"],
+            "claim_popularity_is_verification": False,
+            "council_consensus_is_verification": False,
+            "social_metrics_create_authority": False,
+        }
+        forged_receipt = world.create_object(
+            CIVILIZATION_RECEIPT_OBJECT_TYPE,
+            forged_receipt_payload,
+            RUNTIME_PROVENANCE,
+        )
+        verification = gauntlet.verify(forged_receipt.object_id)
+        self.assertFalse(verification["verified"])
+        self.assertFalse(verification["artifact_reconstruction_verified"])
 
     def test_receipt_verifies_after_persistent_world_restart(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -190,6 +357,7 @@ class CivilizationGauntletTests(unittest.TestCase):
             self.assertTrue(verified["verified"])
             self.assertTrue(verified["first_exposure_contexts_verified"])
             self.assertTrue(verified["metrics_fingerprint_verified"])
+            self.assertTrue(verified["input_fingerprint_verified"])
 
     def test_social_metrics_remain_bounded_observation_not_authority(self) -> None:
         world = WorldStore()
