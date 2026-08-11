@@ -23,14 +23,18 @@ jobs:
   pre-wall-hardening:
     runs-on: ubuntu-latest
     timeout-minutes: 35
-    env:
-      HARDENING_REPORT: ${{ runner.temp }}/nexus-release-hardening-${{ github.run_id }}-${{ github.run_attempt }}.json
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 1
           persist-credentials: false
+
+      - name: Initialize job-unique hardening report path
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'HARDENING_REPORT=%s\n' "$RUNNER_TEMP/nexus-release-hardening-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json" >> "$GITHUB_ENV"
 
       - name: Toolchain versions
         shell: bash

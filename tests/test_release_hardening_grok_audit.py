@@ -190,8 +190,8 @@ class GrokPR49AuditClosureTests(unittest.TestCase):
         workflow = (ROOT / ".github" / "workflows" / "release-hardening.yml").read_text(
             encoding="utf-8"
         )
-        self.assertIn("${{ runner.temp }}", workflow)
-        self.assertIn("${{ github.run_id }}", workflow)
+        self.assertIn("$RUNNER_TEMP/nexus-release-hardening-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json", workflow)
+        self.assertIn("$GITHUB_ENV", workflow)
         self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", workflow)
         self.assertNotIn("/tmp/nexus-release-hardening.json", workflow)
         self.assertNotIn("fetch-depth: 0", workflow)
