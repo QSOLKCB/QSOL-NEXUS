@@ -14,6 +14,8 @@ This directory is the publication staging surface for PR #54. It packages the al
 | Lean | `4.33.0` |
 | Lean Linux archive SHA-256 | `4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c` |
 | Advertised theorem / lemma surface | `24 / 0` |
+| Reserved Zenodo DOI | `10.5281/zenodo.21895577` |
+| Publication date | `2026-08-12` |
 
 The reviewed proof head and the GitHub merge commit are intentionally recorded separately. The publication bundle derives `LEAN4/` from the reviewed PR #53 head, while the merged commit records how that reviewed head entered `main`.
 
@@ -28,7 +30,7 @@ PR #54 adds publication machinery only:
 - PR #52 release-hardening evidence and PR #53 formal-verification evidence;
 - a fresh standalone Lean audit executed against the extracted archive;
 - SHA-256 inventory generation and verification;
-- Zenodo-ready metadata and a short independent-recipient handoff guide.
+- Zenodo-bound metadata and a short independent-recipient handoff guide.
 
 It does **not** modify the NEXUS 2.0 stable tag, runtime semantics, theorem definitions, or theorem proofs.
 
@@ -48,20 +50,20 @@ publication/dist/
 └── NEXUS-2.0-FORMALIZATION.tar.gz.sha256
 ```
 
-CI performs the same build and uploads those files as the `NEXUS-2.0-FORMALIZATION` workflow artifact.
+CI performs the same build and uploads those files as the `NEXUS-2.0-FORMALIZATION` workflow artifact. The builder reads publication metadata from the recorded publication commit rather than from uncommitted working-tree bytes, verifies the PR #52 and PR #53 merge-parent chain, and normalizes archive modes so identical inputs reproduce the same tarball across caller umasks.
 
 ## Zenodo binding
 
-`IDENTITY.env` deliberately begins with:
+The publication identity is finalized as:
 
 ```text
-ZENODO_DOI=PENDING
-ZENODO_PUBLICATION_DATE=PENDING
+ZENODO_DOI=10.5281/zenodo.21895577
+ZENODO_PUBLICATION_DATE=2026-08-12
 ```
 
-That is the expected state while PR #54 remains a draft and the Zenodo deposit is being created. The draft bundle is sufficient to create the record and reserve a DOI.
+Those values are committed in `IDENTITY.env`, substituted into `ZENODO_METADATA.md`, and embedded in `CHAIN_OF_CUSTODY.json` in the generated archive. The publication workflow rejects malformed values and, for a ready-for-review PR, still fails closed if either value is ever reverted to `PENDING`.
 
-Before PR #54 is marked ready for final review, replace those two values with the reserved Zenodo DOI and publication date. The publication workflow hard-fails a non-draft PR while either value remains `PENDING`.
+The upload candidate generated from the final reviewed PR #54 head is therefore expected to carry this DOI and publication date as part of its frozen archival identity.
 
 ## Claim boundary
 
