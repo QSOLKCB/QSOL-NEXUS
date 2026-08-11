@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from .control_plane import RequestBudgetError, validate_control_request
+from .game_monopoly import inspect_monopoly
 from .life_paths import (
     apply_life_paths_choice,
     inspect_life_paths,
@@ -22,6 +23,7 @@ from .progression import (
 )
 from .stenographer import StenographerError
 from .trap import TrapError
+from .world import WorldObject
 from .world_continuity import WorldContinuityError
 from .world_continuity_api import WorldContinuityNexusAPI
 
@@ -51,6 +53,8 @@ _PROGRESSION_MUTATIONS = frozenset(
         "life.paths.act",
     }
 )
+
+_PROGRESSION_PLAY_OBJECT_TYPES = frozenset({"monopoly_game_state", "life_paths_state"})
 
 
 class ProgressionNexusAPI(WorldContinuityNexusAPI):
@@ -82,6 +86,29 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
                 f"source_refs must contain at most {MAX_SOURCE_REFS} unique references",
             )
         return list(raw)
+
+    def _validated_play_game(self, game_kind: str, game_ref: str) -> WorldObject:
+        if game_kind == "monopoly":
+            game = inspect_monopoly(self.world, game_ref)
+            allowed_reasons = {"new_monopoly_game", "monopoly_transition"}
+        elif game_kind == "life_paths":
+            game = inspect_life_paths(self.world, game_ref)
+            allowed_reasons = {"new_life_paths_game", "life_paths_choice"}
+        else:
+            raise ProgressionError(
+                "progression_invalid_play",
+                "game_kind must be monopoly or life_paths",
+            )
+        if (
+            game.provenance.get("actor") != "nexus_game_engine"
+            or game.provenance.get("reason") not in allowed_reasons
+            or set(game.provenance) != {"actor", "reason"}
+        ):
+            raise ProgressionError(
+                "progression_game_provenance_invalid",
+                "play progression requires a validated NEXUS game-engine state",
+            )
+        return game
 
     def _handle_progression_operation(
         self,
@@ -250,18 +277,14 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
                     operation,
                     {"member", "game_kind", "game_ref"},
                 )
-                actor = self._activity_actor(request.get("member"))
                 game_kind = self._require_str(request, "game_kind")
                 game_ref = self._require_str(request, "game_ref")
+                self._validated_play_game(game_kind, game_ref)
+                actor = self._activity_actor(request.get("member"))
                 activity_id = {
                     "monopoly": "play_monopoly",
                     "life_paths": "play_life_paths",
-                }.get(game_kind)
-                if activity_id is None:
-                    raise ProgressionError(
-                        "progression_invalid_play",
-                        "game_kind must be monopoly or life_paths",
-                    )
+                }[game_kind]
                 recorded = self._run_real_mutation(
                     lambda: self.progression.record_play(
                         actor_id=actor.member.member_id,
@@ -366,11 +389,14 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
 
         if operation == "world.create" and isinstance(request, dict):
             object_type = request.get("object_type")
-            if isinstance(object_type, str) and object_type in PROGRESSION_RESERVED_OBJECT_TYPES:
+            if isinstance(object_type, str) and (
+                object_type in PROGRESSION_RESERVED_OBJECT_TYPES
+                or object_type in _PROGRESSION_PLAY_OBJECT_TYPES
+            ):
                 return self._error(
                     safe_request_id,
                     "invalid_request",
-                    "reserved progression objects require validated progression operations",
+                    "reserved progression/game objects require validated runtime operations",
                 )
 
         response = super().handle(request)
