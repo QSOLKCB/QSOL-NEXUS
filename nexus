@@ -7,13 +7,44 @@ VENV="${NEXUS_VENV:-$ROOT/.venv}"
 PYTHON="${NEXUS_BOOTSTRAP_PYTHON:-python3}"
 VENV_PYTHON="$VENV/bin/python"
 STAMP="$VENV/.nexus-editable-install"
+COMMAND="${1:-tui}"
 
 fail() {
   printf '[nexus] %s\n' "$*" >&2
   exit 2
 }
 
-command -v "$PYTHON" >/dev/null 2>&1 || fail "python3 is required to bootstrap NEXUS"
+command -v "$PYTHON" >/dev/null 2>&1 || fail "python3 is required to run NEXUS tooling"
+"$PYTHON" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
+  || fail "Python 3.11 or newer is required"
+
+export NEXUS_REPO_ROOT="$ROOT"
+
+# Read-only diagnostic surfaces must remain observational on a fresh clone.
+# They can execute the module directly from src/ without creating a venv.
+readonly_tool=0
+case "$COMMAND" in
+  doctor)
+    readonly_tool=1
+    for arg in "$@"; do
+      if [[ "$arg" == "--fix" ]]; then
+        readonly_tool=0
+        break
+      fi
+    done
+    ;;
+  paths|version|-h|--help|help)
+    readonly_tool=1
+    ;;
+esac
+
+if (( readonly_tool )); then
+  if [[ -x "$VENV_PYTHON" && -x "$VENV/bin/nexus" ]]; then
+    exec "$VENV_PYTHON" -m nexus_runtime.operator_cli "$@"
+  fi
+  export PYTHONPATH="$ROOT/src${PYTHONPATH:+:$PYTHONPATH}"
+  exec "$PYTHON" -m nexus_runtime.operator_cli "$@"
+fi
 
 if [[ ! -x "$VENV_PYTHON" ]]; then
   printf '[nexus] creating virtual environment at %s\n' "$VENV" >&2
@@ -35,5 +66,4 @@ if (( needs_install )); then
   : > "$STAMP"
 fi
 
-export NEXUS_REPO_ROOT="$ROOT"
 exec "$VENV_PYTHON" -m nexus_runtime.operator_cli "$@"
