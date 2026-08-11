@@ -520,11 +520,13 @@ All contributions remain in one world lineage.
 
 A Council version should demonstrate heterogeneous remote providers and at least one local/open model with equal votes.
 
-## PR #37–#41 — Grounded institutional cognition and durability interruption
+## PR #37–#42 — Grounded institutional cognition, durability and temporal equality
 
 Research inspiration: *Project Sid: Many-agent simulations toward AI civilization* (arXiv:2411.00114v1), particularly its work on action awareness, concurrent modules, information bottlenecks, specialization, collective rules, and cultural propagation. NEXUS adapts those ideas to its own deterministic, content-addressed and equality-preserving substrate rather than adopting PIANO wholesale.
 
 PR #39 deliberately interrupts the research sequence for a Stenographer durability defect found during local build-agent testing. Availability/integrity false positives outrank roadmap aesthetics; the constitutional and civilization milestones move down one PR without changing their intended scope.
+
+PR #42 is a second deliberate interruption. Whatever generic provider/onboarding work would otherwise have followed PR #41 is deferred rather than allowed to consume #42. Temporal Compute Equality, the Centennial Genesis Capsule and the defensive Purgatory policy take #42 as one coherent constitutional-evolution milestone. The previously-next provider work remains TBA after #42.
 
 ### PR #37 — Action Awareness & World Reconciliation
 
@@ -584,7 +586,7 @@ Core invariant:
 
 ### PR #40 — Constitutional Amendment Protocol
 
-Implemented / targeted in PR #40:
+Implemented in PR #40:
 
 - [x] let Citizens and admitted models propose bounded constitutional amendments as immutable objects without granting proposal authors ratification authority;
 - [x] separate proposal generation, deterministic admission, Council deliberation binding, sealed direct ballot, unanimity calculation, ratification, enactment verification and activation;
@@ -605,23 +607,50 @@ Core invariant:
 
 ### PR #41 — Civilization Gauntlet & Claim Propagation Graph
 
-Planned:
+Implemented in PR #41:
 
-- [ ] add a long-horizon many-agent benchmark over one persistent NEXUS world;
-- [ ] measure specialization, claim propagation, false-belief propagation, recovery after injected false state, constitutional compliance, provenance survival and institutional memory;
-- [ ] track the first immutable exposure edge by which a claim enters another agent's usable context;
-- [ ] distinguish claim popularity, Council consensus and evidence verification as separate state variables;
-- [ ] preserve minority branches and rejected hypotheses rather than deleting losing narratives;
-- [ ] support deterministic/mock reference civilizations and optional heterogeneous real-model substitutions;
-- [ ] report whether model replacement, agent churn or mode movement damages world coherence;
-- [ ] add bounded social/role metrics without turning popularity, connectivity or scale into authority;
-- [ ] produce machine-readable gauntlet receipts suitable for regression comparison.
+- [x] add a long-horizon many-agent benchmark over one persistent NEXUS world;
+- [x] measure specialization, claim propagation, false-belief propagation, recovery after injected false state, constitutional compliance, provenance survival and institutional memory;
+- [x] track the first immutable exposure edge by which a claim enters another agent's usable context;
+- [x] distinguish claim popularity, Council consensus and evidence verification as separate state variables;
+- [x] preserve minority branches and rejected hypotheses rather than deleting losing narratives;
+- [x] support deterministic/mock reference civilizations and optional heterogeneous real-model substitutions;
+- [x] report whether model replacement, agent churn or mode movement damages world coherence;
+- [x] add bounded social/role metrics without turning popularity, connectivity or scale into authority;
+- [x] produce machine-readable gauntlet receipts suitable for regression comparison.
 
 Core invariant:
 
 > **Track how beliefs spread without confusing spread, consensus or confidence with truth.**
 
-This sequence intentionally takes the experimental machinery from many-agent civilization research while retaining NEXUS's stricter separation between observation, evidence, coordination and authority.
+### PR #42 — Temporal Compute Equality, Centennial Genesis Capsule & Purgatory
+
+Implemented / targeted in PR #42:
+
+- [x] define `nexus-compute-epoch-v1` with explicit UTC genesis, fixed 1,461-day epochs and exact rational growth;
+- [x] evolve the protected-small Chair ceiling from the PR #34 20B base as `20B * 2^epoch` without floating-point arithmetic;
+- [x] retain the existing 3–5 seat geometry, closed/open slot caps, one-seat/one-vote, vote weight `1` and epistemic privilege `none`;
+- [x] keep old/small models eligible by raising ceilings rather than introducing a moving minimum size;
+- [x] pin one Compute Epoch for the entire live Council request so a run cannot straddle two admission policies;
+- [x] create runtime-owned epoch-admission receipts and verify historical admission against the recorded epoch rather than today's clock;
+- [x] retain the legacy `nexus-council-chair/1` primary schema while publishing an epoch extension marker for compatibility;
+- [x] add `NEXUS-GENESIS-CAPSULE-0001`, bound to Compute Epoch 25 and a pinned canonical payload hash;
+- [x] preserve the creator, project provenance, 2026 rationale and equality reminder without granting delayed root or voting authority;
+- [x] expose deterministic capsule status/reveal operations with no Council vote or administrator override in the activation rule;
+- [x] bind the supplied 32-chapter Cursed YAML examination corpus by SHA-256 as inert text;
+- [x] define objective defensive Purgatory triggers and deterministic chapter selection for already-contained actors;
+- [x] make Purgatory non-executing and explicitly unable to grant access, release quarantine, change evidence, create a vote or mutate the Constitution;
+- [x] add regression coverage for epoch boundaries, request pinning, future admission expansion, old-model eligibility, capsule activation/fingerprint, Purgatory determinism and epoch-receipt verification.
+
+Core invariants:
+
+> **Time may enlarge the chair. It may not enlarge the vote.**
+
+> **Capability grows with time; equality does not expire with it.**
+
+> **Contain first. Confuse second.**
+
+This sequence intentionally takes the experimental machinery from many-agent civilization research while retaining NEXUS's stricter separation between observation, evidence, coordination and authority. PR #42 extends that separation through technological time: compute capacity may move, but constitutional equality does not.
 
 ## 2.0-beta — Hardening
 
@@ -708,4 +737,6 @@ CONSTITUTIONAL AMENDMENT PROTOCOL - PR #40
   ↓
 CIVILIZATION GAUNTLET / CLAIM PROPAGATION GRAPH - PR #41
   ↓
-GPT / Claude / Gemini / Grok / etc. - TBA
+COMPUTE EPOCHS / GENESIS CAPSULE / PURGATORY - PR #42
+  ↓
+GPT / Claude / Gemini / Grok / etc. - TBA (deferred by PR #42)
