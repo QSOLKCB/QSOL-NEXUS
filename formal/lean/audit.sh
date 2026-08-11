@@ -7,6 +7,7 @@ cd "$ROOT"
 REPORT="${1:-formal-verification-report.txt}"
 STABLE_RUNTIME_COMMIT="${NEXUS_STABLE_RUNTIME_COMMIT:-unbound}"
 STABLE_RUNTIME_TAG_EXPECTED="${NEXUS_STABLE_RUNTIME_TAG:-unbound}"
+FORMALIZATION_COMMIT="${NEXUS_FORMALIZATION_COMMIT:-}"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -46,6 +47,23 @@ fi
 
 THEOREMS="$(awk -F '\t' '$1 == "theorem" { n += 1 } END { print n + 0 }' "$ACTUAL")"
 LEMMAS="$(awk -F '\t' '$1 == "lemma" { n += 1 } END { print n + 0 }' "$ACTUAL")"
+
+# The declaration manifest and the #print axioms audit surface are separate
+# files, so verify their target sets exactly before trusting the axiom report.
+AXIOM_EXPECTED="$TMP/axiom-expected.txt"
+AXIOM_ACTUAL="$TMP/axiom-actual.txt"
+awk -F '\t' '
+  NR > 1 && ($1 == "A" || $1 == "A/R") && ($2 == "theorem" || $2 == "lemma") {
+    print "Nexus." $4
+  }
+' AUDIT_MANIFEST.tsv | sort > "$AXIOM_EXPECTED"
+
+sed -nE 's/^[[:space:]]*#print[[:space:]]+axioms[[:space:]]+([^[:space:]]+)[[:space:]]*$/\1/p' \
+  Nexus/AxiomAudit.lean | sort > "$AXIOM_ACTUAL"
+
+if ! diff -u "$AXIOM_EXPECTED" "$AXIOM_ACTUAL"; then
+  fail 'Nexus/AxiomAudit.lean does not exactly cover every advertised manifest declaration'
+fi
 
 BUILD_LOG="$TMP/lake-build.log"
 MAIN_LOG="$TMP/main.log"
@@ -88,15 +106,19 @@ if [[ -s "$UNEXPECTED" ]]; then
   fail 'axiom allowlist exceeded'
 fi
 
-COMMIT="unbound-archive"
+CHECKOUT_COMMIT="unbound-archive"
 if command -v git >/dev/null 2>&1 && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-  COMMIT="$(git rev-parse HEAD)"
+  CHECKOUT_COMMIT="$(git rev-parse HEAD)"
+fi
+if [[ -z "$FORMALIZATION_COMMIT" ]]; then
+  FORMALIZATION_COMMIT="$CHECKOUT_COMMIT"
 fi
 
 {
   printf 'NEXUS FORMAL VERIFICATION REPORT\n'
   printf '================================\n'
-  printf 'formalization_commit: %s\n' "$COMMIT"
+  printf 'formalization_commit: %s\n' "$FORMALIZATION_COMMIT"
+  printf 'verification_checkout_commit: %s\n' "$CHECKOUT_COMMIT"
   printf 'stable_runtime_commit_expected: %s\n' "$STABLE_RUNTIME_COMMIT"
   printf 'stable_runtime_tag_expected: %s\n' "$STABLE_RUNTIME_TAG_EXPECTED"
   printf 'toolchain: %s\n' "$(cat lean-toolchain)"
@@ -105,6 +127,7 @@ fi
   printf 'theorems: %s\n' "$THEOREMS"
   printf 'lemmas: %s\n' "$LEMMAS"
   printf 'manifest_sync: PASS\n'
+  printf 'axiom_query_manifest_sync: PASS\n'
   printf 'proof_holes: 0\n'
   printf 'project_defined_axiom_or_constant_declarations: 0\n'
   printf 'lake_build: PASS\n'
