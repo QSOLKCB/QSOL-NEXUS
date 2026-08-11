@@ -107,7 +107,7 @@ fi
   printf 'aggregate_module: PASS\n'
   printf 'axiom_dependency_audit: PASS\n'
   printf '\nAXIOM DEPENDENCY OUTPUT\n'
-  printf '-----------------------\n'
+  printf '%s\n' '-----------------------'
   cat "$AXIOM_LOG"
 } > "$REPORT"
 
