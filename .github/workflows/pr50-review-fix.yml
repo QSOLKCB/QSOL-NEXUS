@@ -29,6 +29,35 @@ jobs:
           set -euo pipefail
           python3 tools/pr50_review_fix.py
 
+      - name: Diagnose non-ASCII AI identity path
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+          import tempfile
+          from nexus_runtime import NexusAPI
+
+          with tempfile.TemporaryDirectory() as temporary:
+              base = Path(temporary)
+              api = NexusAPI(
+                  base / 'world',
+                  auth_root=base / 'auth',
+                  trap_root=base / 'trap',
+                  stenographer_root=base / 'stenographer',
+                  guardian_root=base / 'guardian',
+              )
+              member = {
+                  'member_id': 'Alpha / Ω:seat',
+                  'model_id': 'mock/模型 alpha',
+                  'adapter_id': 'mock',
+                  'profile': 'balanced',
+              }
+              print(api.handle({'operation': 'wall.ai_post', 'member': member, 'prompt': 'Leave a short note.'}))
+          PY
+
       - name: Run focused Python Wall regressions
         shell: bash
         env:
