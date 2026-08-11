@@ -10,6 +10,7 @@ from . import civic_due_process_api as _civic_due_process_api
 from . import world_continuity_api as _world_continuity_api
 from . import progression_api as _progression_api
 from . import culture_api as _culture_api
+from . import psyche_chess as _psyche_chess
 from .civilization_api import CivilizationNexusAPI
 from .civilization_gauntlet import (
     CivilizationGauntlet,
@@ -83,7 +84,7 @@ from .progression import (
     progression_policy_snapshot,
 )
 from .progression_api import ProgressionNexusAPI as _BaseProgressionNexusAPI
-from .psyche_chess import (
+from .psyche_chess_hardened import (
     PSYCHE_CHESS_KIND,
     PSYCHE_CHESS_SCHEMA,
     PSYCHE_CHESS_TITLE,
@@ -132,6 +133,17 @@ _civic_due_process_api.CivicDueProcessNexusAPI = CultureNexusAPI
 _world_continuity_api.WorldContinuityNexusAPI = CultureNexusAPI
 _progression_api.ProgressionNexusAPI = CultureNexusAPI
 _culture_api.CultureNexusAPI = CultureNexusAPI
+
+# culture_api imported the first-pass chess functions before the hardened
+# successor validator existed. Rebind those module globals so every public
+# runtime path uses the same corrected implementation. Also update the base
+# chess module so late imports (including ProgressionService.record_play) see it.
+_psyche_chess.add_psyche = add_psyche
+_psyche_chess.apply_psyche_chess_move = apply_psyche_chess_move
+_psyche_chess.inspect_psyche_chess = inspect_psyche_chess
+_culture_api.add_psyche = add_psyche
+_culture_api.apply_psyche_chess_move = apply_psyche_chess_move
+_culture_api.inspect_psyche_chess = inspect_psyche_chess
 
 __all__ = [
     "ANARCHY_MODE_ID",
