@@ -20,7 +20,9 @@ RESTRICTED_OBSERVATION_REGION_IDS = frozenset(
 
 # Non-citizens retain meaningful public transparency, but only from the
 # designated public-gallery regions. Citizens may carry the broader
-# observation right into every other public, non-Council region.
+# observation right into every other public, non-Council region. PR #40 may
+# constitutionally narrow or reconfigure these two region sets through the
+# bounded amendment policy surface; restricted regions remain non-amendable.
 NON_CITIZEN_GALLERY_REGION_IDS = frozenset(
     {"observatory", "archive", "agora"}
 )
@@ -41,17 +43,57 @@ def _mode_ids_for_regions(region_ids: frozenset[str]) -> list[str]:
     )
 
 
-def civic_observation_policy_snapshot(geometry: WorldGeometry) -> dict[str, Any]:
-    region_ids = {
+def _resolved_region_policy(
+    geometry: WorldGeometry,
+    *,
+    citizen_region_ids: list[str] | tuple[str, ...] | frozenset[str] | None = None,
+    public_gallery_region_ids: list[str] | tuple[str, ...] | frozenset[str] | None = None,
+) -> tuple[frozenset[str], frozenset[str]]:
+    all_regions = {
         str(item["region_id"])
         for item in geometry.snapshot()["regions"]
     }
-    citizen_regions = frozenset(region_ids - RESTRICTED_OBSERVATION_REGION_IDS)
+    public_regions = frozenset(all_regions - RESTRICTED_OBSERVATION_REGION_IDS)
+    citizens = (
+        public_regions
+        if citizen_region_ids is None
+        else frozenset(citizen_region_ids)
+    )
+    gallery = (
+        NON_CITIZEN_GALLERY_REGION_IDS
+        if public_gallery_region_ids is None
+        else frozenset(public_gallery_region_ids)
+    )
+    if not citizens or not citizens.issubset(public_regions):
+        raise CivicObservationError(
+            "council_observation_policy_invalid",
+            "citizen observation regions must be a non-empty subset of public non-Council regions",
+        )
+    if not gallery or not gallery.issubset(citizens):
+        raise CivicObservationError(
+            "council_observation_policy_invalid",
+            "public-gallery regions must be a non-empty subset of citizen observation regions",
+        )
+    return citizens, gallery
+
+
+def civic_observation_policy_snapshot(
+    geometry: WorldGeometry,
+    *,
+    citizen_region_ids: list[str] | tuple[str, ...] | frozenset[str] | None = None,
+    public_gallery_region_ids: list[str] | tuple[str, ...] | frozenset[str] | None = None,
+) -> dict[str, Any]:
+    citizen_regions, gallery_regions = _resolved_region_policy(
+        geometry,
+        citizen_region_ids=citizen_region_ids,
+        public_gallery_region_ids=public_gallery_region_ids,
+    )
     return {
         "schema_version": CIVIC_OBSERVATION_SCHEMA_VERSION,
         "principle": "citizenship_widens_observation_not_authority",
         "completed_proceedings_only": True,
         "read_only": True,
+        "constitutional_policy_consumed": True,
         "citizen": {
             "access_tier": "citizen_full",
             "requires_exact_registered_model_identity": True,
@@ -64,8 +106,8 @@ def civic_observation_policy_snapshot(geometry: WorldGeometry) -> dict[str, Any]
         "non_citizen": {
             "access_tier": "public_gallery",
             "cross_mode_observation": False,
-            "allowed_region_ids": sorted(NON_CITIZEN_GALLERY_REGION_IDS),
-            "allowed_mode_ids": _mode_ids_for_regions(NON_CITIZEN_GALLERY_REGION_IDS),
+            "allowed_region_ids": sorted(gallery_regions),
+            "allowed_mode_ids": _mode_ids_for_regions(gallery_regions),
             "record_view": "bounded_public_summary",
         },
         "restricted_region_ids": sorted(RESTRICTED_OBSERVATION_REGION_IDS),
@@ -201,6 +243,8 @@ def view_council_proceeding(
     source_mode_id: str,
     viewer_id: str | None = None,
     viewer_model_id: str | None = None,
+    citizen_region_ids: list[str] | tuple[str, ...] | frozenset[str] | None = None,
+    public_gallery_region_ids: list[str] | tuple[str, ...] | frozenset[str] | None = None,
 ) -> dict[str, Any]:
     mode = get_mode(source_mode_id)
     source_region_id = geometry.region_for_mode(mode.mode_id).region_id
@@ -209,6 +253,11 @@ def view_council_proceeding(
             "council_observation_region_restricted",
             "Council proceedings cannot be cross-mode viewed from this region",
         )
+    citizen_regions, gallery_regions = _resolved_region_policy(
+        geometry,
+        citizen_region_ids=citizen_region_ids,
+        public_gallery_region_ids=public_gallery_region_ids,
+    )
 
     tier, citizen_state = _resolve_viewer_tier(
         citizenship,
@@ -216,7 +265,12 @@ def view_council_proceeding(
         viewer_model_id=viewer_model_id,
         source_region_id=source_region_id,
     )
-    if tier == "public_gallery" and source_region_id not in NON_CITIZEN_GALLERY_REGION_IDS:
+    if tier == "citizen_full" and source_region_id not in citizen_regions:
+        raise CivicObservationError(
+            "council_observation_citizen_region_not_admitted",
+            "the active constitutional version does not admit Civic Observation from this citizen region",
+        )
+    if tier == "public_gallery" and source_region_id not in gallery_regions:
         raise CivicObservationError(
             "council_observation_public_gallery_required",
             "non-citizens may view Council proceedings only from designated public-gallery regions",
