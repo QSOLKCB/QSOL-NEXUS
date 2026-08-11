@@ -9,6 +9,7 @@ MAX_JSONL_LINE_BYTES = 1 * 1024 * 1024
 MAX_REQUEST_DEPTH = 24
 MAX_REQUEST_NODES = 8192
 MAX_REQUEST_STRING_CHARS = 512 * 1024
+MAX_REQUEST_TEXT_BYTES = MAX_JSONL_LINE_BYTES
 MAX_REQUEST_LIST_ITEMS = 256
 MAX_REQUEST_OBJECT_FIELDS = 256
 MAX_REQUEST_KEY_CHARS = 256
@@ -16,19 +17,20 @@ MAX_QUESTION_CHARS = 32 * 1024
 MAX_DIRECT_MESSAGE_CHARS = 32 * 1024
 MAX_EVIDENCE_REFS = 32
 
-# UNTESTED is the legacy runtime default. The remaining values mirror the
-# machine-manifest epistemic vocabulary without allowing arbitrary durable
-# labels to enter evidence snapshots.
+# UNTESTED is the legacy runtime default. The remaining values are the exact
+# lowercase epistemic labels published by README4AI.md. This keeps the public
+# API aligned with the machine-readable manifest instead of inventing a second
+# case-sensitive vocabulary.
 ALLOWED_EVIDENCE_STATES = frozenset(
     {
         "UNTESTED",
-        "OBSERVED",
-        "EXECUTED",
-        "VERIFIED",
-        "INFERRED",
-        "SIMULATED",
-        "NOT_TESTED",
-        "UNKNOWN",
+        "observed",
+        "executed",
+        "verified",
+        "inferred",
+        "simulated",
+        "not_tested",
+        "unknown",
     }
 )
 
@@ -46,6 +48,7 @@ class BoundedLine:
 def _walk_request(value: Any) -> None:
     stack: list[tuple[Any, int]] = [(value, 1)]
     nodes = 0
+    text_bytes = 0
     while stack:
         item, depth = stack.pop()
         nodes += 1
@@ -63,6 +66,9 @@ def _walk_request(value: Any) -> None:
         if isinstance(item, str):
             if len(item) > MAX_REQUEST_STRING_CHARS:
                 raise RequestBudgetError("request string exceeds the maximum character limit")
+            text_bytes += len(item.encode("utf-8"))
+            if text_bytes > MAX_REQUEST_TEXT_BYTES:
+                raise RequestBudgetError("request exceeds the aggregate text byte limit")
             continue
         if isinstance(item, list):
             if len(item) > MAX_REQUEST_LIST_ITEMS:
@@ -75,6 +81,9 @@ def _walk_request(value: Any) -> None:
             for key, child in reversed(tuple(item.items())):
                 if not isinstance(key, str) or not key or len(key) > MAX_REQUEST_KEY_CHARS:
                     raise RequestBudgetError("request object keys must be bounded non-empty text")
+                text_bytes += len(key.encode("utf-8"))
+                if text_bytes > MAX_REQUEST_TEXT_BYTES:
+                    raise RequestBudgetError("request exceeds the aggregate text byte limit")
                 stack.append((child, depth + 1))
             continue
         raise RequestBudgetError("request contains a value outside the admitted JSON type set")
@@ -167,8 +176,10 @@ def control_plane_policy_snapshot() -> dict[str, object]:
         "max_request_depth": MAX_REQUEST_DEPTH,
         "max_request_nodes": MAX_REQUEST_NODES,
         "max_request_string_chars": MAX_REQUEST_STRING_CHARS,
+        "max_request_text_bytes": MAX_REQUEST_TEXT_BYTES,
         "max_request_list_items": MAX_REQUEST_LIST_ITEMS,
         "max_request_object_fields": MAX_REQUEST_OBJECT_FIELDS,
+        "max_request_key_chars": MAX_REQUEST_KEY_CHARS,
         "max_question_chars": MAX_QUESTION_CHARS,
         "max_direct_message_chars": MAX_DIRECT_MESSAGE_CHARS,
         "max_evidence_refs": MAX_EVIDENCE_REFS,
