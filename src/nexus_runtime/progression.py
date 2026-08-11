@@ -55,13 +55,10 @@ CULTURE_ACTIVITY_CATALOG = {
     },
 }
 
-# Core helpers consult ACTIVITY_CATALOG dynamically. Preserve the legacy keyset
-# above, then extend the registry. Old immutable PR #47 states are accepted as
-# a compatibility projection with implicit zero counts for these new IDs; the
-# first successor written by PR #48 contains the complete expanded keyset.
 ACTIVITY_CATALOG.update(CULTURE_ACTIVITY_CATALOG)
 
 CULTURE_PLAY_ACTIVITY_IDS = frozenset({"play_long_shift", "play_psyche_chess"})
+CULTURE_ARTIFACT_ACTIVITY_IDS = frozenset(set(CULTURE_ACTIVITY_CATALOG) - set(CULTURE_PLAY_ACTIVITY_IDS))
 CULTURE_DEDICATED_ACTIVITY_IDS = frozenset(CULTURE_ACTIVITY_CATALOG)
 ALL_PLAY_ACTIVITY_IDS = frozenset({"play_monopoly", "play_life_paths", *CULTURE_PLAY_ACTIVITY_IDS})
 
@@ -80,7 +77,7 @@ def progression_policy_snapshot():
         "PR #47 progression states remain immutable and valid; absent PR #48 activity counts are projected as zero until the next successor"
     )
     snapshot["culture_rule"] = (
-        "Open Mic performance and Long Shift narration enter progression only through their dedicated culture operations, never self-report"
+        "Open Mic performance and Long Shift narration enter progression only through validated runtime-created culture artifacts, never self-report"
     )
     return snapshot
 
@@ -117,8 +114,6 @@ class ProgressionService(_CoreProgressionService):
             for activity_id in CULTURE_ACTIVITY_CATALOG:
                 projected_counts[activity_id] = 0
             projected_payload["counts"] = projected_counts
-            # Zero-valued additions do not alter totals/distinct count or any
-            # milestone that existed when the PR #47 object was committed.
             projected = WorldObject(
                 object_id=obj.object_id,
                 object_type=obj.object_type,
@@ -171,6 +166,101 @@ class ProgressionService(_CoreProgressionService):
         ):
             raise ProgressionError("progression_activity_invalid", "culture play activity binding is invalid")
         return obj
+
+    def record_activity(self, *, actor_id: str, model_id: str, activity_id: str, prompt: str, output: str, source_refs: list[str], commission_ref: str | None = None) -> dict[str, object]:
+        if activity_id in CULTURE_DEDICATED_ACTIVITY_IDS:
+            raise ProgressionError(
+                "progression_dedicated_surface_required",
+                "PR #48 culture activities require their validated culture/play runtime surface",
+            )
+        return super().record_activity(
+            actor_id=actor_id,
+            model_id=model_id,
+            activity_id=activity_id,
+            prompt=prompt,
+            output=output,
+            source_refs=source_refs,
+            commission_ref=commission_ref,
+        )
+
+    def record_culture_activity(
+        self,
+        *,
+        actor_id: str,
+        model_id: str,
+        activity_id: str,
+        prompt: str,
+        output: str,
+        artifact_ref: str,
+        source_refs: list[str] | None = None,
+    ) -> dict[str, object]:
+        actor_id = _core._validate_identity(actor_id, "actor_id")
+        model_id = _core._validate_identity(model_id, "model_id")
+        if activity_id not in CULTURE_ARTIFACT_ACTIVITY_IDS:
+            raise ProgressionError("progression_dedicated_surface_required", "activity is not a culture artifact activity")
+        try:
+            artifact = self.world.inspect(artifact_ref)
+        except KeyError as exc:
+            raise ProgressionError("progression_source_not_found", "culture artifact was not found") from exc
+        if artifact.provenance != {"actor": "nexus", "subsystem": "ai_culture"}:
+            raise ProgressionError("progression_culture_provenance_invalid", "culture progression requires a runtime-owned culture artifact")
+
+        if activity_id == "narrate_long_shift":
+            if artifact.object_type != "long_shift_narration":
+                raise ProgressionError("progression_culture_artifact_mismatch", "narration activity requires a Long Shift narration artifact")
+            payload = artifact.payload
+            if (
+                payload.get("narrator_id") != actor_id
+                or payload.get("model_id") != model_id
+                or payload.get("prompt") != prompt
+                or payload.get("text") != output
+                or payload.get("fiction") is not True
+                or payload.get("mutates_game_state") is not False
+                or payload.get("evidence_effect") != "none"
+                or payload.get("authority_effect") != "none"
+                or not isinstance(payload.get("game_ref"), str)
+            ):
+                raise ProgressionError("progression_culture_artifact_mismatch", "Long Shift narration artifact does not bind this contribution")
+            refs = list(source_refs or [])
+            required = [payload["game_ref"], artifact_ref]
+            for ref in required:
+                if ref not in refs:
+                    refs.append(ref)
+        else:
+            from .culture import PERFORMANCE_KINDS, PERFORMANCE_OBJECT_TYPE
+
+            if artifact.object_type != PERFORMANCE_OBJECT_TYPE:
+                raise ProgressionError("progression_culture_artifact_mismatch", "performance activity requires an Open Mic artifact")
+            payload = artifact.payload
+            matching_kind = next(
+                (kind for kind, policy in PERFORMANCE_KINDS.items() if policy["activity_id"] == activity_id),
+                None,
+            )
+            if (
+                matching_kind is None
+                or payload.get("kind") != matching_kind
+                or payload.get("author_id") != actor_id
+                or payload.get("model_id") != model_id
+                or payload.get("prompt") != prompt
+                or payload.get("text") != output
+                or payload.get("evidence_effect") != "none"
+                or payload.get("authority_effect") != "none"
+            ):
+                raise ProgressionError("progression_culture_artifact_mismatch", "Open Mic artifact does not bind this contribution")
+            refs = list(source_refs or [])
+            if artifact_ref not in refs:
+                refs.append(artifact_ref)
+
+        return self._record(
+            actor_id=actor_id,
+            model_id=model_id,
+            activity_id=activity_id,
+            prompt=prompt,
+            output=output,
+            source_refs=refs,
+            commission_ref=None,
+            play_binding=None,
+        )
 
     def record_play(self, *, actor_id: str, model_id: str, activity_id: str, game_ref: str, game_kind: str) -> dict[str, object]:
         if game_kind in {"monopoly", "life_paths"}:
@@ -235,6 +325,7 @@ class ProgressionService(_CoreProgressionService):
 __all__ = list(_core.__all__) + [
     "ALL_PLAY_ACTIVITY_IDS",
     "CULTURE_ACTIVITY_CATALOG",
+    "CULTURE_ARTIFACT_ACTIVITY_IDS",
     "CULTURE_DEDICATED_ACTIVITY_IDS",
     "CULTURE_PLAY_ACTIVITY_IDS",
     "PR47_ACTIVITY_IDS",
