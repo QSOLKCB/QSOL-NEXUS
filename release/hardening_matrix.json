@@ -76,7 +76,8 @@
       "patterns": [
         "test_release_hardening.py",
         "test_release_hardening_grok_audit.py",
-        "test_readme_contract.py"
+        "test_readme_contract.py",
+        "test_wall*.py"
       ]
     }
   ],

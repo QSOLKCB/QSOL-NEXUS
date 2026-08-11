@@ -13,7 +13,7 @@ use nexus_irc_tui::{
     command_completions, is_watch_only_room, load_document, normalize_action, parse_input,
     room_from_name, sanitize_terminal_text, AliasBook, CitizenCommand, DccCommand, DccKind,
     DccSession, GameCommand, InputCommand, MudCommand, RoomSpec, StenographerCommand, TableCommand,
-    MAX_CITIZEN_EXAM_BYTES, ROOMS,
+    WallCommand, MAX_CITIZEN_EXAM_BYTES, ROOMS,
 };
 use serde_json::{json, Value};
 use std::collections::BTreeMap;
@@ -499,6 +499,12 @@ impl App {
                 if !topic.is_empty() {
                     self.append(&format!("*** Topic: {topic}"));
                 }
+                if self.is_wall_room() {
+                    self.append(
+                        "*** WALL: Leave a message. Someone may read it in a hundred years.",
+                    );
+                    self.execute_wall(nexus, WallCommand::Recent { limit: 20 })?;
+                }
             }
             InputCommand::Topic(topic) => {
                 let (topic, changed) = Self::scrub_text(nexus, &topic)?;
@@ -510,6 +516,12 @@ impl App {
                 self.append(&format!("*** {} changed the topic to: {topic}", self.nick));
             }
             InputCommand::Ask(question) => {
+                if self.is_wall_room() {
+                    return Err(
+                        "Council questions are disabled in #wall; Wall posts are social memory, not evidence. Join another room for /ask"
+                            .to_string(),
+                    );
+                }
                 if self.is_trap_room() || self.is_stenographer_room() {
                     return Err(
                         "Council questions are disabled in watch-only rooms; use /steno for read-only records"
@@ -547,8 +559,14 @@ impl App {
                 self.reject_stenographer_mutation()?;
                 self.execute_citizen(nexus, command)?
             }
+            InputCommand::Wall(command) => {
+                self.reject_stenographer_mutation()?;
+                self.execute_wall(nexus, command)?
+            }
             InputCommand::Say(text) => {
-                if self.is_stenographer_room() {
+                if self.is_wall_room() {
+                    self.post_wall(nexus, &text)?;
+                } else if self.is_stenographer_room() {
                     if text == LORE_REVEAL_PHRASE {
                         self.reveal_stenographer_lore(nexus, &text)?;
                     } else {
@@ -744,6 +762,185 @@ impl App {
             }
             InputCommand::Quit => self.running = false,
         }
+        Ok(())
+    }
+
+    fn post_wall(&mut self, nexus: &mut NexusProcess, text: &str) -> Result<(), String> {
+        let response = nexus.request(json!({
+            "operation": "wall.post",
+            "author_id": self.nick,
+            "text": text,
+        }))?;
+        let post = response
+            .get("post")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "Wall response missing post".to_string())?;
+        let post_ref = post
+            .get("object_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "Wall response missing post object id".to_string())?;
+        let payload = post
+            .get("payload")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "Wall response missing post payload".to_string())?;
+        let sequence = payload.get("sequence").and_then(Value::as_u64).unwrap_or(0);
+        let body = payload.get("text").and_then(Value::as_str).unwrap_or("");
+        self.append(&format!(
+            "#WALL-{sequence:06} [{}] <{}> {body}",
+            "human", self.nick
+        ));
+        self.append(&format!("*** {post_ref} | social memory, not evidence"));
+        Ok(())
+    }
+
+    fn execute_wall(
+        &mut self,
+        nexus: &mut NexusProcess,
+        command: WallCommand,
+    ) -> Result<(), String> {
+        match command {
+            WallCommand::Help => {
+                for line in [
+                    "*** WALL: /wall | /wall 20 | /wall mine [n] | /wall oldest [n] | /wall since 24h [n]",
+                    "*** POST: plain text while in #wall, or /wall post <text>",
+                    "*** MODEL: /wall ai <nick> <prompt>",
+                    "*** MODERATION: /wall tombstone <post-ref> [reason] | /wall inspect <event-ref>",
+                    "*** A Wall post is social memory, not evidence. Tombstones hide normal display; they do not rewrite immutable source bytes.",
+                ] {
+                    self.append(line);
+                }
+            }
+            WallCommand::Recent { limit } => {
+                let response = nexus.request(json!({"operation": "wall.list", "limit": limit, "order": "newest"}))?;
+                self.render_wall_list(&response)?;
+            }
+            WallCommand::Oldest { limit } => {
+                let response = nexus.request(json!({"operation": "wall.list", "limit": limit, "order": "oldest"}))?;
+                self.render_wall_list(&response)?;
+            }
+            WallCommand::Mine { limit } => {
+                let response = nexus.request(json!({
+                    "operation": "wall.list",
+                    "limit": limit,
+                    "order": "newest",
+                    "author_id": self.nick,
+                }))?;
+                self.render_wall_list(&response)?;
+            }
+            WallCommand::Since { seconds, limit } => {
+                let response = nexus.request(json!({
+                    "operation": "wall.list",
+                    "limit": limit,
+                    "order": "newest",
+                    "since_seconds": seconds,
+                }))?;
+                self.render_wall_list(&response)?;
+            }
+            WallCommand::Post { text } => self.post_wall(nexus, &text)?,
+            WallCommand::AiPost { nick, prompt } => {
+                let member = self
+                    .members
+                    .iter()
+                    .find(|member| member.nick.eq_ignore_ascii_case(&nick))
+                    .cloned()
+                    .ok_or_else(|| format!("no such model member: {nick}"))?;
+                let response = nexus.request(json!({
+                    "operation": "wall.ai_post",
+                    "member": member.config,
+                    "prompt": prompt,
+                }))?;
+                let post = response
+                    .get("post")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| "Wall AI response missing post".to_string())?;
+                let payload = post
+                    .get("payload")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| "Wall AI response missing payload".to_string())?;
+                let sequence = payload.get("sequence").and_then(Value::as_u64).unwrap_or(0);
+                let body = payload.get("text").and_then(Value::as_str).unwrap_or("");
+                self.append(&format!("#WALL-{sequence:06} [model] <{}> {body}", member.nick));
+                if let Some(post_ref) = post.get("object_id").and_then(Value::as_str) {
+                    self.append(&format!("*** {post_ref} | social memory, not evidence"));
+                }
+            }
+            WallCommand::Tombstone { post_ref, reason } => {
+                let response = nexus.request(json!({
+                    "operation": "wall.tombstone",
+                    "moderator_id": self.nick,
+                    "post_ref": post_ref,
+                    "reason": reason,
+                }))?;
+                let tombstone = response
+                    .get("tombstone")
+                    .and_then(Value::as_object)
+                    .ok_or_else(|| "Wall tombstone response missing object".to_string())?;
+                let tombstone_ref = tombstone.get("object_id").and_then(Value::as_str).unwrap_or("?");
+                self.append(&format!("*** WALL TOMBSTONE APPENDED: {tombstone_ref}; source post remains immutable/auditable"));
+            }
+            WallCommand::Inspect { event_ref } => {
+                let response = nexus.request(json!({"operation": "wall.inspect", "event_ref": event_ref}))?;
+                let rendered = serde_json::to_string_pretty(&response)
+                    .map_err(|error| format!("cannot render Wall event: {error}"))?;
+                for line in rendered.lines() {
+                    self.append(&format!("*** WALL {line}"));
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn render_wall_list(&mut self, response: &Value) -> Result<(), String> {
+        let posts = response
+            .get("posts")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "Wall list response missing posts".to_string())?;
+        let order = response.get("order").and_then(Value::as_str).unwrap_or("?");
+        self.append(&format!(
+            "--- NEXUS BBS WALL | {order} | {} post(s) ---",
+            posts.len()
+        ));
+        if posts.is_empty() {
+            self.append("*** The Wall is blank. Somewhere, a modem is disappointed.");
+            return Ok(());
+        }
+        for post in posts {
+            let sequence = post.get("sequence").and_then(Value::as_u64).unwrap_or(0);
+            let stamp = post
+                .get("created_at_utc")
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            let author = post.get("author").and_then(Value::as_object);
+            let kind = author
+                .and_then(|item| item.get("kind"))
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            let author_id = author
+                .and_then(|item| item.get("author_id"))
+                .and_then(Value::as_str)
+                .unwrap_or("?");
+            let text = post.get("text").and_then(Value::as_str).unwrap_or("");
+            self.append(&format!(
+                "#WALL-{sequence:06} {stamp} [{kind}] <{author_id}> {text}"
+            ));
+            if post
+                .get("tombstoned")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+            {
+                let reason = post
+                    .get("tombstone_reason")
+                    .and_then(Value::as_str)
+                    .unwrap_or("moderated");
+                self.append(&format!("*** TOMBSTONED: {reason}"));
+            }
+            if let Some(post_ref) = post.get("post_ref").and_then(Value::as_str) {
+                self.append(&format!("*** {post_ref}"));
+            }
+        }
+        self.append(
+            "*** Wall chronology is social memory only; it is not Council evidence or authority.",
+        );
         Ok(())
     }
 
@@ -1463,6 +1660,10 @@ impl App {
         Ok(())
     }
 
+    fn is_wall_room(&self) -> bool {
+        self.room.channel == "#wall"
+    }
+
     fn is_trap_room(&self) -> bool {
         matches!(self.room.channel, "#trap-control" | "#trap-base")
     }
@@ -2075,6 +2276,7 @@ impl App {
             "*** Trap: /join #trap-control | /join #trap-base | /trap <closed command>",
             "*** Watchman: /join #stenographer | /steno status|list|inspect|verify|summary|export",
             "*** Citizen: /join #upside-down|#bureaucracy|#play | /citizen help",
+            "*** Wall: /join #wall | plain text posts | /wall [20|mine|oldest|since 24h] | /wall ai nick prompt | /wall tombstone ref [reason]",
             "*** IRC: /me action | /msg nick text | /nick name | /who | /search text | /save file | /clear | /quit",
             "*** Models: /addmock nick [profile] | /addollama nick model | /kick nick",
             "*** Evidence: /upload file | /ref object:... | /unref object:... | /evidence",
