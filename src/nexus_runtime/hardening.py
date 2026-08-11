@@ -7,6 +7,11 @@ from typing import Any
 from .adapters.base import AdapterProtocolError
 from .adapters.local_ai import LocalAIActor
 from .adapters.ollama import OllamaActor
+from .civic_observation import (
+    CivicObservationError,
+    civic_observation_policy_snapshot,
+    view_council_proceeding,
+)
 from .control_plane import (
     RequestBudgetError,
     control_plane_policy_snapshot,
@@ -19,6 +24,9 @@ from .scrub import SecretScrubber
 _PATHISH_ERROR = re.compile(
     r"(?:\[Errno\s+\d+\]|No such file|Permission denied|File exists|"
     r"(?:^|[\s'\"(])/(?:[^\s'\")]+)|[A-Za-z]:\\|~[/\\])"
+)
+_CIVIC_OBSERVATION_OPERATIONS = frozenset(
+    {"council.proceedings.policy", "council.proceedings.view"}
 )
 
 
@@ -114,13 +122,29 @@ class HardenedNexusAPI(_ProviderNexusAPI):
             validate_control_request(request)
         except (RequestBudgetError, RecursionError) as exc:
             return self._error(safe_request_id, "invalid_request", str(exc))
+        if request_id is not None and safe_request_id is None:
+            return self._error(
+                None,
+                "invalid_request",
+                "request_id must be a bounded non-secret identifier",
+            )
+
+        operation = request.get("operation")
+        if operation in _CIVIC_OBSERVATION_OPERATIONS:
+            return self._handle_civic_observation(request, safe_request_id)
 
         response = super().handle(request)
-        if request.get("operation") == "system.health" and response.get("status") == "ok":
+        if operation == "system.health" and response.get("status") == "ok":
             response = dict(response)
             response["control_plane_limits"] = control_plane_policy_snapshot()
+            response["civic_observation"] = civic_observation_policy_snapshot(self.geometry)
+        elif operation == "system.operations" and response.get("status") == "ok":
+            response = dict(response)
+            operations = list(response.get("operations", []))
+            operations.extend(sorted(_CIVIC_OBSERVATION_OPERATIONS))
+            response["operations"] = sorted(set(operations))
 
-        if request.get("operation") == "actor.chat" and response.get("status") == "ok":
+        if operation == "actor.chat" and response.get("status") == "ok":
             text = response.get("response")
             if isinstance(text, str):
                 response = dict(response)
@@ -128,6 +152,59 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                 response["response"] = scrubbed_text
                 response["response_secret_scrub"] = summary
 
+        return sanitize_public_response(response)
+
+    def _handle_civic_observation(
+        self,
+        request: dict[str, Any],
+        request_id: str | None,
+    ) -> dict[str, Any]:
+        operation = request.get("operation")
+        try:
+            if operation == "council.proceedings.policy":
+                self._require_exact_fields(request, operation, set())
+                response: dict[str, Any] = {
+                    "status": "ok",
+                    "policy": civic_observation_policy_snapshot(self.geometry),
+                }
+            elif operation == "council.proceedings.view":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {
+                        "session_ref",
+                        "source_mode_id",
+                        "viewer_id",
+                        "viewer_model_id",
+                    },
+                )
+                session_ref = self._require_str(request, "session_ref")
+                source_mode_id = self._require_str(request, "source_mode_id")
+                viewer_id = request.get("viewer_id")
+                viewer_model_id = request.get("viewer_model_id")
+                if viewer_id is not None and not isinstance(viewer_id, str):
+                    raise ValueError("viewer_id must be a string when supplied")
+                if viewer_model_id is not None and not isinstance(viewer_model_id, str):
+                    raise ValueError("viewer_model_id must be a string when supplied")
+                response = view_council_proceeding(
+                    world=self.world,
+                    citizenship=self.citizenship,
+                    geometry=self.geometry,
+                    scrubber=self.scrubber,
+                    session_ref=session_ref,
+                    source_mode_id=source_mode_id,
+                    viewer_id=viewer_id,
+                    viewer_model_id=viewer_model_id,
+                )
+            else:  # pragma: no cover - dispatch set is closed above
+                return self._error(request_id, "unknown_operation", "operation is not supported")
+        except CivicObservationError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except (KeyError, TypeError, ValueError) as exc:
+            return self._error(request_id, "invalid_request", str(exc))
+
+        if request_id is not None:
+            response = {"request_id": request_id, **response}
         return sanitize_public_response(response)
 
     def _actor(self, item: Any) -> Any:
