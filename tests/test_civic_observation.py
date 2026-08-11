@@ -112,6 +112,11 @@ class CivicObservationPolicyTests(unittest.TestCase):
         self.assertEqual(direct["status"], "ok")
         self.assertEqual(direct["policy"], policy)
 
+    def test_civic_overlay_preserves_malformed_operation_error_boundary(self) -> None:
+        result = NexusAPI().handle({"operation": []})  # type: ignore[list-item]
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["code"], "invalid_request")
+
 
 class CivicObservationAccessTests(unittest.TestCase):
     def setUp(self) -> None:
