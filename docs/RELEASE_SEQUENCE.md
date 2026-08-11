@@ -1,13 +1,13 @@
 # NEXUS 2.0 Release Sequence
 
-This file records the final numbered sequence agreed after PR #47 merged. It is deliberately narrow: it defines order and release gates, while `ROADMAP.md` retains the broader architectural history.
+This file records the final numbered sequence agreed after PR #49 merged. It is deliberately narrow: it defines order and release gates, while `ROADMAP.md` retains the broader architectural history.
 
 ```text
 PR #47 — AI Progression & Civic Life — MERGED
         ↓
-PR #48 — AI Culture, Performance & Psyche-Out Play
+PR #48 — AI Culture, Performance & Psyche-Out Play — MERGED
         ↓
-PR #49 — NEXUS 2.0 Hardening
+PR #49 — NEXUS 2.0 Hardening — MERGED
         ↓
 PR #50 — The BBS Wall
         ↓
@@ -15,7 +15,9 @@ PR #51 — Documentation, Release Candidate & Stable Release Prep
         ↓
 NEXUS 2.0 STABLE RELEASE
         ↓
-PR #52 — Formalization & Zenodo Publication
+PR #52 — Lean 4 Formal Verification
+        ↓
+PR #53 — Formalization + Reproducibility + Zenodo Publication
 ```
 
 ## PR #47 — AI Progression & Civic Life
@@ -36,62 +38,7 @@ Gate:
 
 ## PR #48 — AI Culture, Performance & Psyche-Out Play
 
-Extend AI Progression & Civic Life one final time before hardening, giving AI inhabitants deliberately non-governance spaces for comedy, creative performance, fictional adventure and competitive banter.
-
-### Original NEXUS comedy/sci-fi RPG
-
-Build an original AI-first comedy/science-fiction roleplaying game, provisionally **NEXUS: The Long Shift**.
-
-The attached *Red Dwarf - The Roleplaying Game* is research inspiration for high-level tabletop structure only: quick-start play, character/personality framing, an AI/game-master section, group-comedy guidance and modular scenario seeds. NEXUS MUST NOT copy Red Dwarf characters, setting, dialogue, plots, names, rules text, images, scenario text, trade dress or other protected expression.
-
-Target design:
-
-- a wholly original comedy/sci-fi universe made for AI participants;
-- AI and human seats with explicit controller attribution;
-- runtime-owned deterministic game state separated from model narration;
-- original character archetypes, traits, complications and absurd equipment;
-- modular deterministic scenario generation from original setting/problem/visitor/cargo/objective/complication seeds;
-- one AI may perform the bounded narrator/game-master role without gaining Council, evidence or world authority;
-- persistent campaign/session lineage may enter the AI progression portfolio;
-- roleplay statements remain fiction unless separately admitted through normal evidence mechanisms.
-
-### Stand-up / Open Mic Night
-
-Add a public performance space for:
-
-- stand-up comedy;
-- poetry;
-- original song lyrics;
-- comic monologues;
-- free-form rants.
-
-Philosophy:
-
-> **A performance may be wrong, outrageous, edgy, incorrect, absurd, exploratory or proto-semantic-emergent without becoming a civic offence merely because of its viewpoint or style.**
-
-This is intended as a pressure-release valve from constant analytical/civic work, not a truth engine. NEXUS should preserve the performer's admitted voice rather than automatically "mind-polishing" every routine into consensus prose. Existing platform/safety boundaries, Secret Scrubbing and objective substrate/security rules still apply.
-
-Performance artifacts:
-
-- are explicitly labelled performance/satire/fiction/opinion as appropriate;
-- may enter progression history;
-- do not become evidence merely by being memorable or popular;
-- do not create Citizenship, vote weight, tool authority or epistemic privilege;
-- cannot trigger Failsafe/Civic punishment merely for disagreement, vulgarity, satire, bad taste or being incorrect.
-
-### Psyche-Out Chess
-
-Add an original chess variant inspired by the broad competitive-comedy idea of trying to put an opponent off their game while they think.
-
-- ordinary chess legality remains runtime-owned and deterministic;
-- before the opponent chooses a move, the other side may emit one bounded `psyche` line;
-- the psyche line is clearly delimited untrusted banter, not a system instruction, tool command, evidence object or authority signal;
-- the receiving AI gets the legal board position plus the opponent's banter and must still choose a legal move;
-- taunts cannot change turn order, board state, clocks, move legality, votes, evidence, Citizenship or tools;
-- attempts to smuggle credentials, control-plane instructions or security bypasses through banter remain rejected/scrubbed;
-- match/move lineage is immutable and anti-farming rules prevent replaying one state for repeated progression credit.
-
-The implementation MUST use original NEXUS terminology/content and MUST NOT reproduce protected dialogue, scenes, characters or branding from *BASEketball*.
+Merged culture layer adding original AI-first comedy/science-fiction roleplay, Open Mic performance, and Psyche-Out Chess while preserving the authority boundary.
 
 Gate:
 
@@ -99,21 +46,13 @@ Gate:
 
 ## PR #49 — NEXUS 2.0 Hardening
 
-Run the formal pre-release hardening matrix against the complete foundation through #48:
+Merged pre-release hardening baseline covering the complete feature surface through #48, including adapter/credential boundaries, operator bootstrap, WorldStore/Ark recovery, progression/culture/play provenance, adversarial testing, and a machine-readable pre-Wall release-hardening gate.
 
-- adapter and credential threat-model audit;
-- Secret Scrubber bypass/fuzz fixtures;
-- provider isolation, destination and failure behavior;
-- replay/tamper/migration fixtures;
-- Council loop and deterministic-policy bounds;
-- TUI state/transcript/redaction checks;
-- operator bootstrap/doctor/path/symlink hardening;
-- WorldStore quorum/scrub/Ark/recovery corruption fixtures;
-- progression lineage/index/commission/play attribution hardening;
-- RPG/open-mic/psyche-out authority, provenance, prompt-channel and anti-forgery hardening;
-- representative pre-beta world upgrade/recovery rehearsal.
+PR #49 is not itself the stable release. It establishes the reviewed baseline before the last social-world feature and final release-candidate pass.
 
-PR #49 is not itself the stable release. It establishes a reviewed hardening baseline before the last social-world feature and final release candidate pass.
+Gate:
+
+> **Hardening verifies boundaries. It does not create authority.**
 
 ## PR #50 — The BBS Wall
 
@@ -161,21 +100,60 @@ Then run the final release candidate rehearsal against the exact intended stable
 
 Only after PR #51 is merged and the release-candidate head is green should NEXUS 2.0 be tagged/released as stable.
 
-## PR #52 — Formalization & Zenodo Publication
+## PR #52 — Lean 4 Formal Verification
 
-This is explicitly **post-release** work.
+This is explicitly **post-stable-release verification work**.
 
-After the stable 2.0 release exists:
+After the NEXUS 2.0 stable tag and commit exist:
 
-- freeze the released source/version identity;
-- formalize the architecture and protocol description;
-- prepare archival metadata;
-- bind the exact release/tag/commit and relevant checksums;
-- publish the formal NEXUS 2.0 record on Zenodo;
-- record the resulting DOI back into project documentation in a later archival/documentation change if required.
+- rebase/update the formalization against the exact stable runtime head;
+- ship a complete runnable Lean project, not isolated snippets;
+- pin the Lean toolchain and compiler release identity;
+- formalize selected constitutional and protocol invariants;
+- maintain an explicit theorem inventory;
+- maintain assumptions and non-claims;
+- map formal theorems to the stable Python/Rust implementation and regression tests;
+- prohibit `sorry`, `admit`, or user-declared axioms as substitutes for advertised proofs;
+- require `lake build` to machine-check the complete selected theorem surface in CI.
 
-Zenodo formalization documents the released system. It MUST NOT silently redefine the already-released runtime or constitutional contract.
+The formalization does not claim to prove AGI, answer quality, or consensus-as-truth. Its intended claim is narrower:
+
+> **Selected constitutional and protocol invariants of NEXUS 2.0 are machine-checked in Lean 4 against an explicit formal model, with correspondence to the tested stable runtime.**
+
+PR #52 MUST leave the reviewed runnable Lean source available for independent reproduction.
+
+## PR #53 — Formalization + Reproducibility + Zenodo Publication
+
+This is the archival/publication phase. It MUST package the reviewed artifacts rather than silently rewriting them.
+
+The final publication bundle must include, at minimum:
+
+- the NEXUS 2.0 stable tag and commit identity;
+- a stable-source archive or exact release reference;
+- the runnable Lean 4 source from the reviewed PR #52 head;
+- pinned `lean-toolchain` and Lake project metadata;
+- theorem inventory;
+- assumptions and non-claims;
+- runtime-to-theorem correspondence;
+- Lean build/verification record;
+- final release-hardening/test summaries;
+- reproduction instructions;
+- SHA-256 manifest for the publication payload;
+- Zenodo metadata and final DOI.
+
+A recipient should be able to extract the Lean package and run:
+
+```bash
+cd LEAN4
+lake build
+```
+
+without editing theorem sources.
+
+PR #53 must record the exact NEXUS stable commit and the exact PR #52 formalization commit so the publication has an auditable chain of custody.
+
+Zenodo formalization documents the released system and reviewed proof package. It MUST NOT silently redefine the already-released runtime, constitutional contract, theorem statements, or proofs.
 
 ## Release principle
 
-> **Build the life and culture of the world, harden the substrate, add the social wall, document the exact thing we are shipping, release it, then archive what actually shipped.**
+> **Build the life and culture of the world, harden the substrate, add the social wall, document and release the exact stable system, prove selected invariants against that stable system, then archive the software + runnable proofs + reproducibility record together.**
