@@ -299,7 +299,10 @@ class HardenedNexusAPI(_ProviderNexusAPI):
             if isinstance(object_ref, str):
                 try:
                     inspected = self.world.inspect(object_ref)
-                except KeyError:
+                except (KeyError, ValueError):
+                    # Preserve the existing Core API's structured invalid/cross-
+                    # store reference handling. This preflight only owns valid
+                    # world refs that resolve to amendment-private objects.
                     pass
                 except OSError:
                     return self._error(
@@ -432,7 +435,7 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                 raw_changes = request.get("changes")
                 if not isinstance(raw_changes, list):
                     raise ValueError("changes must be a list")
-                clean_changes, change_events = self._scrub_semantic_value(raw_changes)
+                clean_changes, payload_events = self._scrub_semantic_value(raw_changes)
                 response = self._run_real_mutation(
                     lambda: self.constitutional_amendments.propose(
                         proposer_kind=proposer_kind,
@@ -444,7 +447,7 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                         changes=clean_changes,
                     )
                 )
-                events = list(title_result.events) + list(rationale_result.events) + change_events
+                events = list(title_result.events) + list(rationale_result.events) + payload_events
                 response = dict(response)
                 response["secret_scrub"] = {
                     "changed": bool(events),
