@@ -46,7 +46,7 @@ _STIMULUS_REF = re.compile(r"^stimulus:[0-9a-f]{64}$")
 _RECORDED_AT = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,6})?Z$")
 _PHASES = frozenset({"WHITE", "RED", "BLACK", "YELLOW", "GREEN", "BLUE"})
 _PERM_OBJECT_NAME = re.compile(r"^[0-9a-f]{64}\.json$")
-_OBJECT_TMP_NAME = re.compile(r"^\.([0-9a-f]{64})\.tmp-\d+-\d+$")
+_OBJECT_TMP_NAME = re.compile(r"^\.([0-9a-f]{64})\.tmp-[0-9]+-[0-9]+$")
 
 
 def _lore_envelope() -> dict[str, Any]:
@@ -546,6 +546,11 @@ class StenographerStore:
                 if match is not None:
                     try:
                         info = path.lstat()
+                    except FileNotFoundError:
+                        # A concurrent legacy writer/cleanup may remove its own
+                        # scratch entry after iterdir() yields it. Disappearance
+                        # is benign; every other inspection failure stays fatal.
+                        continue
                     except OSError as exc:
                         raise StenographerError(
                             "stenographer_store_corrupt",
