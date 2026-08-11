@@ -4,6 +4,7 @@ import unittest
 from unittest import mock
 
 from nexus_runtime import NexusAPI
+from nexus_runtime.__main__ import NexusAPI as CLINexusAPI
 from nexus_runtime.compute_epochs import (
     EPOCH_DURATION_SECONDS,
     GENESIS_UNIX,
@@ -12,7 +13,7 @@ from nexus_runtime.compute_epochs import (
     resolve_compute_epoch,
     small_model_threshold_millions,
 )
-from nexus_runtime.epoch_api import EPOCH_ADMISSION_RECEIPT_TYPE
+from nexus_runtime.epoch_api import EPOCH_ADMISSION_RECEIPT_TYPE, EpochNexusAPI
 from nexus_runtime.epoch_chair import evaluate_epoch_council_roster_request
 from nexus_runtime.genesis_capsule import (
     GENESIS_CAPSULE_SHA256,
@@ -52,6 +53,14 @@ def member(
     if distribution is not None:
         item["capability_metadata"] = classification(distribution, count_millions)
     return item
+
+
+def council_request() -> dict[str, object]:
+    return {
+        "operation": "council.run",
+        "question": "Does compute scale change political authority?",
+        "members": [member("A", "a"), member("B", "b"), member("C", "c")],
+    }
 
 
 class ComputeEpochTests(unittest.TestCase):
@@ -113,6 +122,20 @@ class GenesisCapsuleTests(unittest.TestCase):
         self.assertIn("no_extra_vote", status["authority_rule"])
         self.assertIn("no_root_authority", status["authority_rule"])
 
+    def test_revealed_payload_is_isolated_from_caller_mutation(self) -> None:
+        first = reveal_genesis_capsule(25)
+        assert isinstance(first["payload"], dict)
+        first["payload"]["creator"]["repository"] = "mutated/by/caller"
+        first["payload"]["constitutional_reminders"].append("caller mutation")
+
+        second = reveal_genesis_capsule(25)
+        self.assertEqual(
+            second["payload"]["creator"]["repository"],
+            "QSOLKCB/QSOL-NEXUS",
+        )
+        self.assertNotIn("caller mutation", second["payload"]["constitutional_reminders"])
+        self.assertEqual(second["capsule"]["payload_sha256"], GENESIS_CAPSULE_SHA256)
+
 
 class PurgatoryTests(unittest.TestCase):
     def test_cursed_yaml_corpus_is_hash_bound_and_inert(self) -> None:
@@ -157,16 +180,18 @@ class EpochAPITests(unittest.TestCase):
         self.assertIn("security.purgatory.policy", operations)
         self.assertIn("security.purgatory.select", operations)
 
+    def test_cli_entrypoint_uses_epoch_overlay(self) -> None:
+        self.assertIs(CLINexusAPI, EpochNexusAPI)
+        api = CLINexusAPI()
+        operations = api.handle({"operation": "system.operations"})
+        self.assertEqual(operations["status"], "ok")
+        self.assertIn("council.epoch.policy", operations["operations"])
+        policy = api.handle({"operation": "council.epoch.policy"})
+        self.assertEqual(policy["status"], "ok", policy)
+
     def test_council_run_gets_a_pinned_epoch_admission_receipt(self) -> None:
         api = NexusAPI()
-        roster = [member("A", "a"), member("B", "b"), member("C", "c")]
-        result = api.handle(
-            {
-                "operation": "council.run",
-                "question": "Does compute scale change political authority?",
-                "members": roster,
-            }
-        )
+        result = api.handle(council_request())
         self.assertEqual(result["status"], "ok", result)
         receipt_ref = result["epoch_admission_receipt_ref"]
         receipt = api.world.inspect(receipt_ref)
@@ -177,6 +202,46 @@ class EpochAPITests(unittest.TestCase):
         self.assertEqual(verified["status"], "verified", verified)
         self.assertFalse(verified["replay_clock_used"])
         self.assertEqual(verified["vote_weight_per_seat"], 1)
+
+    def test_pre_genesis_host_clock_returns_structured_runtime_error(self) -> None:
+        api = NexusAPI()
+        with mock.patch("nexus_runtime.compute_epochs.time.time", return_value=GENESIS_UNIX - 1):
+            result = api.handle(council_request())
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["code"], "epoch_clock_unavailable")
+        self.assertNotEqual(result["error"]["code"], "invalid_request")
+
+    def test_epoch_verification_does_not_require_current_wall_clock(self) -> None:
+        api = NexusAPI()
+        result = api.handle(council_request())
+        self.assertEqual(result["status"], "ok", result)
+        receipt_ref = result["epoch_admission_receipt_ref"]
+        with mock.patch("nexus_runtime.compute_epochs.time.time", return_value=GENESIS_UNIX - 1):
+            verified = api.handle(
+                {"operation": "council.epoch.verify", "receipt_ref": receipt_ref}
+            )
+        self.assertEqual(verified["status"], "verified", verified)
+        self.assertFalse(verified["replay_clock_used"])
+
+    def test_receipt_persistence_failure_is_structured_after_session_commit(self) -> None:
+        api = NexusAPI()
+        original_create = api.world.create_object
+
+        def create_with_receipt_failure(*args: object, **kwargs: object) -> object:
+            object_type = args[0] if args else kwargs.get("object_type")
+            if object_type == EPOCH_ADMISSION_RECEIPT_TYPE:
+                raise OSError("synthetic disk full")
+            return original_create(*args, **kwargs)
+
+        with mock.patch.object(api.world, "create_object", side_effect=create_with_receipt_failure):
+            result = api.handle(council_request())
+
+        self.assertEqual(result["status"], "error", result)
+        self.assertEqual(result["error"]["code"], "epoch_receipt_unavailable")
+        self.assertTrue(result["council_session_committed"])
+        self.assertFalse(result["epoch_admission_receipt_persisted"])
+        session = api.world.inspect(result["committed_session_ref"])
+        self.assertEqual(session.object_type, "council_session")
 
     def test_public_world_create_cannot_forge_epoch_receipt(self) -> None:
         api = NexusAPI()
