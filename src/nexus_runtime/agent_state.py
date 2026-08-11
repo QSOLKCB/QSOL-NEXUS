@@ -4,6 +4,7 @@ import copy
 from typing import Any
 
 from .canonical import sha256_ref
+from .scrub import SecretScrubber
 from .world import WorldObject, WorldStore
 
 
@@ -37,6 +38,7 @@ MAX_SOURCE_REFS_PER_UPDATE = 8
 MAX_UPDATES_PER_SNAPSHOT = len(LANE_ORDER)
 MAX_CONTEXT_EXCERPT_CHARS = 240
 MAX_CONTEXT_CHARS = 2_700
+_IDENTITY_SCRUBBER = SecretScrubber()
 
 
 class AgentStateError(ValueError):
@@ -95,20 +97,30 @@ def agent_state_policy_snapshot() -> dict[str, Any]:
     }
 
 
-def _validate_actor_id(actor_id: str) -> None:
+def _validate_actor_id(actor_id: Any) -> str:
+    """Validate Agent State identity once, including credential-shape rejection."""
+
     if not isinstance(actor_id, str) or not actor_id.strip():
         raise ValueError("actor_id must be non-empty text")
     if len(actor_id) > 128:
         raise ValueError("actor_id must be at most 128 characters")
+    if _IDENTITY_SCRUBBER.scrub(actor_id).changed:
+        raise ValueError("actor_id must not contain credential-shaped text")
+    return actor_id
 
 
-def _validate_lane(lane: str) -> None:
+def _validate_lane(lane: Any) -> str:
+    """Validate lane membership at the Agent State semantic boundary."""
+
     if not isinstance(lane, str) or lane not in LANE_POLICY:
         allowed = ", ".join(LANE_ORDER)
         raise ValueError(f"lane must be one of: {allowed}")
+    return lane
 
 
-def _validated_existing_refs(world: WorldStore, source_refs: list[str]) -> list[str]:
+def _validated_existing_refs(world: WorldStore, source_refs: Any) -> list[str]:
+    """Validate, canonicalize, and resolve Agent State source references."""
+
     if not isinstance(source_refs, list) or not all(isinstance(ref, str) and ref for ref in source_refs):
         raise ValueError("source_refs must be a list of non-empty object references")
     if len(source_refs) > MAX_SOURCE_REFS_PER_UPDATE:
@@ -132,13 +144,13 @@ def _validated_existing_refs(world: WorldStore, source_refs: list[str]) -> list[
 def publish_agent_state_update(
     world: WorldStore,
     *,
-    actor_id: str,
-    lane: str,
+    actor_id: Any,
+    lane: Any,
     content: str,
-    source_refs: list[str],
+    source_refs: Any,
 ) -> WorldObject:
-    _validate_actor_id(actor_id)
-    _validate_lane(lane)
+    actor_id = _validate_actor_id(actor_id)
+    lane = _validate_lane(lane)
     if not isinstance(content, str) or not content.strip():
         raise ValueError("content must be non-empty text")
     if len(content) > MAX_UPDATE_CONTENT_CHARS:
@@ -181,11 +193,18 @@ def _validated_update(world: WorldStore, update_ref: str) -> WorldObject:
         )
     payload = update.payload
     lane = payload.get("lane")
+    try:
+        actor_id = _validate_actor_id(payload.get("actor_id"))
+        lane = _validate_lane(lane)
+    except ValueError as exc:
+        raise AgentStateError(
+            "agent_state_update_invalid",
+            "agent state update schema is invalid",
+        ) from exc
     if (
         payload.get("schema_version") != AGENT_STATE_SCHEMA_VERSION
-        or not isinstance(payload.get("actor_id"), str)
-        or not isinstance(lane, str)
-        or lane not in LANE_POLICY
+        or payload.get("actor_id") != actor_id
+        or payload.get("lane") != lane
         or payload.get("timescale") != LANE_POLICY[lane]["timescale"]
         or payload.get("priority") != LANE_POLICY[lane]["priority"]
         or not isinstance(payload.get("source_refs"), list)
@@ -201,10 +220,10 @@ def _validated_update(world: WorldStore, update_ref: str) -> WorldObject:
 def _snapshot_payload(
     world: WorldStore,
     *,
-    actor_id: str,
-    update_refs: list[str],
+    actor_id: Any,
+    update_refs: Any,
 ) -> dict[str, Any]:
-    _validate_actor_id(actor_id)
+    actor_id = _validate_actor_id(actor_id)
     if not isinstance(update_refs, list) or not update_refs:
         raise ValueError("update_refs must be a non-empty list")
     if len(update_refs) > MAX_UPDATES_PER_SNAPSHOT:
@@ -265,8 +284,8 @@ def _snapshot_payload(
 def create_agent_state_snapshot(
     world: WorldStore,
     *,
-    actor_id: str,
-    update_refs: list[str],
+    actor_id: Any,
+    update_refs: Any,
 ) -> WorldObject:
     return world.create_object(
         AGENT_STATE_SNAPSHOT_OBJECT_TYPE,
@@ -293,9 +312,16 @@ def _validated_snapshot(world: WorldStore, snapshot_ref: str) -> WorldObject:
         )
     payload = snapshot.payload
     refs = payload.get("update_refs")
+    try:
+        actor_id = _validate_actor_id(payload.get("actor_id"))
+    except ValueError as exc:
+        raise AgentStateError(
+            "agent_state_snapshot_invalid",
+            "agent state snapshot schema is invalid",
+        ) from exc
     if (
         payload.get("schema_version") != AGENT_STATE_SCHEMA_VERSION
-        or not isinstance(payload.get("actor_id"), str)
+        or payload.get("actor_id") != actor_id
         or payload.get("canonical_lane_order") != list(LANE_ORDER)
         or not isinstance(refs, list)
         or not refs
@@ -307,7 +333,7 @@ def _validated_snapshot(world: WorldStore, snapshot_ref: str) -> WorldObject:
 
     reconstructed_payload = _snapshot_payload(
         world,
-        actor_id=payload["actor_id"],
+        actor_id=actor_id,
         update_refs=list(refs),
     )
     reconstructed_ref = sha256_ref(
