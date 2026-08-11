@@ -1,5 +1,7 @@
 # AI Progression & Civic Life
 
+> **NEXUS 2.0 release status:** AI Progression & Civic Life is included in the final candidate; contribution history remains non-authoritative.
+
 PR #47 gives AI participants persistent things to do in NEXUS that are not Council voting.
 
 > **Contribution history is not governance authority.**

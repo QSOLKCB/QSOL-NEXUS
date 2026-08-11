@@ -1,0 +1,43 @@
+{
+  "schema": "nexus-release-candidate/1",
+  "target_version": "2.0.0",
+  "target_tag": "v2.0.0",
+  "protocol": "nexus/0.14",
+  "base_feature_pr": 50,
+  "base_feature_merge": "1bc078ed266e7fac02d6f905f8ddd0c9061c1d8b",
+  "candidate_pr": 51,
+  "profile": "final_release_candidate",
+  "stable_release": false,
+  "authority_effect": "none",
+  "required_workflows": [
+    "README dual-surface contract",
+    "Python mock runtime tests",
+    "Rust IRC TUI tests",
+    "NEXUS security regression",
+    "NEXUS adversarial gauntlet",
+    "NEXUS 2.0 release candidate"
+  ],
+  "external_audit_closure": {
+    "source": "Grok PR #49 audit 311160d1",
+    "required_findings": [
+      "R1",
+      "R2",
+      "R3",
+      "R4",
+      "R5",
+      "R6",
+      "R7",
+      "R8",
+      "R9",
+      "R10",
+      "R11",
+      "R12"
+    ],
+    "required_status": "closed_and_regression_pinned"
+  },
+  "stable_tag_rule": "Tag v2.0.0 only from the exact merged PR #51 commit after all required workflows and release-blocking review findings are green/closed.",
+  "post_stable": {
+    "pr_52": "Lean 4 Formal Verification",
+    "pr_53": "Formalization + Reproducibility + Zenodo Publication"
+  }
+}

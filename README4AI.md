@@ -30,12 +30,12 @@
   },
   "release_identity": {
     "protocol": "nexus/0.14",
-    "runtime": "2.0.0-alpha10.3",
-    "python_package": "2.0.0a10.post3",
-    "rust_tui": "2.0.0-alpha10.3",
+    "runtime": "2.0.0",
+    "python_package": "2.0.0",
+    "rust_tui": "2.0.0",
     "stable_2_0": false,
-    "release_posture": "alpha",
-    "note": "The alpha11 Three Minds, One World demonstration is merged while formal runtime/package/TUI identifiers remain alpha10.3 until a dedicated release-alignment change."
+    "release_posture": "release_candidate",
+    "note": "PR #51 aligns the intended stable 2.0 bits after merged PR #50. The v2.0.0 tag is forbidden until the exact merged PR #51 head passes the complete release-candidate and review gates."
   },
   "normative_precedence": [
     "executable_runtime_behavior_and_validation",
@@ -71,7 +71,8 @@
     "telemetry_observes_but_does_not_govern",
     "credentials_are_operational_secrets_not_cognitive_state",
     "model_output_is_untrusted_input",
-    "live_stochastic_inference_is_not_falsely_marked_replayable"
+    "live_stochastic_inference_is_not_falsely_marked_replayable",
+    "wall_social_memory_is_not_evidence_or_authority"
   ],
   "runtime": {
     "public_api": {
@@ -79,7 +80,7 @@
         "from nexus_runtime import NexusAPI",
         "from nexus_runtime.api import NexusAPI"
       ],
-      "implementation": "ProviderNexusAPI",
+      "implementation": "WallNexusAPI final overlay",
       "discovery_operations": [
         "system.health",
         "system.operations"
@@ -344,7 +345,8 @@
     "model_output": "untrusted input",
     "network": "local stdio control plane plus reviewed loopback/fixed-remote model transports",
     "sandbox_claim": "do not claim stronger isolation than implemented and tested",
-    "new_boundary_rule": "new provider, credential flow, tool execution path, storage surface, sandbox assumption, or authority-bearing role requires explicit review and regression coverage"
+    "new_boundary_rule": "new provider, credential flow, tool execution path, storage surface, sandbox assumption, or authority-bearing role requires explicit review and regression coverage",
+    "wall": "Wall input is bounded, secret-scrubbed social data; history validation fails closed and cannot promote evidence or authority"
   },
   "epistemic_labels": [
     "observed",
@@ -382,7 +384,8 @@
       "citizen_proxy_no_second_seat",
       "trap_output_cannot_become_commands",
       "stenographer_zero_authority",
-      "rust_tui_replaceable"
+      "rust_tui_replaceable",
+      "wall_social_memory_not_evidence"
     ],
     "new_trust_boundary_requires_regression_test": true,
     "readme_rule": "if README.md changes, README4AI.md must change in same pull request",
@@ -392,9 +395,9 @@
     "declared": false,
     "green_ci_alone_is_sufficient": false,
     "remaining_high_level_work": [
-      "broader_instrument_admission",
-      "persistent_world_and_migration_hardening",
-      "beta_level_adapter_and_security_hardening"
+      "merge_pr_51_exact_release_candidate_head",
+      "rerun_complete_release_candidate_matrix_and_review_gate",
+      "create_v2.0.0_tag_and_release_from_that_exact_green_commit"
     ]
   },
   "read_next": {
@@ -417,6 +420,23 @@
     "trap_base": "docs/TRAP_BASE.md",
     "stenographer": "docs/STENOGRAPHER.md",
     "games": "docs/GAMES.md",
-    "three_minds_one_world": "docs/THREE_MINDS_ONE_WORLD.md"
+    "three_minds_one_world": "docs/THREE_MINDS_ONE_WORLD.md",
+    "bbs_wall": "docs/BBS_WALL.md",
+    "release_sequence": "docs/RELEASE_SEQUENCE.md",
+    "release_checklist": "docs/RELEASE_CHECKLIST.md",
+    "release_notes_2_0": "docs/RELEASE_NOTES_2.0.0.md",
+    "compatibility": "docs/COMPATIBILITY.md",
+    "documentation_audit": "docs/DOCUMENTATION_AUDIT_2.0.md"
+  },
+  "bbs_wall": {
+    "status": "implemented_in_pr_50",
+    "room": "#wall",
+    "persistence": "immutable WorldStore-backed chronological events",
+    "moderation": "append-only tombstones; original source object remains auditable",
+    "plain_room_text": "human Wall post; never implicit council.run",
+    "ask_in_wall": "blocked; operator must move to a Council-capable room",
+    "identity_rule": "runtime labels are context, never rank",
+    "evidence_effect": "none",
+    "authority_effect": "none"
   }
 }

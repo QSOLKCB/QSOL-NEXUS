@@ -1,5 +1,7 @@
 # NEXUS IRC-Style Rust TUI
 
+> **NEXUS 2.0 release status:** the Rust IRC-style TUI is implemented at version 2.0.0 in PR #51; it remains a replaceable operator shell over the Python runtime.
+
 ## Purpose
 
 NEXUS alpha5 adds a local Rust terminal interface inspired by old-school IRC clients such as `f-irc` and mIRC.

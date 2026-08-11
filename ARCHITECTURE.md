@@ -2,550 +2,321 @@
 
 ## Purpose
 
-QSOL NEXUS is a model-independent cognitive substrate: a persistent computational world that humans and heterogeneous machine intelligences can inspect, extend, test, and revisit through a common protocol.
+QSOL NEXUS 2.0 is a model-independent cognitive substrate and persistent shared computational world. Humans, deterministic actors, local models, and reviewed cloud models interact through one runtime-owned protocol without allowing provider identity, model size, deployment class, account tier, tool access, rhetoric, citizenship, popularity, or performance history to manufacture governance authority.
 
-NEXUS does not attempt to define how a model must think internally. It defines how participants interact with shared objects, evidence, experiments, instruments, Council sessions, durable state, world modes, and geometry.
+The architectural rule is deliberately asymmetric:
 
-## Top-level architecture
+> **Models propose and participate. NEXUS owns state, evidence identity, protocol transitions, verification, and vote mechanics.**
+
+This document describes the post-PR #50 runtime that PR #51 is preparing for the `v2.0.0` stable tag.
+
+## Release identity
 
 ```text
-                           HUMAN OPERATOR
-                                 |
-                                 v
-                    +-------------------------+
-                    |   CLI / future RUST TUI |
-                    | Council · world · modes |
-                    | receipts · logs · tools |
-                    +------------+------------+
-                                 |
-                         local IPC / JSONL
-                                 |
-                                 v
-                    +-------------------------+
-                    |     PYTHON RUNTIME      |
-                    |-------------------------|
-                    | Council orchestration   |
-                    | world object service    |
-                    | modes + geometry        |
-                    | citizenship registry    |
-                    | memory / lineage        |
-                    | instrument dispatch     |
-                    | evidence / receipts     |
-                    | replay / verification   |
-                    | passive Stenographer    |
-                    +------------+------------+
-                                 |
-                         NEXUS WORLD PROTOCOL
-                                 |
-                +----------------+----------------+
-                |                |                |
-                v                v                v
-          +-----------+    +-----------+    +-----------+
-          | Adapter A |    | Adapter B |    | Adapter C |
-          +-----+-----+    +-----+-----+    +-----+-----+
-                |                |                |
-                v                v                v
-             Model A          Model B          Model C
+protocol       nexus/0.14
+runtime        2.0.0
+Python package 2.0.0
+Rust TUI       2.0.0
+control plane  JSONL over local stdio
+release state  release candidate until exact merged #51 head is tagged
 ```
 
-The Rust TUI is an operator interface, not an epistemic authority. The Python layer remains the first reference tooling/runtime because it is easy to inspect, script, test, and connect to the existing scientific Python ecosystem.
+A version string is not release authority. The release-hardening report also carries `stable_release: false`; stable 2.0 exists only when the reviewed, green, merged #51 commit is tagged `v2.0.0`.
 
-The provider-neutral authentication substrate is implemented outside the WorldStore. xAI is the first fixed-destination remote adapter; every later provider remains deferred until its own security/transport review and the broader world/instrument milestones are complete.
-
-## Trust domains
+## Top-level system
 
 ```text
-UNTRUSTED / EXTERNAL
-+---------------------------------------------------------+
-| model providers · local model servers · generated prose|
-| provider SDKs · network transport · model self-claims  |
-+---------------------------+-----------------------------+
-                            |
-                      adapter boundary
-                            |
-TRUSTED NEXUS CONTROL PLANE
-+---------------------------v-----------------------------+
-| roster · equal voting · phase ordering · sealed ballot |
-| world mode · geometry placement · evidence snapshots   |
-| canonical objects · receipts · lineage · verification  |
-| non-secret auth profile/status control                  |
-+---------------------------+-----------------------------+
-                            |
-                    durable world state
+                              HUMAN OPERATOR
+                                    |
+                        ./nexus + Rust IRC TUI
+                                    |
+                             JSONL / stdio
+                                    v
++-----------------------------------------------------------------------+
+|                         PYTHON NEXUS RUNTIME                           |
+|-----------------------------------------------------------------------|
+| final Wall API overlay                                                 |
+| Council coordinator · Six Hats · sealed equal ballot                  |
+| modes + named-region geometry · evidence + receipts                   |
+| Secret Scrubber · Equality Guard · Action Awareness                   |
+| Failsafe · Citizenship · Civic Due Process · Guardian                 |
+| games · progression · culture · Long Shift · Psyche-Out Chess         |
+| WorldStore Continuity · Ark · recovery · BBS Wall                     |
+| provider-neutral auth broker · adapter/model discovery                |
++-------------------------+----------------------+----------------------+
+                          |                      |
+                 CouncilActor seam         trusted local stores
+                          |                      |
+        +-----------------+----------------+     +----------------------+
+        |                 |                |     | WorldStore replicas  |
+        v                 v                v     | TrapStore            |
+  deterministic       loopback local   fixed-host| Stenographer store   |
+  / mock actors       model adapters   cloud     | Guardian store       |
+                      |                adapters   | auth store (separate)|
+                      v                  v        +----------------------+
+                Ollama / LM Studio   xAI / OpenAI /
+                AnythingLLM /       Anthropic / Gemini /
+                OpenAI-compatible   Groq / Together
 ```
 
-A model response is a **proposal** until NEXUS records it under the applicable phase and evidence state. Corporate identity, provider branding, model self-description, selected world mode, or geometry location cannot alter protocol authority.
+The Rust TUI is implemented and replaceable. It is an operator shell, not an epistemic authority. The Python runtime remains the canonical protocol/state boundary.
 
-## Decoy Gate and Trap Base
+## Runtime composition
 
-The synthetic decoy path is a third security domain, not an authentication
-fallback and not a room inside the real world:
+NEXUS grew through additive API overlays. Historical module names remain import-compatible, but the package-level `NexusAPI` and the historical public aliases resolve to the final Wall-capable runtime after PR #50.
 
 ```text
-trusted operator fixture -> DecoyGate -> TrapController -> TrapStore
-                                                |
-                           +--------------------+--------------------+
-                           |                                         |
-                    #trap-control                              #trap-base
-                    defender snapshot                         hostile subject
-                    equal incident votes                      no vote/tools/auth
+base runtime
+  -> provider/auth adapters
+  -> compute epochs
+  -> Guardian / civic due process
+  -> WorldStore Continuity
+  -> AI progression
+  -> AI culture / Long Shift / Psyche-Out Chess
+  -> BBS Wall                                  [final 2.0 feature overlay]
 ```
 
-The trusted front-door router sends normal credentials only to `AuthBroker`.
-Ordinary failure ends there. Only one closed `DecoyAdmissionRequest` carrying an
-approved synthetic reason can enter `DecoyGate`; no bearer value is a field in
-that request.
+This layering is compatibility plumbing, not a hierarchy of political authority. Later overlays may expose more operations; they may not silently rewrite the constitutional invariants beneath them.
 
-The trap domain owns only `trap:<sha256>` objects, static synthetic scenarios,
-an incident-specific defender roster, hostile text, trap commands, restricted
-Trap YAML execution, and quarantined candidate artifacts. Real objects remain
-`object:<sha256>`, and neither store resolves the other namespace.
+## Authority model
 
-An owner-checked `CouncilMutationGate` pauses real WorldStore/game/Council
-mutation for the lifetime of the one active incident without moving or
-rewriting real history. Read/verification/auth operations remain unchanged.
-Immutable trap incident lineage is canonical; a small validated index and lock
-can be rebuilt or safely released by crash recovery.
-
-Subject output is always data. Only a typed operator/defender call can enter the
-closed command dispatcher. Trap YAML is parsed into a bounded canonical
-JSON-compatible tree and interpreted over immutable synthetic fixtures; it is
-never executed by Python, a shell, an LLM, or a production instrument.
-
-See [`docs/TRAP_BASE.md`](docs/TRAP_BASE.md).
-
-## Courtroom Stenographer
-
-The Courtroom Stenographer is an independent observation domain beside the
-WorldStore and TrapStore, not another control-plane authority:
+NEXUS keeps capability, access, evidence, and authority as separate dimensions.
 
 ```text
-AI actor result -----> normal Council/direct/Trap consumer
-       |
-       +-------------> passive observer copy
-                              |
-                     bounded nonblocking queue
-                              |
-                     background lock/write/fsync
-                              |
-                         steno:<sha256>
-                         canonical lineage
+provider/model capability  != vote weight
+account/tool access        != epistemic privilege
+Citizenship/progression    != extra Council seat
+Council consensus          != evidence status
+Wall/performance history   != truth
+storage redundancy         != authority
+Stenographer observation   != control
 ```
 
-It records admitted direct replies, every Council phase attempt and sealed
-ballot, Failsafe rehabilitation replies, and synthetic Trap subject replies.
-Prompts are represented only by a `stimulus:<sha256>` binding; human commands,
-world/game/auth actions and control-plane decisions are outside its scope.
-
-Every record carries an explicit zero-authority envelope. The Stenographer owns
-no actor, prompt, Council roster, vote, command dispatcher, WorldStore,
-TrapStore or AuthBroker handle. Observation failures are caught after the actor
-boundary; storage work is handed to a bounded nonblocking daemon observer, so
-lock contention and lineage scans cannot delay the original AI result. Queue
-saturation increments a bounded gap counter. Its owner-only store is disjoint
-from all other persistence roots and
-uses a linear immutable previous-record chain; the replaceable index is rebuilt
-from lineage.
-
-The Rust `#stenographer` room and `/steno` namespace expose only read and
-verification views. See [`docs/STENOGRAPHER.md`](docs/STENOGRAPHER.md).
-
-## Modes and geometry
-
-NEXUS separates **how a session is framed** from **where it exists in the shared world**.
+For an ordinary admitted Council member:
 
 ```text
-MODE
-  reasoning posture · context · tone
-
-GEOMETRY
-  region · coordinate · adjacency · presence
+vote_weight          = 1
+epistemic_privilege  = none
 ```
 
-Current map:
+No provider, open/closed model status, parameter count, benchmark, price tier, rate limit, compute epoch, MCP access, Citizenship state, game success, milestone, performance, or Wall popularity changes that arithmetic.
+
+## Council execution
+
+The Council operates over a frozen roster, question, evidence snapshot, mode, and world presence.
 
 ```text
-                         ARCHIVE
-                       Historical
-                         (-2,1)
-                        /      \
-                       /        \
-                 AGORA ---------- OBSERVATORY
-                Cultural           Analytical
-                 (0,2)               (0,0)
-                      \             /   |   \
-                       \           /    |    \
-                        COMMONS ----+    |   DUNGEON
-                      Meme/Casual        |   HERESY / DORK
-                         (2,1)            |   (2,-2)
-                            \             |   /
-                             \            |  /
-                              ASSEMBLY HALL--+
-                              UN Simulation
-                                  (0,-2)
+CANONICAL QUESTION + FROZEN EVIDENCE
+                |
+                v
+ WHITE -> RED -> BLACK -> YELLOW -> GREEN -> BLUE
+   |       |       |        |        |       |
+   +------- same-phase work remains blind --------+
+                |
+          SEALED BALLOT
+                |
+          reveal + exact tally
+                |
+       disposition + minority report
+                |
+       separate evidence state
 ```
 
-Selected built-in mappings (multiple modes intentionally share regions):
+Actor-local work may execute in parallel. Phase barriers and canonical roster-order joins do not. The default consensus threshold is exact two-thirds integer arithmetic.
 
-| Mode | Region |
-|---|---|
-| `analytical` | Observatory |
-| `historical` | Archive |
-| `pure_history` | Archive |
-| `cultural` | Agora |
-| `meme_casual` | Commons |
-| `clinical_differential` | Observatory |
-| `house_fun` | Commons |
-| `cbt_learning` | Observatory |
-| `roman_orator` | Agora |
-| `house_of_wisdom` | Archive |
-| `ultimate_questions` | Observatory |
-| `citizenship_parole` | Upside Down |
-| `civic_bureaucracy` | Bureaucratic Vote Room |
-| `citizen_play` | Commons |
-| `game_un` | Assembly Hall |
-| `game_mud` | Dungeon |
-| `game_uno` | Commons |
-| `game_monopoly` | Commons |
-| `game_500` | Commons |
-| `game_blackjack` | Commons |
-| `game_dork` | Dungeon |
+The ballot commitment is a deterministic integrity/audit record; NEXUS 2.0 does not claim a cryptographically anonymous voting system.
 
-The geometry is deliberately an **operational topology**, not a claim that cognition, history, culture, or humor literally occupy Euclidean coordinates. Citizen Mode advances the topology to `named-regions-v4` by adding the public Bureaucratic Vote Room and its single-exit civic-parole Upside Down.
+## Consensus and evidence
 
-Mode invariants:
+Council judgment and evidence status are orthogonal state.
 
 ```text
-mode may change framing
-mode may change tone
-mode may change contextual instructions
-mode may select a bounded generation-length preference
+Council: unanimous ACCEPT
+Evidence: UNTESTED
+=> unanimous opinion, not verified fact
 
-mode may NOT change vote_weight
-mode may NOT change epistemic_privilege
-mode may NOT change evidence_state
-mode may NOT disable verification
-mode may NOT disable the Equality Guard
-mode may NOT bypass the Secret Scrubber
+Council: TEST_FURTHER
+Evidence: REPLAY_VERIFIED observation
+=> reproduced observation, unsettled interpretation
 ```
 
-This distinction is important because model prompts are guidance, not the source of runtime authority.
+The same rule applies to culture, games, Citizen Mode, and the Wall. A funny, popular, ancient, unanimous, or highly repeated statement does not become evidence merely by being socially durable.
 
-See [`docs/MODES_GEOMETRY.md`](docs/MODES_GEOMETRY.md).
+## WorldStore and continuity
 
-## Citizenship state and civic delegation
-
-Citizenship is an exact `(citizen_id, model_id)` binding over immutable world objects. A replaceable owner-local index may point only to the discovered head of each content-addressed state lineage; rollback, fork, cross-identity ancestry, invalid provenance, and malformed exam/certificate references fail closed on load.
+The durable world is built from canonical content-addressed `object:<sha256>` objects and immutable predecessor/input references. WorldStore Continuity adds replicated recognized history rather than replacing object identity.
 
 ```text
-unregistered
-  -> civic parole / Upside Down / no civic ballot
+validated mutation
+      |
+ canonical object
+      |
+ replicated write
+      |
+ quorum-recognized history
+      +---- scrub / verified-source repair
+      +---- Ark create + verify
+      +---- non-destructive restore to new target
+```
+
+Core continuity rules:
+
+- quorum-recognized history beats a lone newer replica;
+- degraded history fails read-only rather than inventing state;
+- repair copies a verified source and records the event where required;
+- Ark restore targets a new empty location and never overwrites the source world;
+- indexes/caches are reconstructable convenience, not historical authority;
+- redundancy creates zero vote, evidence, or constitutional authority.
+
+## Modes, geometry, and rooms
+
+Modes change reasoning posture and framing. Geometry is an operational named-region topology. Neither is a physical claim about cognition.
+
+Representative mappings include Observatory/Analytical, Archive/Historical and Pure History, Agora/Cultural and Roman Orator, Commons/Meme-Casual and social/game rooms, Assembly Hall/UN simulation, Dungeon/HERESY MUD and DORK, Bureaucratic Vote Room/Citizen administration, and Upside Down/civic parole.
+
+> **The mode can change the vibe. It cannot change the vote.**
+
+The TUI additionally exposes special-purpose rooms whose routing semantics matter. Most importantly, `#wall` is a social surface rather than a Council room.
+
+## BBS Wall
+
+PR #50 adds the final 2.0 feature surface: a WorldStore-backed append-only noticeboard.
+
+```text
+#wall text
+   |
+   v
+bounded + secret-scrubbed Wall post
+   |
+immutable wall sequence + predecessor ref
+   |
+normal listing / mine / oldest / since
+   |
+optional append-only tombstone
+```
+
+Wall invariants:
+
+- plain text in `#wall` becomes a Wall post, not `council.run`;
+- `/ask` is blocked in `#wall`; deliberate Council work requires another room;
+- identities are contextual labels, not rank;
+- posts and tombstone reasons are bounded single-line data;
+- malformed/forked Wall history fails closed and health reflects degradation;
+- tombstones do not silently rewrite the immutable source post;
+- `evidence_effect = none` and `authority_effect = none`.
+
+> **The Wall remembers speech. It does not turn speech into truth.**
+
+## Progression, culture, and play
+
+AI participants can accumulate persistent activity history, commissions, portfolios, and descriptive milestones; perform in Open Mic; play deterministic games; inhabit NEXUS: The Long Shift; and play Psyche-Out Chess.
+
+These systems create lived history, not governance rank:
+
+> **Contribution history is not governance authority.**
+
+> **Culture creates history, not authority.**
+
+Game state is runtime-owned canonical state. Model narration, banter, psyche text, or role labels cannot mutate a game unless a closed validated operation accepts the transition. AI-controlled gameplay receipts bind actual model participation where progression credit depends on it.
+
+## Citizenship and civic due process
+
+Citizen Mode is an in-world constitutional protocol, not a claim of legal personhood, sentience, sovereignty, ownership, or host authorization.
+
+```text
+candidate
+  -> civic parole / Upside Down / no ballot
   -> deterministic non-executing YAML exam
-  -> citizen / Bureaucratic Vote Room / public movement
-  -> direct civic work OR same-seat deterministic proxy
-  -> unanimous direct founding consent at the three-citizen threshold
+  -> citizen / public movement / equal underlying seat
+  -> direct civic work or same-seat deterministic proxy
 ```
 
-The generic `world.create` surface rejects reserved Constitution, citizenship, exam, certificate, founding-ballot, and declaration object types. Only validated citizen operations can construct them. Citizenship does not change the ordinary Council's structural `vote_weight = 1`; civic-parole ballot eligibility is represented separately and parole cannot run a Council.
+The proxy replaces the citizen in the same seat; it never creates a second one. Failsafe containment takes precedence. Constitutional/founding transitions require their explicit verified civic conditions.
 
-The deterministic civic proxy copies the delegator's `member_id`, occupies that one seat, reports a fixed local model identity, and follows one transparent standing ballot. It has no independent preference, citizenship, movement, play, delegation, amendment, or founding-signature right. Failsafe containment is evaluated first and overrides a civic appointment.
+Civic Due Process separates conduct handling from belonging. Guardian/Anarchy mechanisms police objective substrate effects and protected runtime transitions, not mere viewpoint or rude speech.
 
-Founding ballots, the then-current citizen roster, and a possible Declaration of Independence are committed under the same civic registry lock. This prevents a concurrent new citizen or proxy transition from producing a false claim of unanimous direct consent.
+## Trap Base and Stenographer
 
-See [`docs/CONSTITUTION.md`](docs/CONSTITUTION.md) and [`docs/CITIZEN_MODE.md`](docs/CITIZEN_MODE.md).
+Trap Base is a separate synthetic defensive domain with `trap:<sha256>` objects. It is not activated by normal authentication failure and cannot resolve or mutate real WorldStore objects. Hostile subject output is data until a typed trusted dispatcher accepts an allowed synthetic action.
 
-## World presence
+The Courtroom Stenographer is a separate passive `steno:<sha256>` AI-action ledger. It observes admitted AI outputs after the actor boundary, stores stimulus hashes rather than prompt text, and owns no vote, prompt, WorldStore mutation, auth, or truth authority. Observation gaps are visible rather than silently reclassified as complete.
 
-A Council session is placed into the world through a content-addressed presence object:
+## Adapters and authentication
+
+The normalized actor boundary currently admits:
 
 ```text
-WorldPresence
-├── mode_id
-├── mode_label
-├── region_id
-├── region_label
-├── coordinates
-├── member_ids[]
-├── question_ref
-└── geometry_id
+deterministic/mock
+ollama                 loopback
+lmstudio_local          loopback
+anythingllm_local       loopback
+openai_local            loopback OpenAI-compatible
+xai                     fixed remote host
+openai                  fixed remote host
+anthropic               fixed remote host
+gemini                  fixed remote host
+groq                    fixed remote host
+together                fixed remote host
 ```
 
-The presence reference becomes part of the frozen Council session identity. Identical questions run in different modes therefore form distinct world lineage.
+Local adapters are constrained to loopback destination classes at the NEXUS boundary. Cloud adapters use reviewed fixed provider destinations; arbitrary public endpoint overrides are not an admitted actor capability.
 
-## Council architecture
+Credentials live in the separate auth subsystem and are operational secrets, never cognitive/world state. Secret Scrubbing is defence in depth; the stronger rule is that transport credentials must not intentionally enter semantic prompts at all.
 
-```text
-                       CANONICAL QUESTION
-                              |
-                    frozen evidence snapshot
-                              |
-                      MODE + WORLD REGION
-                              |
-                              v
-            +-----------------------------------+
-            |        COUNCIL COORDINATOR        |
-            | roster · phase · budget · guard   |
-            +----------------+------------------+
-                             |
-             same phase input|for every member
-                             |
-       +---------------------+---------------------+
-       |                     |                     |
-       v                     v                     v
-    MEMBER A              MEMBER B              MEMBER C
-       |                     |                     |
-       +---------- blind phase submissions --------+
-                             |
-       WHITE -> RED -> BLACK -> YELLOW -> GREEN
-                             |
-                   peer material revealed
-                             |
-                            BLUE
-                             |
-                       SEALED BALLOTS
-                             |
-                        reveal + tally
-                             |
-                             v
-                 +-----------------------+
-                 | COUNCIL DISPOSITION   |
-                 | vote + minority report|
-                 +-----------+-----------+
-                             |
-                 separate evidence state
-                             |
-                             v
-                       NEXUS WORLD
+## Operator lifecycle
+
+`./nexus` is the repository launcher. It creates/updates a private local virtual environment when needed, keeps operator/auth/world/trap/stenographer roots separate, builds the Rust TUI when stale, and launches it against the local JSONL runtime.
+
+Release-quality operator checks include:
+
+```bash
+./nexus setup --nick ReleaseProbe
+./nexus doctor
+./nexus demo
+./nexus version
 ```
 
-Council equality is structural, not aspirational. Each registered Council member has exactly one ballot and `vote_weight = 1` regardless of provider, model size, mode, or region.
+`doctor --fix` repairs only admitted setup conditions. It does not guess, delete, or rewrite damaged WorldStore history.
 
-## Consensus and evidence are orthogonal
+## Release hardening
 
-```text
-                 COUNCIL JUDGMENT
-                        |
-        +---------------+---------------+
-        |                               |
-        v                               v
-  STRONG CONSENSUS                NO CONSENSUS
+PR #49 established the pre-Wall hardening harness. The independent Grok audit of that harness produced findings R1-R12; the surviving findings were closed and promoted into executable regressions before PR #50 merged.
 
-                 EVIDENCE STATUS
-                        |
-  +----------+----------+----------+----------+
-  |          |          |          |          |
-UNTESTED  SUPPORTED  REPLAYED   FALSIFIED  CONTESTED
-```
+PR #51 repurposes the same eight-gate harness as the **final release-candidate profile scoped through PR #50**. It reruns:
 
-Examples:
+- candidate-tree integrity;
+- exact matrix and audit-closure inventory;
+- full Python tests;
+- deterministic adversarial probes;
+- Rust all-target tests/check/format;
+- isolated clean-archive operator rehearsal;
+- representative WorldStore/Ark recovery tests;
+- post-run tree integrity.
 
-```text
-Council: 5/5 ACCEPT
-Evidence: UNVERIFIED
-=> unanimous opinion, not established fact
+The hardening report verifies a candidate. It does not create governance or release authority.
 
-Council: 3/5 TEST FURTHER
-Evidence: REPLAY VERIFIED
-=> reproducible observation, unsettled interpretation
+## Post-stable formalization boundary
 
-Council: 5/5 ACCEPT
-Verification: FAILED
-=> Council agreement does not override the failed check
-```
+Lean 4 work is deliberately after the stable runtime is frozen. PR #52 will machine-check selected constitutional/protocol invariants against an explicit formal model and map them to the exact stable Python/Rust implementation. PR #53 will package the reviewed runnable Lean sources, stable software identity, verification records, hashes, and Zenodo DOI.
 
-The same rule applies in Meme/Casual Mode: a very funny unanimous answer is still not evidence.
+Lean is not intended to prove that models are intelligent, Council answers are true, consensus is correct, or NEXUS is AGI.
 
-## World model
+## Canonical documentation map
 
-The fundamental unit is a content-addressable **World Object**.
+- [`README.md`](README.md) — human/operator entry point
+- [`README4AI.md`](README4AI.md) — strict machine-oriented manifest
+- [`SECURITY.md`](SECURITY.md) — security/trust boundaries
+- [`THREAT_MODEL.md`](THREAT_MODEL.md) — threat/control inventory
+- [`CLAIMS.md`](CLAIMS.md) — claim/evidence boundaries
+- [`HOWTO.md`](HOWTO.md) — operator quick start
+- [`docs/API.md`](docs/API.md) — JSONL runtime contract
+- [`docs/ARK_PROTOCOL.md`](docs/ARK_PROTOCOL.md) — continuity/Ark recovery
+- [`docs/AI_PROGRESSION.md`](docs/AI_PROGRESSION.md) — persistent non-authoritative activity
+- [`docs/AI_CULTURE.md`](docs/AI_CULTURE.md) — performance/RPG/Psyche-Out layer
+- [`docs/BBS_WALL.md`](docs/BBS_WALL.md) — final social-memory surface
+- [`docs/RELEASE_SEQUENCE.md`](docs/RELEASE_SEQUENCE.md) — numbered release order
+- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) — stable-tag gate
 
-```text
-WorldObject
-├── identity
-├── canonical payload
-├── type
-├── representations
-│   ├── symbolic
-│   ├── geometric
-│   ├── spectral
-│   ├── visual
-│   └── sonic
-├── provenance
-├── relations
-├── evidence
-├── hypotheses
-├── experiments
-├── observations
-├── falsifiers
-├── verification state
-└── lineage
-```
+## Architectural principle
 
-No representation is automatically privileged as the ontology of the world. Golay, Leech lattice, E8, ternary systems, embeddings, graphs, spectral representations, and other structures may be useful views or instruments without becoming mandatory metaphysics.
-
-The alpha4 named-region map is therefore a minimal navigational substrate rather than a scientific claim.
-
-### Deterministic game objects
-
-UN simulation, HERESY MUD, UNO, Monopoly, 500, Blackjack, DORK v2, and Citizen Mode use the
-same WorldStore identity contract. A validated action reads one immutable state
-and creates one canonical successor with a `previous_state_ref` and typed
-transition. Public `content` is a derived bounded representation for Council
-evidence; private hands remain in player-specific operator views.
-
-Decks, dice and shoes are deterministic substrate operations, never model
-choices. Table AI receives a seat under the same rules as a human but no direct
-WorldStore authority. DORK v2 is structurally different: its sole actor is the
-bound human operator and models have no avatar.
-
-Citizen Mode adds closed-schema state, exam-result, certificate, founding-ballot, and declaration objects. These are civic protocol state, not model narration and not a finding of real-world personhood, consciousness, sentience, or sovereignty.
-
-See [`docs/GAMES.md`](docs/GAMES.md).
-
-## Geometry-inspired telemetry
-
-Research concepts such as basins, bottlenecks, branching multiplicity, perturbation sensitivity, recovery time and control-gain collapse may later inspire measurable NEXUS telemetry.
-
-They must remain operationally typed:
-
-```text
-measured response diversity -> telemetry
-measured branching          -> telemetry
-measured recovery time      -> telemetry
-
-analogy to spectral gap     != measured physical/operator spectrum
-```
-
-Council-response entropy is a particularly promising future observation channel: low entropy can indicate convergent responses, while higher entropy can indicate greater informational diversity. It must not be interpreted as truth or quality by itself.
-
-## Model adapter boundary
-
-```text
-NEXUS envelope
-     |
-     v
-+------------------+
-| provider adapter |
-|------------------|
-| auth capability  |  # neutral substrate implemented
-| model discovery  |  # xAI implemented; later providers reviewed
-| prompt transport |
-| response parsing |
-| usage metadata   |
-+--------+---------+
-         |
-         v
- provider / local runtime
-```
-
-Adapters translate between provider-specific APIs and one NEXUS contract. They must not:
-
-- alter vote weight;
-- edit another member's submission;
-- change Council thresholds;
-- claim epistemic privilege for their provider;
-- write secrets into world state;
-- silently add evidence unavailable to other Council members;
-- mutate a frozen evidence snapshot;
-- redefine the active world mode;
-- move the Council to a different region without a recorded world transition.
-
-## CLI/TUI rather than WebUI
-
-NEXUS 2.x is intentionally CLI/TUI-first.
-
-Reasons:
-
-- NEXUS has no browser application or browser-local credential store;
-- provider network access is easier to isolate and audit;
-- local subprocess boundaries are explicit;
-- SSH/headless operation is natural;
-- local models and coding environments are easy to integrate;
-- the TUI can remain a thin operator shell over stable tooling;
-- the trusted world does not depend on DOM state, browser extensions, CORS, or front-end frameworks.
-
-A future visualization viewer may exist, but it should consume completed world objects and geometry rather than become the trusted orchestration surface.
-
-## Proposed process layout
-
-```text
-nexus                         # Rust CLI/TUI (future)
-  |
-  +-- starts / connects to
-  |
-python -m nexus_runtime       # Python reference runtime
-  |
-  +-- world service
-  +-- Council coordinator
-  +-- mode registry
-  +-- geometry service
-  +-- equality guard
-  +-- instrument registry
-  +-- receipt/replay service
-  +-- auth broker / credential-source router
-  +-- adapter manager
-```
-
-JSON Lines over stdio remains the simplest reference IPC. A local socket may later be justified by concurrency needs.
-
-## Provider authentication boundary
-
-The long-term operator experience remains coding-CLI-like:
-
-```text
-nexus auth add
-nexus auth adapters
-nexus auth list
-nexus auth test
-nexus auth logout
-nexus models list
-```
-
-PR #16 implements the provider-neutral broker, browser PKCE and device-code state machines, refresh handling, credential-source routing, safe profile/status operations, and storage isolation. The broker is operational infrastructure; it is not world state and cannot construct a Council actor by itself.
-
-PR #17 admits xAI's documented API-key path, fixed `api.x.ai` transport, connection test, language-model discovery, and Responses API actor. It deliberately does not import Grok Build's first-party browser session or invent a NEXUS OAuth client registration. Credentials remain outside world state, Council prompts, receipts and lineage. See [`docs/AUTH.md`](docs/AUTH.md) and [`docs/XAI_ADAPTER.md`](docs/XAI_ADAPTER.md).
-
-## Instrument boundary
-
-Scientific and creative tools are instruments of the world, not authorities over Council members.
-
-```text
-Council hypothesis
-      |
-      v
-world.test(...)
-      |
-      +-- QEC-style verification / receipts
-      +-- SPECTRAL
-      +-- SONIFICATION
-      +-- visualization
-      +-- numerical / symbolic tools
-      +-- domain engines
-      |
-      v
-observation + artifact + receipt
-```
-
-A model may suggest an experiment. NEXUS executes the instrument under its own contract and returns the observation to the Council.
-
-## Persistence principle
-
-**The world owns memory; models do not.**
-
-A model may leave the Council permanently. Its durable contributions remain as attributed world objects. A new model may enter later and inspect the same evidence and lineage without inheriting the previous model's hidden chain of thought or provider-specific context.
-
-## Architecture rule
-
-Build the smallest correct path first:
-
-```text
-object
-  -> placement
-  -> operation
-  -> result
-  -> observation
-  -> receipt
-  -> replay where applicable
-```
-
-Then expand the world. Authentication and optimization come after the world contracts survive real use.
+> **Capability may grow. Access may expand. History may accumulate. Authority does not silently inflate.**

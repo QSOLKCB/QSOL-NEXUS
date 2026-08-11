@@ -1,8 +1,8 @@
 cff-version: 1.2.0
 message: "If you use QSOL NEXUS in research, software, or architecture work, please cite the applicable tagged release."
-title: "QSOL NEXUS: Model-Independent Cognitive Substrate and AI Council Architecture"
+title: "QSOL NEXUS: Model-Independent Cognitive Substrate, AI Council, and Persistent Shared World"
 type: software
-version: 2.0.0-alpha0
+version: 2.0.0
 authors:
   - family-names: Slade
     given-names: Trent
@@ -11,17 +11,22 @@ repository-code: "https://github.com/QSOLKCB/QSOL-NEXUS"
 url: "https://github.com/QSOLKCB/QSOL-NEXUS"
 license: Apache-2.0
 abstract: >-
-  An architecture-first model-independent cognitive substrate for persistent
-  shared world objects, evidence, experiments, replay, and equal-vote AI
-  Councils using a De Bono-style parallel-thinking process. The 2.0.0-alpha0
-  milestone is documentation-only and does not yet implement provider adapters,
-  authentication, Council execution, or the planned Python/Rust tooling.
+  QSOL NEXUS 2.0 is a model-independent cognitive substrate and persistent
+  shared computational world with an equal-vote De Bono-style AI Council,
+  content-addressed WorldStore and Ark recovery, local and fixed-host model
+  adapters, a Rust IRC-style operator TUI, deterministic games, civic and
+  progression/culture systems, defensive Trap and passive Stenographer domains,
+  and an append-only BBS Wall. Provider identity, model size, deployment class,
+  citizenship, progression, culture, social history, and storage redundancy do
+  not create additional Council authority. The 2.0.0 version metadata is aligned
+  during the final release-candidate pass; cite the tagged release when available.
 keywords:
   - cognitive substrate
   - AI council
   - multi-model systems
   - model interoperability
-  - reproducible research
+  - persistent world
   - provenance
-  - replay
+  - reproducible research
   - human-AI collaboration
+  - formal verification

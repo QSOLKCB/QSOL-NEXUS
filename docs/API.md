@@ -13,7 +13,7 @@ nexus/0.14
 Runtime identifier:
 
 ```text
-2.0.0-alpha10.3
+2.0.0
 ```
 
 Current posture:
@@ -34,6 +34,7 @@ local roles       -> optional local-model language backends without ballot-autho
 Trap Base         -> explicit synthetic fixture, isolated store and incident controls
 Stenographer      -> passive canonical AI-action ledger with read-only study views
 Citizen Mode      -> civic parole, deterministic exam, public movement, same-seat proxy, founding consent
+BBS Wall          -> append-only social memory with zero evidence/authority effect
 ```
 
 The public stdio API exposes no `allow_remote` override for Ollama or the local-AI adapters.
@@ -78,7 +79,7 @@ Current response fields include:
 {
   "status": "ok",
   "protocol": "nexus/0.14",
-  "runtime_version": "2.0.0-alpha10.3",
+  "runtime_version": "2.0.0",
   "control_transport": "jsonl_stdio",
   "network": "local_stdio_with_loopback_local_ai_or_fixed_remote_provider_https_or_registered_auth_operations",
   "adapters": [

@@ -1,9 +1,9 @@
 {
   "schema": "nexus-release-hardening-matrix/1",
-  "milestone": "PR #49",
-  "profile": "pre_wall",
+  "milestone": "PR #51",
+  "profile": "final_release_candidate",
   "stable_release": false,
-  "scope_through_pr": 48,
+  "scope_through_pr": 50,
   "principle": "hardening verifies boundaries; it does not create authority",
   "gates": [
     {
@@ -77,7 +77,8 @@
         "test_release_hardening.py",
         "test_release_hardening_grok_audit.py",
         "test_readme_contract.py",
-        "test_wall*.py"
+        "test_wall*.py",
+        "test_release_candidate.py"
       ]
     }
   ],
@@ -124,6 +125,8 @@
     "status": "resolved_in_pre_stable_line",
     "verification": "tests/test_release_hardening_grok_audit.py"
   },
-  "post_wall_rule": "PR #51 must rerun this complete matrix after PR #50 changes the final feature surface and verify all 12 Grok PR49 findings remain closed",
-  "authority_effect": "none"
+  "authority_effect": "none",
+  "target_version": "2.0.0",
+  "base_feature_merge": "1bc078ed266e7fac02d6f905f8ddd0c9061c1d8b",
+  "release_rule": "Only the exact merged PR #51 head may be tagged v2.0.0 after the complete release-candidate matrix passes with no unresolved release-blocking review findings."
 }

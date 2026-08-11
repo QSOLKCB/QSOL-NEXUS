@@ -930,27 +930,22 @@ WorldStore Continuity / The Ark Protocol - PR #46 - Done
   ↓
 AI Progression & Civic Life - PR #47 - Done
   ↓
-AI CULTURE / PERFORMANCE / PSYCHE-OUT PLAY - PR #48
+AI CULTURE / PERFORMANCE / PSYCHE-OUT PLAY - PR #48 - Done
   ↓
 ==============================
-        2.0 BETA HARDENING - PR #49
+        2.0 HARDENING - PR #49 - Done
 ==============================
   ↓
-adapter + credential audit
-provider isolation + destination allowlists
-failure containment + rate limits
-replay/tamper + migration fixtures
-operator bootstrap/doctor hardening
-WorldStore quorum/scrub/Ark/recovery hardening
-progression + culture/play hardening
-full pre-Wall release rehearsal
+Grok PR49 R1-R12 closure carried into pre-stable line - Done
   ↓
-BBS WALL - PR #50
+BBS WALL - PR #50 - Done
   ↓
-DOCUMENTATION + FINAL RELEASE CANDIDATE - PR #51
+DOCUMENTATION + FINAL RELEASE CANDIDATE - PR #51 - Current
   ↓
 ==============================
           NEXUS 2.0 STABLE
 ==============================
   ↓
-FORMALIZATION + ZENODO - PR #52
+LEAN 4 FORMAL VERIFICATION - PR #52
+  ↓
+FORMALIZATION + REPRODUCIBILITY + ZENODO - PR #53

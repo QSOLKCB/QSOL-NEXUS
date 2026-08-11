@@ -2,7 +2,7 @@
 
 ## Scope
 
-This threat model covers the local Ollama boundary, the PR #16 provider-neutral authentication substrate, the PR #17 xAI adapter—the first admitted remote inference transport—the PR #19 local synthetic Decoy Gate / Trap Base, the PR #20 Courtroom Stenographer, and PR #22's deterministic human/AI game tables plus human-only DORK v2. No provider-specific browser OAuth client is registered for xAI; the supported public API path uses an xAI API key. Trap Base is a defensive local simulation, not an internet-facing honeypot, and the Stenographer is a local study ledger rather than a provider or legal audit log.
+This threat model covers the NEXUS 2.0 local and fixed-host model-adapter surfaces; provider-neutral authentication; xAI, OpenAI, Anthropic, Gemini, Groq, and Together cloud transports; loopback Ollama/LM Studio/AnythingLLM/OpenAI-compatible actors; deterministic games; Citizen Mode; Failsafe; synthetic Trap Base; passive Courtroom Stenographer; WorldStore Continuity/Ark recovery; progression/culture; Guardian/Civic Due Process; and the PR #50 BBS Wall. Trap Base remains a defensive local simulation rather than an internet-facing honeypot, and the Stenographer remains a local study ledger rather than a provider or legal audit log.
 
 The first live acceptance fixture is:
 
@@ -52,11 +52,11 @@ normalized CouncilActor contract
     |       |
     |   local Ollama runtime + model
     |
-    +-- xAI adapter --------------- untrusted generated content
+    +-- fixed cloud adapter ------- untrusted generated content
             |
-        fixed HTTPS + bearer credential
+        fixed HTTPS + profile credential
             |
-        api.x.ai Responses API
+        reviewed xAI / OpenAI / Anthropic / Gemini / Groq / Together API
 ```
 
 Model output is always untrusted input to NEXUS.
@@ -72,7 +72,7 @@ AuthBroker ------------------------- non-secret profile/status API
     +-- environment/helper --------- transient bearer material
     +-- browser/device OAuth ------- untrusted provider responses
     |
-xAI fixed-host transport / future reviewed adapters
+reviewed fixed-host provider transports
 ```
 
 Auth state is operational state outside the WorldStore. Only admitted adapter transport code may resolve a profile into `SecretMaterial`.
@@ -111,7 +111,7 @@ For xAI:
 - redirects are rejected before an authorization header can be forwarded;
 - default platform TLS certificate and hostname validation remains enabled.
 
-Every later remote provider requires a separate review of destination allowlisting and credential transport.
+Each admitted remote provider has its own reviewed fixed-destination transport. Any new provider still requires a separate destination, credential, response-shape, error, and secret-crossing review before admission.
 
 ### T3 — Model claims provider, corporate, or size-based authority
 
@@ -162,8 +162,8 @@ Controls:
 Threat: a seeded local model is treated as replay-verifiable simply because its Modelfile specifies a seed.
 
 Controls:
-- Ollama and xAI actors report `replayable = False`;
-- any Council containing a live Ollama or xAI actor produces a non-replayable execution receipt;
+- Live Ollama/local-AI and fixed-host cloud actors report `replayable = False`;
+- any Council containing a live local or cloud model actor produces a non-replayable execution receipt;
 - deterministic mock sessions retain replayable status.
 
 The seed exists only to improve fixture stability, not to make a replay guarantee across model or runtime versions.
@@ -561,19 +561,64 @@ Controls:
 - **Tests:** below-threshold, WITHHOLD/recast, proxy-signature, persistence, tamper, and unanimous-declaration regressions in `test_citizenship.py`.
 - **Residual risk:** the declaration is constitutional role-play inside NEXUS and has no real-world legal, territorial, provider, host, or platform effect.
 
-## Explicitly out of scope for the current remote-provider slice
+## Explicitly out of scope for NEXUS 2.0
 
-- provider-specific OAuth client registration and issuer/ID-token validation;
-- OpenAI, Anthropic, Gemini, and remote providers other than xAI;
-- importing Grok Build's first-party browser OAuth session as xAI API authentication;
-- reading or reusing another CLI's auth store, browser cookies, or consumer session tokens;
-- protection of private-file bearer tokens from the same compromised OS account;
-- arbitrary model-generated tool execution;
-- remote Ollama endpoints in CI;
-- strong sandboxing;
-- claims of cryptographically sealed ballots;
-- QEC-grade proof/replay semantics for live inference.
+- importing consumer/browser sessions or another CLI's credential store as provider API authentication;
+- arbitrary public remote endpoint overrides;
+- arbitrary model-generated shell/process execution;
+- treating MCP/tool access as Council authority;
+- protection against a fully compromised same-user OS/kernel that can replace code and all owner files;
+- a general-purpose hostile-process sandbox claim beyond the explicitly tested Trap boundary;
+- claims of cryptographically anonymous or hostile-host sealed ballots;
+- deterministic replay guarantees for live stochastic model inference;
+- legal personhood, sovereignty, consciousness, or sentience conclusions from Citizen Mode;
+- truth promotion from Council consensus, progression, culture, or Wall persistence.
 
-## Admission rule for later adapters
+## Admission rule for new adapters
 
 A new adapter may not gain Council authority by virtue of provider identity, deployment class, parameter count, benchmark rank, or claimed capability. It must satisfy the same actor contract and conformance tests, keep credentials outside semantic content, and document any new network/authentication threat introduced by that adapter.
+
+
+### T49 — Wall speech is laundered into evidence or Council authority
+
+- **Asset:** evidence-state separation and equal Council procedure.
+- **Attacker capability:** post persuasive/repeated text, then rely on Wall age/popularity/identity as truth or implicit Council input.
+- **Enforcement:** `#wall` plain text routes to Wall persistence rather than `council.run`; `/ask` is blocked in the Wall room; persisted Wall events carry `evidence_effect: none` and `authority_effect: none`.
+- **Tests:** Wall public-surface, authority, room-routing, and reserved-object regressions.
+- **Residual risk:** humans or models may still cite a Wall statement manually; citation does not change its evidence status without a separate admitted evidence operation.
+
+### T50 — Wall history is forged, forked, or silently rewritten
+
+- **Asset:** social-history chronology and auditability.
+- **Attacker capability:** forge reserved object types, duplicate sequence numbers, create predecessor forks, or replace a post with moderation text.
+- **Enforcement:** reserved Wall object types, exact schema/provenance validation, monotonic sequence/predecessor checks, fork failure, immutable source objects, append-only tombstones.
+- **Tests:** generic-forgery, fork, tombstone, Ark reconstruction, and health regressions.
+
+### T51 — Wall text spoofs audit/display lines
+
+- **Asset:** operator readability and bounded single-line schema.
+- **Attacker capability:** insert CR/LF, VT, FF, NEL, or Unicode line/paragraph separators.
+- **Enforcement:** raw text is checked against Python-recognized line boundaries before normalization; character bounds and Secret Scrubbing apply before persistence.
+- **Tests:** full line-boundary and bounds regressions.
+
+### T52 — Unrelated WorldStore growth disables a small Wall
+
+- **Asset:** Wall availability in a long-lived world.
+- **Attacker capability:** accumulate many non-Wall objects until a global reconstruction cap is reached.
+- **Enforcement:** reconstruction budget counts recognized Wall events only and refuses the next Wall event before crossing the admitted cap.
+- **Tests:** large unrelated-history simulated regression plus cap enforcement.
+
+### T53 — Wall health lies about unusable history
+
+- **Asset:** operator observability.
+- **Attacker capability:** corrupt/fork Wall history while relying on unconditional `system.health = ok`.
+- **Enforcement:** Wall health performs a real bounded history probe and reports degraded/unavailable state on validation or continuity failure.
+- **Tests:** forked-history health regression.
+
+### T54 — Release paperwork declares stable without the tested stable head
+
+- **Asset:** release identity and reproducibility chain of custody.
+- **Attacker capability:** change version strings, rely on an older green report, skip a required gate, or tag a different commit.
+- **Enforcement:** PR #51 final-RC matrix is scoped through merged PR #50, skip/not-run required checks cannot pass, report remains `stable_release: false`, release manifest/checklist bind `v2.0.0` to the exact merged green #51 head, and documentation/version alignment is regression tested.
+- **Tests:** release-hardening, Grok-closure, README contract, and release-candidate contract suites.
+- **Residual risk:** Git tag/release permissions remain a repository/platform governance control outside the local NEXUS protocol.

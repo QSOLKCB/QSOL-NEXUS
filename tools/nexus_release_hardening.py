@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""NEXUS 2.0 pre-Wall release-hardening runner.
+"""NEXUS 2.0 final release-candidate hardening runner.
 
-PR #49 established the pre-Wall baseline. This runner remains the executable
-hardening contract carried forward through the pre-stable line. It audits the
-matrix, runs the full regression/adversarial/Rust suite, rehearses operator
-bootstrap from a clean candidate archive, and emits a machine-readable report.
-
-The output carries no governance, evidence, or release authority by itself.
+PR #49 established the pre-Wall baseline and the Grok audit strengthened it.
+PR #51 reruns that complete contract against the post-Wall feature surface,
+rehearses a clean operator archive, and emits a machine-readable candidate
+report. The report verifies boundaries but carries no governance, evidence,
+or stable-release authority by itself.
 """
 
 from __future__ import annotations
@@ -58,6 +57,14 @@ REQUIRED_REHEARSALS: dict[str, tuple[str, ...]] = {
     ),
 }
 REQUIRED_GROK_FINDING_IDS = frozenset(f"R{index}" for index in range(1, 13))
+EXPECTED_MATRIX_MILESTONE = "PR #51"
+EXPECTED_MATRIX_PROFILE = "final_release_candidate"
+EXPECTED_SCOPE_THROUGH_PR = 50
+TARGET_VERSION = "2.0.0"
+REQUIRED_RELEASE_RULE = (
+    "Only the exact merged PR #51 head may be tagged v2.0.0 after the complete "
+    "release-candidate matrix passes with no unresolved release-blocking review findings."
+)
 REQUIRED_CHECK_NAMES = frozenset(
     {
         "candidate-tree-clean",
@@ -162,7 +169,17 @@ def _audit_matrix_data(matrix: Any, tests_root: Path) -> str:
     if matrix.get("schema") != "nexus-release-hardening-matrix/1":
         raise ValueError("unexpected hardening matrix schema")
     if matrix.get("stable_release") is not False:
-        raise ValueError("pre-stable hardening matrix must not declare stable release")
+        raise ValueError("release-candidate matrix must not self-declare stable release")
+    if matrix.get("milestone") != EXPECTED_MATRIX_MILESTONE:
+        raise ValueError("release-candidate milestone mismatch")
+    if matrix.get("profile") != EXPECTED_MATRIX_PROFILE:
+        raise ValueError("release-candidate profile mismatch")
+    if matrix.get("scope_through_pr") != EXPECTED_SCOPE_THROUGH_PR:
+        raise ValueError("release-candidate scope must include merged PR #50")
+    if matrix.get("target_version") != TARGET_VERSION:
+        raise ValueError("release-candidate target version mismatch")
+    if matrix.get("release_rule") != REQUIRED_RELEASE_RULE:
+        raise ValueError("release-candidate stable-tag rule mismatch")
     if matrix.get("authority_effect") != "none":
         raise ValueError("hardening matrix cannot create authority")
     gates = matrix.get("gates")
@@ -240,7 +257,8 @@ def _audit_matrix_data(matrix: Any, tests_root: Path) -> str:
         raise ValueError("release composition tests are not covered by the hardening matrix")
     return (
         f"{len(seen)} required gates cover {len(matched)} test files; "
-        f"{len(observed_rehearsals)} required rehearsals and 12/12 Grok findings pinned"
+        f"{len(observed_rehearsals)} required rehearsals and 12/12 Grok findings pinned; "
+        f"profile={EXPECTED_MATRIX_PROFILE} target={TARGET_VERSION} scope_through_pr={EXPECTED_SCOPE_THROUGH_PR}"
     )
 
 
@@ -550,8 +568,10 @@ def _build_report(checks: list[CheckResult]) -> dict[str, Any]:
         status = "failed"
     return {
         "schema": REPORT_SCHEMA,
-        "profile": "pre_wall",
+        "profile": EXPECTED_MATRIX_PROFILE,
         "matrix": str(MATRIX_PATH.relative_to(ROOT)),
+        "target_version": TARGET_VERSION,
+        "scope_through_pr": EXPECTED_SCOPE_THROUGH_PR,
         "stable_release": False,
         "authority_effect": "none",
         "status": status,
@@ -562,7 +582,7 @@ def _build_report(checks: list[CheckResult]) -> dict[str, Any]:
         "missing_required_checks": not_run_required,
         "not_run_required_checks": not_run_required,
         "checks": [asdict(check) for check in rendered_checks],
-        "post_wall_rule": "PR #51 must rerun the complete release-candidate matrix after PR #50 and verify 12/12 Grok PR49 findings remain closed",
+        "release_rule": REQUIRED_RELEASE_RULE,
     }
 
 

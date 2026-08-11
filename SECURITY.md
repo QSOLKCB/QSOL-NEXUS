@@ -1,4 +1,4 @@
-# NEXUS 2.x Security and Trust Boundaries
+# NEXUS 2.0 Security and Trust Boundaries
 
 ## Security posture
 
@@ -16,7 +16,7 @@ passive Stenographer store
 scientific / deterministic instruments
 ```
 
-Remote model traffic occurs only inside explicitly configured adapters. Ollama is loopback-only by default; xAI is the first admitted remote adapter and is pinned to `https://api.x.ai/v1`.
+Remote model traffic occurs only inside explicitly configured adapters. Ollama, LM Studio, AnythingLLM, and generic OpenAI-compatible local actors are constrained to reviewed loopback boundaries. Admitted cloud actors for xAI, OpenAI, Anthropic, Gemini, Groq, and Together use reviewed fixed provider destinations; arbitrary endpoint override is not part of the public actor schema.
 
 ## Why CLI/TUI first
 
@@ -36,7 +36,7 @@ This does not make a CLI automatically secure. It makes the intended trust bound
 
 ```text
 +-----------------------------+
-| Rust TUI / CLI (future)     |
+| Rust TUI / CLI              |
 | no raw provider secrets in  |
 | normal display/log output   |
 +-------------+---------------+
@@ -53,8 +53,8 @@ This does not make a CLI automatically secure. It makes the intended trust bound
               |
 +-------------v---------------+
 | model adapters              |
-| mock / Ollama / xAI         |
-| later providers reviewed    |
+| mock / loopback local AI    |
+| fixed reviewed cloud APIs   |
 +-------------+---------------+
               |
        model runtime/API
@@ -454,3 +454,14 @@ The current runtime does **not** claim:
 - that model-generated content is trustworthy merely because it came from a Council member;
 - that NEXUS citizenship establishes legal personhood, consciousness, sentience, sovereignty, ownership, host control, provider control, or authority over another model;
 - that an in-world Declaration of Independence changes real-world law, platform policy, credentials, infrastructure ownership, or operator responsibility.
+
+
+## BBS Wall boundary
+
+The Wall is an append-only social-memory surface, not an evidence or governance channel. Normal `#wall` text is persisted as a bounded, secret-scrubbed Wall post instead of being routed into `council.run`; `/ask` is blocked in the Wall room. Wall object types are runtime-reserved, chronology is validated, forks fail closed, and system health reflects unreadable or invalid Wall history.
+
+Moderation creates an immutable tombstone event rather than rewriting or deleting the original source object. Runtime identity labels are context only and may not create rank, Council weight, Citizenship, evidence promotion, or tool/security authority.
+
+## Stable-release security gate
+
+PR #51 aligns the intended `2.0.0` bits but does not self-authorize a stable release. The stable tag is permitted only from the exact merged #51 commit after full Python/Rust, adversarial/security, clean-archive bootstrap, WorldStore/Ark recovery, Grok R1-R12 closure, Wall-boundary, documentation-coupling, and review gates pass. The hardening report itself has `authority_effect: none` and `stable_release: false`.
