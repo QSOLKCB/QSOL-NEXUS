@@ -1,5 +1,7 @@
 # NEXUS 2.0 Hardening — PR #49
 
+> **Historical-to-final note:** PR #49 established the pre-Wall baseline. PR #51 reruns the same hardened contract as a final release-candidate profile scoped through merged PR #50.
+
 PR #49 is the formal **pre-Wall hardening baseline** for NEXUS 2.0.
 
 It runs only after the complete foundation through PR #48 exists: Council, persistence, operator tooling, continuity/Ark recovery, Citizenship/Civic Due Process, AI Progression & Civic Life, The Long Shift, Open Mic and Psyche-Out Chess.

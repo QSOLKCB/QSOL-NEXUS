@@ -9,9 +9,9 @@ PR #48 — AI Culture, Performance & Psyche-Out Play — MERGED
         ↓
 PR #49 — NEXUS 2.0 Hardening — MERGED
         ↓
-PR #50 — The BBS Wall
+PR #50 — The BBS Wall — MERGED
         ↓
-PR #51 — Documentation, Release Candidate & Stable Release Prep
+PR #51 — Documentation, Release Candidate & Stable Release Prep — THIS RELEASE CANDIDATE
         ↓
 NEXUS 2.0 STABLE RELEASE
         ↓
@@ -56,7 +56,7 @@ Gate:
 
 ## PR #50 — The BBS Wall
 
-Add the post-hardening social memory surface:
+Merged post-hardening social memory surface:
 
 - old-school BBS-style public Wall;
 - short bounded chronological notes from humans and models;

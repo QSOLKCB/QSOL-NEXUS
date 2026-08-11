@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
-"""NEXUS 2.0 pre-Wall release-hardening runner.
+"""NEXUS 2.0 final release-candidate hardening runner.
 
-PR #49 established the pre-Wall baseline. This runner remains the executable
-hardening contract carried forward through the pre-stable line. It audits the
-matrix, runs the full regression/adversarial/Rust suite, rehearses operator
-bootstrap from a clean candidate archive, and emits a machine-readable report.
-
-The output carries no governance, evidence, or release authority by itself.
+PR #49 established the pre-Wall baseline and the Grok audit strengthened it.
+PR #51 reruns that complete contract against the post-Wall feature surface,
+rehearses a clean operator archive, and emits a machine-readable candidate
+report. The report verifies boundaries but carries no governance, evidence,
+or stable-release authority by itself.
 """
 
 from __future__ import annotations
@@ -49,15 +48,25 @@ REQUIRED_REHEARSALS: dict[str, tuple[str, ...]] = {
         "./nexus doctor",
         "./nexus demo",
     ),
-    "representative_world_ark_round_trip": (
-        "create persistent world state including AI progression/culture history",
+    "representative_pre_beta_upgrade_ark_round_trip": (
+        "create a representative pre-beta plain WorldStore with cognitive/evidence history",
+        "open it through current Continuity/NEXUS without changing legacy object refs",
+        "exercise current progression, culture and BBS Wall state on the upgraded world",
         "create and verify a World Ark",
         "restore into a new empty target",
-        "reopen NEXUS without mutable progression cache",
-        "reconstruct the same portfolio from immutable restored history",
+        "remove mutable progression cache and reopen current NEXUS",
+        "reconstruct the same legacy refs, progression portfolio, culture artifact and Wall history from immutable restored history",
     ),
 }
 REQUIRED_GROK_FINDING_IDS = frozenset(f"R{index}" for index in range(1, 13))
+EXPECTED_MATRIX_MILESTONE = "PR #51"
+EXPECTED_MATRIX_PROFILE = "final_release_candidate"
+EXPECTED_SCOPE_THROUGH_PR = 50
+TARGET_VERSION = "2.0.0"
+REQUIRED_RELEASE_RULE = (
+    "Only the exact merged PR #51 head may be tagged v2.0.0 after the complete "
+    "release-candidate matrix passes with no unresolved release-blocking review findings."
+)
 REQUIRED_CHECK_NAMES = frozenset(
     {
         "candidate-tree-clean",
@@ -68,6 +77,7 @@ REQUIRED_CHECK_NAMES = frozenset(
         "rust-check",
         "rust-format",
         "fresh-archive-operator-rehearsal",
+        "representative-pre-beta-upgrade-ark-rehearsal",
         "candidate-tree-unchanged",
     }
 )
@@ -162,7 +172,17 @@ def _audit_matrix_data(matrix: Any, tests_root: Path) -> str:
     if matrix.get("schema") != "nexus-release-hardening-matrix/1":
         raise ValueError("unexpected hardening matrix schema")
     if matrix.get("stable_release") is not False:
-        raise ValueError("pre-stable hardening matrix must not declare stable release")
+        raise ValueError("release-candidate matrix must not self-declare stable release")
+    if matrix.get("milestone") != EXPECTED_MATRIX_MILESTONE:
+        raise ValueError("release-candidate milestone mismatch")
+    if matrix.get("profile") != EXPECTED_MATRIX_PROFILE:
+        raise ValueError("release-candidate profile mismatch")
+    if matrix.get("scope_through_pr") != EXPECTED_SCOPE_THROUGH_PR:
+        raise ValueError("release-candidate scope must include merged PR #50")
+    if matrix.get("target_version") != TARGET_VERSION:
+        raise ValueError("release-candidate target version mismatch")
+    if matrix.get("release_rule") != REQUIRED_RELEASE_RULE:
+        raise ValueError("release-candidate stable-tag rule mismatch")
     if matrix.get("authority_effect") != "none":
         raise ValueError("hardening matrix cannot create authority")
     gates = matrix.get("gates")
@@ -236,11 +256,13 @@ def _audit_matrix_data(matrix: Any, tests_root: Path) -> str:
 
     release_test = tests_root / "test_release_hardening.py"
     grok_test = tests_root / "test_release_hardening_grok_audit.py"
-    if release_test not in matched or grok_test not in matched:
-        raise ValueError("release composition tests are not covered by the hardening matrix")
+    upgrade_test = tests_root / "test_release_upgrade_rehearsal.py"
+    if release_test not in matched or grok_test not in matched or upgrade_test not in matched:
+        raise ValueError("release composition and upgrade/recovery tests are not covered by the hardening matrix")
     return (
         f"{len(seen)} required gates cover {len(matched)} test files; "
-        f"{len(observed_rehearsals)} required rehearsals and 12/12 Grok findings pinned"
+        f"{len(observed_rehearsals)} required rehearsals and 12/12 Grok findings pinned; "
+        f"profile={EXPECTED_MATRIX_PROFILE} target={TARGET_VERSION} scope_through_pr={EXPECTED_SCOPE_THROUGH_PR}"
     )
 
 
@@ -491,6 +513,20 @@ def _operator_rehearsal() -> CheckResult:
         )
 
 
+def _pre_beta_upgrade_ark_rehearsal() -> CheckResult:
+    return _run(
+        "representative-pre-beta-upgrade-ark-rehearsal",
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            "tests.test_release_upgrade_rehearsal.PreBetaUpgradeArkRehearsalTests.test_representative_pre_beta_world_upgrades_and_ark_round_trips",
+            "-v",
+        ],
+        env={"PYTHONPATH": str(ROOT / "src")},
+    )
+
+
 def _adversarial_probes(iterations: int) -> CheckResult:
     with tempfile.TemporaryDirectory(prefix="nexus-adversary-report-") as temporary:
         report_path = Path(temporary) / "report.json"
@@ -550,8 +586,10 @@ def _build_report(checks: list[CheckResult]) -> dict[str, Any]:
         status = "failed"
     return {
         "schema": REPORT_SCHEMA,
-        "profile": "pre_wall",
+        "profile": EXPECTED_MATRIX_PROFILE,
         "matrix": str(MATRIX_PATH.relative_to(ROOT)),
+        "target_version": TARGET_VERSION,
+        "scope_through_pr": EXPECTED_SCOPE_THROUGH_PR,
         "stable_release": False,
         "authority_effect": "none",
         "status": status,
@@ -562,7 +600,7 @@ def _build_report(checks: list[CheckResult]) -> dict[str, Any]:
         "missing_required_checks": not_run_required,
         "not_run_required_checks": not_run_required,
         "checks": [asdict(check) for check in rendered_checks],
-        "post_wall_rule": "PR #51 must rerun the complete release-candidate matrix after PR #50 and verify 12/12 Grok PR49 findings remain closed",
+        "release_rule": REQUIRED_RELEASE_RULE,
     }
 
 
@@ -635,6 +673,7 @@ def main() -> int:
             )
         else:
             checks.append(_operator_rehearsal())
+        checks.append(_pre_beta_upgrade_ark_rehearsal())
         checks.append(
             _worktree_audit(
                 "candidate-tree-unchanged",

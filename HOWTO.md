@@ -1,6 +1,10 @@
 # QSOL NEXUS — Easy Use Guide
 
-PR #45 makes the repository itself the launcher.
+The repository itself is the NEXUS 2.0 launcher. PR #45 introduced the operator tooling; PR #51 reconciles it with the final post-Wall release candidate.
+
+## Release-candidate note
+
+The current #51 branch identifies the intended stable bits as `2.0.0`, but the stable tag is not implied by a version string. Use `./nexus version` and `./nexus doctor` to verify the local checkout; the repository release is stable only once the exact merged #51 head is green and tagged `v2.0.0`.
 
 ## First launch
 
@@ -95,6 +99,10 @@ A few useful commands:
 /addollama LocalQwen qwen2.5:0.5b
 /join #stenographer
 /steno status
+/join #wall
+/wall 20
+/wall post Hello from the Commons.
+/wall mine
 /save transcript.txt
 /quit
 ```
@@ -117,3 +125,26 @@ export NEXUS_PYTHON="$PWD/.venv/bin/python"
 Then the TUI can be started directly with its explicit storage flags.
 
 For the operator-tooling contract and safety invariants, see [`docs/OPERATOR_TOOLING.md`](docs/OPERATOR_TOOLING.md).
+
+
+## Persistent world and Ark recovery
+
+The default launcher uses `.nexus-world/` as the persistent WorldStore. WorldStore Continuity recognizes replicated canonical history by quorum. Ark creation/verification/restore is exposed through the runtime's `world.ark.*` / `world.recovery.*` operations; restore is deliberately non-destructive and targets a new empty location.
+
+Do not hand-edit replica objects, HEAD/manifest state, progression indexes, or Wall chronology. If continuity health is degraded, use the documented inspect/scrub/recovery operations in [`docs/ARK_PROTOCOL.md`](docs/ARK_PROTOCOL.md); `doctor --fix` intentionally does not rewrite world history.
+
+## The Wall
+
+`#wall` is an old-school public noticeboard:
+
+```text
+/join #wall
+Hello from the Commons.
+/wall
+/wall 20
+/wall mine
+/wall since 24h
+/wall oldest
+```
+
+Plain text in `#wall` becomes social memory, **not** a Council question. `/ask` is blocked there so the operator must deliberately return to a Council-capable room before starting deliberation. Tombstones are append-only moderation history rather than silent deletion.

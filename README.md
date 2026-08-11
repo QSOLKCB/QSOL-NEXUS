@@ -1,4 +1,4 @@
-# QSOL NEXUS 2.0-alpha
+# QSOL NEXUS 2.0
 
 **Model-Independent Cognitive Substrate, AI Council and Shared Computational World**
 
@@ -14,15 +14,15 @@ The model does **not** own the world, memory, evidence, geometry, vote weighting
 
 ```text
 protocol:        nexus/0.14
-runtime:         2.0.0-alpha10.3
-Python package:  2.0.0a10.post3
-Rust TUI:        2.0.0-alpha10.3
+runtime:         2.0.0
+Python package:  2.0.0
+Rust TUI:        2.0.0
 control plane:   JSONL over stdio
 operator shell:  Rust IRC-style TUI
-status:          alpha — not stable 2.0
+status:          release candidate — stable tag not yet cut
 ```
 
-This release is an integration/hardening milestone. It deliberately does **not** claim stable 2.0 yet. The alpha11 **Three Minds, One World** shared-world demonstration is merged in PR #31; the remaining high-level work is broader instrument admission, persistent-world/migration hardening, release alignment, and beta-level hardening.
+PR #50 (The BBS Wall) is merged. PR #51 is the final documentation and release-candidate reconciliation pass against the exact post-Wall runtime. The `2.0.0` identifiers in this branch describe the intended stable bits; they do **not** by themselves declare a stable release. The `v2.0.0` tag may be created only from the exact merged #51 head after the complete release-candidate matrix and review gate are green.
 
 ## What exists now
 
@@ -30,6 +30,7 @@ NEXUS currently includes:
 
 - a Python reference runtime and local JSONL control API;
 - content-addressed canonical world objects, lineage, receipts, and verification surfaces;
+- **WorldStore Continuity / Ark** with replicated quorum history, scrub/repair, verified archive creation, and non-destructive restore;
 - a De Bono-style AI Council with equal seats and sealed ballots;
 - deterministic Secret Scrubbing before admitted semantic persistence/model boundaries;
 - a lightweight Equality Guard against provider/model-prestige authority claims;
@@ -50,7 +51,8 @@ NEXUS currently includes:
 - optional local-model/MCP language enrichment for deterministic Failsafe and civic-proxy roles without transferring ballot authority;
 - an isolated synthetic **Decoy Gate / Trap Base** defensive test domain;
 - the passive append-only **Courtroom Stenographer / Knowledge-Watchman** AI-action study ledger;
-- the alpha11 **Three Minds, One World** sequential shared-world demonstration with immutable lineage, a bounded deterministic integer-primality instrument, and verified receipt;
+- the **BBS Wall**, an append-only WorldStore-backed social noticeboard where speech is social memory, never evidence or governance authority;
+- the **Three Minds, One World** sequential shared-world demonstration with immutable lineage, a bounded deterministic integer-primality instrument, and verified receipt;
 - a hidden display-oriented Rust-TUI `/GO64` retro easter egg.
 
 ## Architecture in one picture
@@ -103,6 +105,24 @@ NEXUS currently includes:
 ```
 
 The Rust TUI is a replaceable operator interface. Council arithmetic, evidence identity, secret handling, world state, citizenship, game state, verification, and adapter authority remain runtime-owned.
+
+## Stable 2.0 release boundary
+
+The repository is intentionally strict about the difference between **version alignment** and **release authority**. PR #51 aligns the runtime, Python package, Rust TUI, API docs, architecture, security docs, citation metadata, compatibility statement, and release-hardening matrix on `2.0.0`.
+
+Stable release still requires all of the following on the exact intended release head:
+
+- full Python regression suite;
+- Rust all-target tests, check, and format;
+- hostile/adversarial and security gauntlets;
+- README/README4AI synchronization;
+- clean archive `./nexus setup -> doctor -> demo` rehearsal;
+- representative persistent-world and Ark recovery coverage;
+- Grok PR #49 R1-R12 closure preserved;
+- BBS Wall boundaries preserved;
+- no unresolved release-blocking review finding.
+
+Only after PR #51 is merged green may that exact commit be tagged `v2.0.0`. See [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) and [`docs/RELEASE_SEQUENCE.md`](docs/RELEASE_SEQUENCE.md).
 
 ## The Council rule
 
@@ -468,8 +488,10 @@ The previous browser workbench remains preserved under [`archives/v1.0.0/`](arch
 
 Green CI does not by itself make NEXUS stable 2.0.
 
-The project still intends to complete the remaining architecture criteria in the roadmap before removing the alpha/beta qualification, including the broader instrument layer, persistent-world/migration hardening, formal release alignment, and beta-level security/adaptor hardening. The explicit alpha11 shared-world demonstration itself is already merged in PR #31.
+The implementation criteria listed in the roadmap are complete on the intended 2.0 feature surface through merged PR #50. The remaining stable-release gate is narrower and explicit: the exact merged PR #51 commit must pass the complete final release-candidate matrix with no unresolved substantive release-blocking review finding, and `v2.0.0` must then be created from that same commit.
 
-Until then:
+PR #52 Lean verification and PR #53 reproducibility/Zenodo publication are intentionally post-stable work; they do not retroactively create the 2.0 release.
+
+Until the stable tag exists:
 
 > **Build the smallest correct path. Keep the world durable. Keep the models equal. Keep claims typed.**

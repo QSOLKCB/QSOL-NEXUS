@@ -1,5 +1,7 @@
 # NEXUS World Protocol
 
+> **NEXUS 2.0 release status:** this protocol document is part of the final candidate; executable schemas/tests take precedence over historical planning language.
+
 ## Purpose
 
 The World Protocol is the stable interface between cognitive actors and the persistent NEXUS world.

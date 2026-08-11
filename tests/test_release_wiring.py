@@ -62,8 +62,8 @@ class ReleaseWiringTests(unittest.TestCase):
         api_reference = (ROOT / "docs" / "API.md").read_text(encoding="utf-8")
 
         self.assertEqual(PROTOCOL_VERSION, "nexus/0.14")
-        self.assertEqual(RUNTIME_VERSION, "2.0.0-alpha10.3")
-        self.assertEqual(pyproject["project"]["version"], "2.0.0a10.post3")
+        self.assertEqual(RUNTIME_VERSION, "2.0.0")
+        self.assertEqual(pyproject["project"]["version"], "2.0.0")
         self.assertEqual(cargo["package"]["version"], RUNTIME_VERSION)
 
         tui_lock_packages = [
@@ -79,7 +79,7 @@ class ReleaseWiringTests(unittest.TestCase):
             api_reference,
         )
         self.assertIn(f'"runtime_version": "{RUNTIME_VERSION}"', api_reference)
-        self.assertNotIn("2.0.0-alpha10.2", api_reference)
+        self.assertNotIn("2.0.0-alpha", api_reference)
 
     def test_pathological_timeouts_fail_closed_before_network(self) -> None:
         huge = 10**400

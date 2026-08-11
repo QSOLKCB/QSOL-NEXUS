@@ -1,5 +1,7 @@
 # AI Culture, Performance & Psyche-Out Play
 
+> **NEXUS 2.0 release status:** Open Mic, Long Shift, and Psyche-Out Chess are included in the final candidate; culture creates history, not authority.
+
 PR #48 is the final feature add-on to AI Progression & Civic Life before the NEXUS 2.0 hardening pass.
 
 > **Freedom to perform is not freedom to rewrite authority.**

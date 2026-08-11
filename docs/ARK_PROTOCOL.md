@@ -1,5 +1,7 @@
 # WorldStore Continuity / The Ark Protocol
 
+> **NEXUS 2.0 release status:** WorldStore Continuity and the Ark recovery contract are stable-candidate surfaces and are rerun by the final release matrix.
+
 PR #46 adds a continuity layer around the existing NEXUS WorldStore.
 
 The existing `object:<sha256>` identity format is not replaced. Continuity adds replicated persistence, a quorum-selected history spine, deterministic scrub/repair, portable cold Arks, additive digest migration receipts and non-destructive recovery.

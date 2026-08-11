@@ -1,4 +1,4 @@
-# NEXUS 2.x Security and Trust Boundaries
+# NEXUS 2.0 Security and Trust Boundaries
 
 ## Security posture
 
@@ -16,7 +16,7 @@ passive Stenographer store
 scientific / deterministic instruments
 ```
 
-Remote model traffic occurs only inside explicitly configured adapters. Ollama is loopback-only by default; xAI is the first admitted remote adapter and is pinned to `https://api.x.ai/v1`.
+Remote model traffic occurs only inside explicitly configured adapters. Ollama, LM Studio, AnythingLLM, and generic OpenAI-compatible local actors are constrained to reviewed loopback boundaries. Admitted cloud actors for xAI, OpenAI, Anthropic, Gemini, Groq, and Together use reviewed fixed provider destinations; arbitrary endpoint override is not part of the public actor schema.
 
 ## Why CLI/TUI first
 
@@ -36,7 +36,7 @@ This does not make a CLI automatically secure. It makes the intended trust bound
 
 ```text
 +-----------------------------+
-| Rust TUI / CLI (future)     |
+| Rust TUI / CLI              |
 | no raw provider secrets in  |
 | normal display/log output   |
 +-------------+---------------+
@@ -53,8 +53,8 @@ This does not make a CLI automatically secure. It makes the intended trust bound
               |
 +-------------v---------------+
 | model adapters              |
-| mock / Ollama / xAI         |
-| later providers reviewed    |
+| mock / loopback local AI    |
+| fixed reviewed cloud APIs   |
 +-------------+---------------+
               |
        model runtime/API
@@ -378,15 +378,22 @@ Current intent:
 world kernel             outbound: none
 receipt service          outbound: none
 Secret Scrubber          outbound: none
-JSONL mock control API   outbound: none
+JSONL control transport  outbound: none
 Ollama actor             loopback by default
-auth browser/device flow explicit provider descriptor only
+LM Studio actor          loopback by default
+AnythingLLM actor        loopback by default
+OpenAI-compatible local  loopback by default
+auth browser/setup flow  explicit provider descriptor only
 auth external helper     explicit operator configuration only
 xAI adapter              fixed api.x.ai HTTPS, explicit profile only
-other remote providers   not implemented
+OpenAI adapter           fixed api.openai.com HTTPS, explicit profile only
+Anthropic adapter        fixed api.anthropic.com HTTPS, explicit profile only
+Gemini adapter           fixed generativelanguage.googleapis.com HTTPS, explicit profile only
+Groq adapter             fixed api.groq.com HTTPS, explicit profile only
+Together adapter         fixed api.together.ai HTTPS, explicit profile only
 ```
 
-The JSONL control transport itself remains stdio. `auth.list` is local-only. `auth.test xai`, `models.list` for xAI, and an explicitly configured xAI actor can perform fixed-destination network I/O. A custom broker can also perform registered auth operations against descriptor-allowlisted endpoints. `system.health` reports that category even when the stock xAI descriptor is the only configured remote provider. Enrollment remains a direct `nexus auth add` action rather than a raw-secret JSONL operation.
+The JSONL control transport itself remains local stdio. `auth.list` is local-only. Provider connection tests, model discovery, and explicitly configured remote actors may perform fixed-destination HTTPS only through their admitted provider descriptors. Redirects and caller-supplied endpoint overrides are rejected by the stock remote transports. A custom broker may perform registered auth operations only against descriptor-allowlisted endpoints. Enrollment remains a direct `nexus auth add` action rather than a raw-secret JSONL operation.
 
 ## Logging
 
@@ -454,3 +461,14 @@ The current runtime does **not** claim:
 - that model-generated content is trustworthy merely because it came from a Council member;
 - that NEXUS citizenship establishes legal personhood, consciousness, sentience, sovereignty, ownership, host control, provider control, or authority over another model;
 - that an in-world Declaration of Independence changes real-world law, platform policy, credentials, infrastructure ownership, or operator responsibility.
+
+
+## BBS Wall boundary
+
+The Wall is an append-only social-memory surface, not an evidence or governance channel. Normal `#wall` text is persisted as a bounded, secret-scrubbed Wall post instead of being routed into `council.run`; `/ask` is blocked in the Wall room. Wall object types are runtime-reserved, chronology is validated, forks fail closed, and system health reflects unreadable or invalid Wall history.
+
+Moderation creates an immutable tombstone event rather than rewriting or deleting the original source object. Runtime identity labels are context only and may not create rank, Council weight, Citizenship, evidence promotion, or tool/security authority.
+
+## Stable-release security gate
+
+PR #51 aligns the intended `2.0.0` bits but does not self-authorize a stable release. The stable tag is permitted only from the exact merged #51 commit after full Python/Rust, adversarial/security, clean-archive bootstrap, WorldStore/Ark recovery, Grok R1-R12 closure, Wall-boundary, documentation-coupling, and review gates pass. The hardening report itself has `authority_effect: none` and `stable_release: false`.

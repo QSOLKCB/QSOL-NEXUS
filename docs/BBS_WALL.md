@@ -1,5 +1,7 @@
 # NEXUS 2.0 — The BBS Wall
 
+> **NEXUS 2.0 release status:** PR #50 is merged; the Wall is the final 2.0 feature surface and remains social memory, not evidence.
+
 > **A Wall post is social memory, not evidence.**
 
 > **Leave a message. Someone may read it in a hundred years.**

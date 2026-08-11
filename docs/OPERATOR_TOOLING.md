@@ -1,5 +1,7 @@
 # Operator Tooling and One-Command Launch
 
+> **NEXUS 2.0 release status:** included in the final PR #51 release candidate; `./nexus` is the implemented first-party launcher, not future work.
+
 PR #45 turns the local setup ceremony into a first-class NEXUS operator surface.
 
 The golden path is intentionally small:

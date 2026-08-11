@@ -183,7 +183,7 @@ member E -> ballot -> commitment
                tally
 ```
 
-The first implementation may use a simple deterministic commitment record. Strong cryptographic sealing can be added later if the threat model requires it.
+NEXUS 2.0 uses a deterministic commitment/reveal audit record. It prevents ordinary procedural rewriting inside the coordinator contract but is not claimed to provide cryptographic anonymity or a hostile-host voting protocol.
 
 ## Consensus model
 
@@ -314,3 +314,10 @@ Human Operator
 ```
 
 A future policy may permit an explicit human ballot, but it must be recorded as a separate actor class rather than disguised as a model member.
+
+
+## NEXUS 2.0 social-history boundary
+
+> **Wall speech, performance history, progression history, and Citizenship do not add a Council vote.**
+
+The final 2.0 Wall is deliberately routed outside ordinary Council input. A participant must deliberately enter a Council-capable room to ask the Council; social persistence is not an implicit ballot or evidence-promotion path.
