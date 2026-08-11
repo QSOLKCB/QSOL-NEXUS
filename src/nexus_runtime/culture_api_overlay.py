@@ -4,7 +4,7 @@ from typing import Any
 
 from .control_plane import RequestBudgetError, validate_control_request
 from .culture_api import CultureNexusAPI as _BaseCultureNexusAPI
-from .progression import CULTURE_PLAY_ACTIVITY_IDS, ProgressionError
+from .progression import CULTURE_DEDICATED_ACTIVITY_IDS, CULTURE_PLAY_ACTIVITY_IDS, ProgressionError
 from .trap import TrapError
 
 
@@ -15,7 +15,7 @@ _CULTURE_PLAY_KIND_TO_ACTIVITY = {
 
 
 class CultureNexusAPI(_BaseCultureNexusAPI):
-    """Final PR #48 overlay binding culture game completion into PR #47 progression."""
+    """Final PR #48 overlay binding culture activity into hardened progression."""
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation") if isinstance(request, dict) else None
@@ -24,17 +24,23 @@ class CultureNexusAPI(_BaseCultureNexusAPI):
 
         if operation == "progression.act" and isinstance(request, dict):
             activity_id = request.get("activity_id")
-            if activity_id in CULTURE_PLAY_ACTIVITY_IDS:
+            if activity_id in CULTURE_DEDICATED_ACTIVITY_IDS:
                 try:
                     validate_control_request(request)
                 except (RequestBudgetError, RecursionError) as exc:
                     return self._error(safe_request_id, "invalid_request", str(exc))
                 if request_id is not None and safe_request_id is None:
                     return self._error(None, "invalid_request", "request_id must be a bounded non-secret identifier")
+                if activity_id in CULTURE_PLAY_ACTIVITY_IDS:
+                    return self._error(
+                        safe_request_id,
+                        "progression_play_requires_game_ref",
+                        "Long Shift and Psyche-Out Chess progression require progression.play.record with a completed authoritative game state",
+                    )
                 return self._error(
                     safe_request_id,
-                    "progression_play_requires_game_ref",
-                    "Long Shift and Psyche-Out Chess progression require progression.play.record with a completed authoritative game state",
+                    "progression_dedicated_surface_required",
+                    "PR #48 performance and narration progression may be created only by the corresponding validated culture operation",
                 )
 
         if operation == "progression.play.record" and isinstance(request, dict):
