@@ -11,6 +11,15 @@ from .action_awareness import (
     create_action_expectation,
     reconcile_action_expectation,
 )
+from .agent_state import (
+    AGENT_STATE_RESERVED_OBJECT_TYPES,
+    AgentStateError,
+    agent_state_policy_snapshot,
+    build_agent_context,
+    create_agent_state_snapshot,
+    publish_agent_state_update,
+    verify_agent_context,
+)
 from .adapters.base import AdapterProtocolError
 from .adapters.local_ai import LocalAIActor
 from .adapters.ollama import OllamaActor
@@ -43,8 +52,19 @@ _ACTION_AWARENESS_OPERATIONS = frozenset(
         "action.awareness.reconcile",
     }
 )
+_AGENT_STATE_OPERATIONS = frozenset(
+    {
+        "agent.context.build",
+        "agent.context.verify",
+        "agent.state.policy",
+        "agent.state.publish",
+        "agent.state.snapshot",
+    }
+)
 _RUNTIME_RESERVED_WORLD_TYPES = (
-    frozenset({"council_session"}) | ACTION_AWARENESS_RESERVED_OBJECT_TYPES
+    frozenset({"council_session"})
+    | ACTION_AWARENESS_RESERVED_OBJECT_TYPES
+    | AGENT_STATE_RESERVED_OBJECT_TYPES
 )
 
 
@@ -196,6 +216,8 @@ class HardenedNexusAPI(_ProviderNexusAPI):
             return self._handle_civic_observation(request, safe_request_id)
         if isinstance(operation, str) and operation in _ACTION_AWARENESS_OPERATIONS:
             return self._handle_action_awareness(request, safe_request_id)
+        if isinstance(operation, str) and operation in _AGENT_STATE_OPERATIONS:
+            return self._handle_agent_state(request, safe_request_id)
 
         response = super().handle(request)
         if operation == "system.health" and response.get("status") == "ok":
@@ -203,11 +225,13 @@ class HardenedNexusAPI(_ProviderNexusAPI):
             response["control_plane_limits"] = control_plane_policy_snapshot()
             response["civic_observation"] = civic_observation_policy_snapshot(self.geometry)
             response["action_awareness"] = action_awareness_policy_snapshot()
+            response["agent_state"] = agent_state_policy_snapshot()
         elif operation == "system.operations" and response.get("status") == "ok":
             response = dict(response)
             operations = list(response.get("operations", []))
             operations.extend(sorted(_CIVIC_OBSERVATION_OPERATIONS))
             operations.extend(sorted(_ACTION_AWARENESS_OPERATIONS))
+            operations.extend(sorted(_AGENT_STATE_OPERATIONS))
             response["operations"] = sorted(set(operations))
 
         if operation == "actor.chat" and response.get("status") == "ok":
@@ -218,6 +242,115 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                 response["response"] = scrubbed_text
                 response["response_secret_scrub"] = summary
 
+        return sanitize_public_response(response)
+
+    def _handle_agent_state(
+        self,
+        request: dict[str, Any],
+        request_id: str | None,
+    ) -> dict[str, Any]:
+        operation = request.get("operation")
+        try:
+            if operation == "agent.state.policy":
+                self._require_exact_fields(request, operation, set())
+                response: dict[str, Any] = {
+                    "status": "ok",
+                    "policy": agent_state_policy_snapshot(),
+                }
+            elif operation == "agent.state.publish":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"actor_id", "lane", "content", "source_refs"},
+                )
+                actor_id = self._require_str(request, "actor_id")
+                lane = self._require_str(request, "lane")
+                raw_content = self._require_str(request, "content")
+                source_refs = request.get("source_refs", [])
+                if not isinstance(source_refs, list) or not all(
+                    isinstance(ref, str) and ref for ref in source_refs
+                ):
+                    raise ValueError("source_refs must be a list of non-empty strings")
+                if self.scrubber.scrub(actor_id).changed:
+                    raise ValueError("actor_id must not contain credential-shaped text")
+                scrubbed = self.scrubber.scrub(raw_content)
+                update = self._run_real_mutation(
+                    lambda: publish_agent_state_update(
+                        self.world,
+                        actor_id=actor_id,
+                        lane=lane,
+                        content=scrubbed.text,
+                        source_refs=list(source_refs),
+                    )
+                )
+                response = {
+                    "status": "ok",
+                    "update_ref": update.object_id,
+                    "update": update.payload,
+                    "secret_scrub": {
+                        "changed": scrubbed.changed,
+                        "events": [asdict(event) for event in scrubbed.events],
+                    },
+                }
+            elif operation == "agent.state.snapshot":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"actor_id", "update_refs"},
+                )
+                actor_id = self._require_str(request, "actor_id")
+                update_refs = request.get("update_refs")
+                if not isinstance(update_refs, list) or not all(
+                    isinstance(ref, str) and ref for ref in update_refs
+                ):
+                    raise ValueError("update_refs must be a list of non-empty strings")
+                if self.scrubber.scrub(actor_id).changed:
+                    raise ValueError("actor_id must not contain credential-shaped text")
+                snapshot = self._run_real_mutation(
+                    lambda: create_agent_state_snapshot(
+                        self.world,
+                        actor_id=actor_id,
+                        update_refs=list(update_refs),
+                    )
+                )
+                response = {
+                    "status": "ok",
+                    "snapshot_ref": snapshot.object_id,
+                    "snapshot": snapshot.payload,
+                }
+            elif operation == "agent.context.build":
+                self._require_exact_fields(request, operation, {"snapshot_ref"})
+                snapshot_ref = self._require_str(request, "snapshot_ref")
+                context = self._run_real_mutation(
+                    lambda: build_agent_context(self.world, snapshot_ref=snapshot_ref)
+                )
+                response = {
+                    "status": "ok",
+                    "context_ref": context.object_id,
+                    "context": context.payload,
+                    "use_as_evidence_ref": context.object_id,
+                }
+            elif operation == "agent.context.verify":
+                self._require_exact_fields(request, operation, {"context_ref"})
+                context_ref = self._require_str(request, "context_ref")
+                response = verify_agent_context(self.world, context_ref=context_ref)
+            else:  # pragma: no cover - dispatch set is closed above
+                return self._error(request_id, "unknown_operation", "operation is not supported")
+        except AgentStateError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except TrapError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except (KeyError, TypeError, ValueError) as exc:
+            return self._error(request_id, "invalid_request", str(exc))
+        except OSError:
+            return self._error(
+                request_id,
+                "adapter_unavailable",
+                "adapter or local storage operation is unavailable",
+            )
+
+        if request_id is not None:
+            response = {"request_id": request_id, **response}
         return sanitize_public_response(response)
 
     def _handle_action_awareness(
