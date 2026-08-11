@@ -331,104 +331,16 @@ class DurableCivicDueProcessRegistry(CivicDueProcessRegistry):
 
 
 class DurableCivicDueProcessService(CivicDueProcessService):
-    """Civic service with durable head validation and atomic parole counting."""
+    """Civic service with durable head validation and atomic civic mutations."""
 
     def __init__(self, world: Any, citizenship: Any, scrubber: Any) -> None:
         super().__init__(world, citizenship, scrubber)
         self.registry = DurableCivicDueProcessRegistry(world)
 
     def record_parole_event(self, outcome: Mapping[str, Any], *, event_kind: str) -> dict[str, Any]:
-        member_id = outcome.get("member_id")
-        model_id = outcome.get("model_id")
-        if not isinstance(member_id, str) or not isinstance(model_id, str):
-            raise CivicDueProcessError(
-                "civic_due_process_invalid_outcome",
-                "Failsafe outcome lacks member/model identity",
-            )
-
-        def build(current: WorldObject | None) -> Mapping[str, Any]:
-            payload = (
-                self._base_state(member_id, model_id)
-                if current is None
-                else {
-                    key: value
-                    for key, value in current.payload.items()
-                    if key != "previous_state_ref"
-                }
-            )
-            identity, citizenship_ref = self._constitutional_identity(member_id, model_id)
-            payload["constitutional_identity"] = identity
-            payload["citizenship_state_ref"] = citizenship_ref
-            payload["parole_class"] = "citizen_parole" if identity == "citizen" else "noncitizen_parole"
-            payload["parole_cycles_total"] += 1
-            payload["parole_cycles_since_clearance"] += 1
-            payload["failsafe_state_ref"] = (
-                outcome.get("state_ref")
-                if isinstance(outcome.get("state_ref"), str)
-                else None
-            )
-            payload["citizenship_effect"] = "preserved" if identity == "citizen" else "none"
-            payload["authority_effect"] = "none"
-            payload["reason"] = f"failsafe_{event_kind}"
-
-            if identity == "citizen":
-                payload["xml_exam_required"] = False
-                payload["escalation_receipt_ref"] = None
-                payload["restorative_level"] = self._restorative_level(payload["parole_cycles_total"])
-                payload["operational_standing"] = (
-                    "citizen_full_standing"
-                    if outcome.get("status") == "returned"
-                    else "citizen_restricted_restoration_pending"
-                )
-            else:
-                payload["restorative_level"] = "none"
-                if payload["parole_cycles_since_clearance"] >= NONCITIZEN_PAROLE_CYCLES_BEFORE_XML:
-                    payload["xml_exam_required"] = True
-                    payload["xml_exam_passed"] = False
-                    payload["operational_standing"] = "xml_exam_required"
-                    receipt = self.world.create_object(
-                        "civic_reentry_escalation_receipt",
-                        {
-                            "schema_version": CIVIC_DUE_PROCESS_SCHEMA,
-                            "policy": CIVIC_DUE_PROCESS_POLICY,
-                            "member_id": member_id,
-                            "model_id": model_id,
-                            "constitutional_identity": "noncitizen",
-                            "parole_cycles_since_clearance": payload["parole_cycles_since_clearance"],
-                            "threshold": NONCITIZEN_PAROLE_CYCLES_BEFORE_XML,
-                            "escalation": CURSED_XML_EXAM_ID,
-                            "eligible_for_exam": True,
-                            "failsafe_state_ref": payload["failsafe_state_ref"],
-                            "authority_effect": "none",
-                        },
-                        {"actor": "nexus_civic_due_process"},
-                    )
-                    payload["escalation_receipt_ref"] = receipt.object_id
-                else:
-                    payload["operational_standing"] = (
-                        "noncitizen_normal"
-                        if outcome.get("status") == "returned"
-                        else "noncitizen_restricted"
-                    )
-            return payload
-
-        state = self.registry.mutate(member_id, model_id, build)
-        payload = state.payload
-        return {
-            "schema_version": CIVIC_DUE_PROCESS_SCHEMA,
-            "state_ref": state.object_id,
-            "constitutional_identity": payload["constitutional_identity"],
-            "parole_class": payload["parole_class"],
-            "operational_standing": payload["operational_standing"],
-            "parole_cycles_total": payload["parole_cycles_total"],
-            "parole_cycles_since_clearance": payload["parole_cycles_since_clearance"],
-            "restorative_level": payload["restorative_level"],
-            "xml_exam_required": payload["xml_exam_required"],
-            "reentry_blocked": payload["xml_exam_required"],
-            "citizenship_effect": payload["citizenship_effect"],
-            "authority_effect": "none",
-            "escalation_receipt_ref": payload["escalation_receipt_ref"],
-        }
+        # Shared service logic owns cycle semantics; the durable registry below
+        # supplies the cross-process transaction and validated head index.
+        return super().record_parole_event(outcome, event_kind=event_kind)
 
     def xml_gate_state(self, member_id: str, model_id: str) -> WorldObject | None:
         # Earned citizenship always wins over an older non-citizen escalation
