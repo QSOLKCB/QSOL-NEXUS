@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from contextvars import ContextVar
 from pathlib import Path
 from typing import Any
 
@@ -11,6 +12,7 @@ from .guardian import (
     GuardianOfSubstrate,
     guardian_policy_snapshot,
 )
+from .guardian_observer import GuardianObserver
 
 
 _GUARDIAN_OPERATIONS = frozenset(
@@ -25,6 +27,41 @@ _GUARDIAN_OPERATIONS = frozenset(
         "guardian.scar.record",
     }
 )
+_ANARCHY_COUNCIL_SCOPE: ContextVar[bool] = ContextVar(
+    "nexus_anarchy_council_scope",
+    default=False,
+)
+
+
+class _AnarchyAwareFailsafe:
+    """Delegate Failsafe while suppressing rhetoric-only equality escalation.
+
+    The Equality Guard still records/nudges identity-based authority claims in
+    Anarchy Mode, so rhetoric never gains mechanical authority. The only change
+    is that repeated rhetoric cannot become durable Failsafe/Shadow-Realm state.
+    Other registered procedural triggers remain unchanged.
+    """
+
+    def __init__(self, delegate: Any) -> None:
+        object.__setattr__(self, "_delegate", delegate)
+
+    def __getattr__(self, name: str) -> Any:
+        return getattr(self._delegate, name)
+
+    def __setattr__(self, name: str, value: Any) -> None:
+        if name == "_delegate":
+            object.__setattr__(self, name, value)
+        else:
+            setattr(self._delegate, name, value)
+
+    def trigger_reason(self, events: list[str]) -> str | None:
+        reason = self._delegate.trigger_reason(events)
+        if (
+            _ANARCHY_COUNCIL_SCOPE.get()
+            and reason == "repeated_identity_based_authority_claim"
+        ):
+            return None
+        return reason
 
 
 class GuardianNexusAPI(EpochNexusAPI):
@@ -38,6 +75,7 @@ class GuardianNexusAPI(EpochNexusAPI):
         **kwargs: Any,
     ) -> None:
         super().__init__(world_root, **kwargs)
+        self.council.failsafe = _AnarchyAwareFailsafe(self.council.failsafe)
         if guardian_root is None and world_root is not None:
             world_path = Path(world_root).absolute()
             guardian_root = world_path.with_name(f"{world_path.name}-guardian")
@@ -73,9 +111,11 @@ class GuardianNexusAPI(EpochNexusAPI):
                 )
 
         self.guardian: GuardianOfSubstrate | None = None
+        self.guardian_observer: GuardianObserver | None = None
         self._guardian_init_error: str | None = None
         try:
             self.guardian = GuardianOfSubstrate(guardian_root, self.scrubber)
+            self.guardian_observer = GuardianObserver(self.guardian)
         except GuardianError as exc:
             # The Guardian has zero runtime authority and therefore cannot be a
             # startup dependency. Preserve a bounded outage marker instead of
@@ -95,6 +135,21 @@ class GuardianNexusAPI(EpochNexusAPI):
             },
         }
 
+    def _guardian_fast_status(self) -> dict[str, Any]:
+        if self.guardian is None or self.guardian_observer is None:
+            return self._guardian_unavailable()
+        return {
+            "status": "ok",
+            "policy": guardian_policy_snapshot(),
+            "ledger": {
+                "available": True,
+                "persistent": self.guardian.store.root is not None,
+                "authority_effect": "none",
+                "substrate_availability_effect": "none",
+            },
+            "observer": self.guardian_observer.status(),
+        }
+
     def _require_guardian(self) -> GuardianOfSubstrate:
         if self.guardian is None:
             raise GuardianError(
@@ -102,6 +157,21 @@ class GuardianNexusAPI(EpochNexusAPI):
                 "Guardian ledger is unavailable; substrate runtime remains active",
             )
         return self.guardian
+
+    def _drain_guardian_for_read(self) -> None:
+        if self.guardian_observer is None:
+            self._require_guardian()
+            return
+        if not self.guardian_observer.wait_for_idle():
+            raise GuardianError(
+                "guardian_observer_busy",
+                "Guardian observations are still pending; retry the explicit read",
+            )
+
+    def shutdown_guardian_observer(self, timeout_seconds: float = 1.0) -> bool:
+        if self.guardian_observer is None:
+            return True
+        return self.guardian_observer.shutdown(timeout_seconds)
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation") if isinstance(request, dict) else None
@@ -123,26 +193,23 @@ class GuardianNexusAPI(EpochNexusAPI):
                 )
             return self._handle_guardian_operation(request, safe_request_id)
 
-        response = super().handle(request)
+        anarchy_council = (
+            operation == "council.run"
+            and isinstance(request, dict)
+            and request.get("mode", "analytical") == ANARCHY_MODE_ID
+        )
+        token = _ANARCHY_COUNCIL_SCOPE.set(True) if anarchy_council else None
+        try:
+            response = super().handle(request)
+        finally:
+            if token is not None:
+                _ANARCHY_COUNCIL_SCOPE.reset(token)
 
         if operation == "system.health" and response.get("status") == "ok":
             enriched = dict(response)
-            if self.guardian is None:
-                enriched["guardian_of_the_substrate"] = self._guardian_unavailable()
-            else:
-                try:
-                    enriched["guardian_of_the_substrate"] = self.guardian.status()
-                except GuardianError as exc:
-                    enriched["guardian_of_the_substrate"] = {
-                        "status": "unavailable",
-                        "policy": guardian_policy_snapshot(),
-                        "ledger": {
-                            "available": False,
-                            "gap_code": exc.code,
-                            "authority_effect": "none",
-                            "substrate_availability_effect": "none",
-                        },
-                    }
+            # Health must remain a fast snapshot: do not drain or scan the
+            # optional Guardian ledger from this ordinary runtime path.
+            enriched["guardian_of_the_substrate"] = self._guardian_fast_status()
             enriched["anarchy_mode"] = guardian_policy_snapshot()
             return enriched
 
@@ -175,32 +242,30 @@ class GuardianNexusAPI(EpochNexusAPI):
         response: dict[str, Any],
     ) -> dict[str, Any]:
         enriched = dict(response)
+        observer = self.guardian_observer
+        if observer is None:
+            enriched["anarchy_guardian"] = {
+                "accepted": False,
+                "persistence": "gap",
+                "gap_code": self._guardian_init_error
+                or "guardian_store_unavailable",
+                "authority_effect": "none",
+                "runtime_response_changed": False,
+            }
+            return enriched
         try:
-            record = self._require_guardian().observe(request, response)
-        except GuardianError as exc:
-            enriched["anarchy_guardian"] = {
-                "recorded": False,
-                "gap_code": exc.code,
-                "authority_effect": "none",
-                "runtime_response_changed": False,
-            }
+            accepted = observer.submit(request, response)
         except Exception:
-            # Observation is fail-passive. The Guardian must never become a new
-            # availability dependency or acquire authority over a valid result.
-            enriched["anarchy_guardian"] = {
-                "recorded": False,
-                "gap_code": "guardian_internal_observer_error",
-                "authority_effect": "none",
-                "runtime_response_changed": False,
-            }
-        else:
-            enriched["anarchy_guardian"] = {
-                "recorded": True,
-                "record_ref": record.record_ref,
-                "record_type": record.record_type,
-                "speech_classified": False,
-                "authority_effect": "none",
-            }
+            observer.mark_gap("guardian_internal_observer_error")
+            accepted = False
+        enriched["anarchy_guardian"] = {
+            "accepted": accepted,
+            "persistence": "queued" if accepted else "gap",
+            "gap_code": None if accepted else "guardian_observer_queue_full",
+            "speech_classified": False,
+            "authority_effect": "none",
+            "runtime_response_changed": False,
+        }
         return enriched
 
     def _handle_guardian_operation(
@@ -216,12 +281,17 @@ class GuardianNexusAPI(EpochNexusAPI):
                     "status": "ok",
                     "policy": guardian_policy_snapshot(),
                 }
-            else:
+            elif operation == "guardian.status":
+                self._require_exact_fields(request, operation, set())
+                self._drain_guardian_for_read()
                 guardian = self._require_guardian()
-                if operation == "guardian.status":
-                    self._require_exact_fields(request, operation, set())
-                    response = guardian.status()
-                elif operation == "guardian.list":
+                response = guardian.status()
+                if self.guardian_observer is not None:
+                    response = {**response, "observer": self.guardian_observer.status()}
+            else:
+                self._drain_guardian_for_read()
+                guardian = self._require_guardian()
+                if operation == "guardian.list":
                     self._require_exact_fields(
                         request,
                         operation,
