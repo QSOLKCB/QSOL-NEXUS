@@ -8,14 +8,16 @@ PR #53 is based directly on the exact merged PR #52 commit:
 
 ```text
 runtime commit: cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
-expected tag:   v2.0.0
+stable tag:     v2.0.0
 formal PR:      #53
 publication PR: #54
 ```
 
-At creation of the PR #53 branch, `v2.0.0` had not yet been published. The dedicated Lean workflow therefore treats the tag binding as **PENDING** while the tag is absent, but fails if the tag exists and resolves anywhere other than the exact runtime commit above. PR #53 should not be promoted from draft/ready-for-review state until that binding is satisfied.
+The published `v2.0.0` tag resolves exactly to `cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a`. The dedicated Lean workflow treats this as a mandatory release identity: an absent tag or a tag resolving anywhere else hard-fails verification.
 
-The workflow also requires the runtime commit to remain an ancestor of the PR head and rejects any PR #53 change outside `formal/lean/**` and `.github/workflows/lean-formal.yml`. The formal-verification layer therefore cannot silently rewrite the runtime it claims to describe.
+The workflow also requires the exact reviewed PR head to descend from the stable runtime commit and rejects any PR #53 change outside `formal/lean/**` and `.github/workflows/lean-formal.yml`. On `pull_request` runs GitHub normally checks out a synthetic merge commit, so the workflow passes `github.event.pull_request.head.sha` separately into the audit. The report records both the reviewed formalization head and the verification checkout SHA rather than conflating them.
+
+The formal-verification layer therefore cannot silently rewrite the runtime it claims to describe, and its publication evidence names the actual PR head being reviewed.
 
 ## Correspondence table
 
@@ -58,7 +60,9 @@ Before the formalization is described as corresponding to NEXUS 2.0 stable:
 1. `v2.0.0` must resolve to `cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a`;
 2. the PR #53 diff from that commit must remain formalization/workflow-only;
 3. every `A/R` theorem must retain an explicit runtime/test correspondence or remain marked with an `R` gap;
-4. the complete declaration/axiom audit must pass on the final PR #53 head under the pinned Lean toolchain;
-5. the final PR #53 commit SHA and audit output must be handed to PR #54 without rewriting theorem definitions or proofs.
+4. every advertised manifest declaration must have an exact matching `#print axioms` query;
+5. the complete declaration/axiom audit must pass on the final PR #53 head under the pinned Lean toolchain;
+6. the formal-verification report must record the actual reviewed PR head separately from any synthetic merge checkout;
+7. the final PR #53 commit SHA and audit output must be handed to PR #54 without rewriting theorem definitions or proofs.
 
 Any unresolved mismatch remains a documented gap. It is not silently upgraded into a formal verification claim.
