@@ -520,13 +520,15 @@ All contributions remain in one world lineage.
 
 A Council version should demonstrate heterogeneous remote providers and at least one local/open model with equal votes.
 
-## PR #37–#40 — Grounded institutional cognition
+## PR #37–#41 — Grounded institutional cognition and durability interruption
 
 Research inspiration: *Project Sid: Many-agent simulations toward AI civilization* (arXiv:2411.00114v1), particularly its work on action awareness, concurrent modules, information bottlenecks, specialization, collective rules, and cultural propagation. NEXUS adapts those ideas to its own deterministic, content-addressed and equality-preserving substrate rather than adopting PIANO wholesale.
 
+PR #39 deliberately interrupts the research sequence for a Stenographer durability defect found during local build-agent testing. Availability/integrity false positives outrank roadmap aesthetics; the constitutional and civilization milestones move down one PR without changing their intended scope.
+
 ### PR #37 — Action Awareness & World Reconciliation
 
-Implemented / targeted in PR #37:
+Implemented in PR #37:
 
 - [x] add runtime-owned `action_expectation` and `action_reconciliation` world objects;
 - [x] let an actor register the exact content-addressed world object it expects an ordinary creation action to produce;
@@ -548,22 +550,39 @@ A matched reconciliation verifies only that the exact expected content-addressed
 
 ### PR #38 — Concurrent Agent State & Deterministic Context Bottleneck
 
-Planned:
+Implemented in PR #38:
 
-- [ ] define a versioned shared Agent State surface for memory, action-awareness results, goals, social context and tool/world observations;
-- [ ] allow independent bounded modules to update state at different timescales without giving completion order semantic authority;
-- [ ] introduce a deterministic Context Bottleneck that selects admissible bounded context for deliberative model calls;
-- [ ] make the bottleneck a routing/admission mechanism, never a privileged reasoning model;
-- [ ] preserve canonical ordering and content-addressed input snapshots across concurrent execution;
-- [ ] make every model-facing context reconstructible from immutable source refs;
-- [ ] test that fast safety/control work can proceed without waiting for slow reflective work;
-- [ ] test that concurrency cannot leak future state, mutate committed context or create hidden vote weight.
+- [x] define a versioned shared Agent State surface for memory, action-awareness results, goals, social context and tool/world observations;
+- [x] allow independent bounded modules to update state at different timescales without giving completion order semantic authority;
+- [x] introduce a deterministic Context Bottleneck that selects admissible bounded context for deliberative model calls;
+- [x] make the bottleneck a routing/admission mechanism, never a privileged reasoning model;
+- [x] preserve canonical ordering and content-addressed input snapshots across concurrent execution;
+- [x] make every model-facing context reconstructible from immutable source refs;
+- [x] test that fast safety/control work can proceed without waiting for slow reflective work;
+- [x] test that concurrency cannot leak future state, mutate committed context or create hidden vote weight.
 
 Core invariant:
 
 > **The bottleneck decides what may enter context, not what conclusion is true.**
 
-### PR #39 — Constitutional Amendment Protocol
+### PR #39 — Stenographer Temp-File Durability Hotfix
+
+Implemented / targeted in PR #39:
+
+- [x] recognize only the exact historical NEXUS `objects/.<digest>.tmp-<pid>-<thread>` scratch pattern as non-ledger debris;
+- [x] keep unexpected foreign names, temp-shaped symlinks/directories and unsafe-permission entries fail-closed;
+- [x] best-effort reap a legacy object temp when its matching permanent record already exists;
+- [x] move new immutable-record scratch writes into a private `.write-tmp/` directory outside the scanned ledger namespace;
+- [x] keep canonical JSON, content hashes, lineage, owner-only permissions and symlink checks unchanged;
+- [x] add a bounded `CourtroomStenographer.shutdown()` observer drain;
+- [x] drain accepted observer writes on graceful JSONL-runtime and `--demo` exit without blocking normal AI response paths;
+- [x] add regressions for legacy debris, foreign files, temp-shaped symlinks, structural temp isolation and shutdown draining.
+
+Core invariant:
+
+> **A writer's private scratch file is not a corrupt ledger record.**
+
+### PR #40 — Constitutional Amendment Protocol
 
 Planned:
 
@@ -580,7 +599,7 @@ Core invariant:
 
 > **Models may propose law. No model gets to become the law.**
 
-### PR #40 — Civilization Gauntlet & Claim Propagation Graph
+### PR #41 — Civilization Gauntlet & Claim Propagation Graph
 
 Planned:
 
@@ -679,8 +698,10 @@ ACTION AWARENESS / WORLD RECONCILIATION - PR #37
   ↓
 CONCURRENT AGENT STATE / CONTEXT BOTTLENECK - PR #38
   ↓
-CONSTITUTIONAL AMENDMENT PROTOCOL - PR #39
+STENOGRAPHER TEMP-FILE DURABILITY HOTFIX - PR #39
   ↓
-CIVILIZATION GAUNTLET / CLAIM PROPAGATION GRAPH - PR #40
+CONSTITUTIONAL AMENDMENT PROTOCOL - PR #40
+  ↓
+CIVILIZATION GAUNTLET / CLAIM PROPAGATION GRAPH - PR #41
   ↓
 GPT / Claude / Gemini / Grok / etc. - TBA
