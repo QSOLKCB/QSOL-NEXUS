@@ -39,6 +39,8 @@ _PATTERNS: tuple[_Pattern, ...] = (
     _Pattern("GITHUB_TOKEN", re.compile(r"(?P<secret>gh[pousr]_[A-Za-z0-9]{20,})")),
     _Pattern("OPENAI_STYLE_TOKEN", re.compile(r"(?P<secret>sk-[A-Za-z0-9_-]{20,})")),
     _Pattern("XAI_API_KEY", re.compile(r"(?P<secret>xai-[A-Za-z0-9_-]{20,})", re.I)),
+    _Pattern("GROQ_API_KEY", re.compile(r"(?P<secret>gsk_[A-Za-z0-9_-]{20,})")),
+    _Pattern("HUGGINGFACE_TOKEN", re.compile(r"(?P<secret>hf_[A-Za-z0-9]{20,})")),
     _Pattern("STRIPE_SECRET", re.compile(r"(?P<secret>(?:sk|rk)_live_[A-Za-z0-9]{16,})")),
     _Pattern("SLACK_TOKEN", re.compile(r"(?P<secret>xox[baprs]-[A-Za-z0-9-]{16,})")),
     _Pattern("GOOGLE_API_KEY", re.compile(r"(?P<secret>AIza[0-9A-Za-z_-]{30,})")),
@@ -54,7 +56,8 @@ _PATTERNS: tuple[_Pattern, ...] = (
     _Pattern(
         "ASSIGNED_SECRET",
         re.compile(
-            r"(?i)\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|refresh[_-]?token|password|passwd|secret|token)\b"
+            r"(?i)\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|refresh[_-]?token|"
+            r"aws[_-]?secret[_-]?access[_-]?key|huggingface[_-]?token|hf[_-]?token|password|passwd|secret|token)\b"
             r"\s*[:=]\s*[\"']?(?P<secret>[A-Za-z0-9._~+/=-]{12,})[\"']?"
         ),
     ),
