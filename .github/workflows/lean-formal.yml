@@ -23,6 +23,7 @@ env:
   LEAN_LINUX_SHA256: "4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c"
   NEXUS_STABLE_RUNTIME_COMMIT: "cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a"
   NEXUS_STABLE_RUNTIME_TAG: "v2.0.0"
+  NEXUS_FORMALIZATION_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
 
 jobs:
   lean:
@@ -38,10 +39,16 @@ jobs:
         run: |
           set -euo pipefail
           git cat-file -e "${NEXUS_STABLE_RUNTIME_COMMIT}^{commit}"
-          test "$(git merge-base "$NEXUS_STABLE_RUNTIME_COMMIT" HEAD)" = "$NEXUS_STABLE_RUNTIME_COMMIT"
+          git cat-file -e "${NEXUS_FORMALIZATION_COMMIT}^{commit}"
+
+          # pull_request checkout normally points at GitHub's synthetic merge
+          # commit. Bind the formal evidence to the reviewed PR head instead,
+          # while requiring that reviewed head to be present in this checkout.
+          git merge-base --is-ancestor "$NEXUS_FORMALIZATION_COMMIT" HEAD
+          test "$(git merge-base "$NEXUS_STABLE_RUNTIME_COMMIT" "$NEXUS_FORMALIZATION_COMMIT")" = "$NEXUS_STABLE_RUNTIME_COMMIT"
 
           unexpected="$({
-            git diff --name-only "$NEXUS_STABLE_RUNTIME_COMMIT" HEAD \
+            git diff --name-only "$NEXUS_STABLE_RUNTIME_COMMIT" "$NEXUS_FORMALIZATION_COMMIT" \
               | grep -Ev '^(formal/lean/|\.github/workflows/lean-formal\.yml$)' || true
           })"
           if [[ -n "$unexpected" ]]; then
@@ -51,17 +58,20 @@ jobs:
           fi
 
           git fetch --force --tags origin
-          if git show-ref --verify --quiet "refs/tags/${NEXUS_STABLE_RUNTIME_TAG}"; then
-            tag_commit="$(git rev-list -n 1 "$NEXUS_STABLE_RUNTIME_TAG")"
-            if [[ "$tag_commit" != "$NEXUS_STABLE_RUNTIME_COMMIT" ]]; then
-              echo "${NEXUS_STABLE_RUNTIME_TAG} resolves to ${tag_commit}, expected ${NEXUS_STABLE_RUNTIME_COMMIT}" >&2
-              exit 1
-            fi
-            echo "stable tag binding: PASS (${NEXUS_STABLE_RUNTIME_TAG} -> ${NEXUS_STABLE_RUNTIME_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
-          else
-            echo "::warning::${NEXUS_STABLE_RUNTIME_TAG} is not present yet; PR #53 remains pre-ready until it resolves to ${NEXUS_STABLE_RUNTIME_COMMIT}."
-            echo "stable tag binding: PENDING (${NEXUS_STABLE_RUNTIME_TAG} not present; expected ${NEXUS_STABLE_RUNTIME_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
+          if ! git show-ref --verify --quiet "refs/tags/${NEXUS_STABLE_RUNTIME_TAG}"; then
+            echo "::error::required stable tag ${NEXUS_STABLE_RUNTIME_TAG} is absent; expected ${NEXUS_STABLE_RUNTIME_COMMIT}."
+            echo "stable tag binding: FAIL (${NEXUS_STABLE_RUNTIME_TAG} absent; expected ${NEXUS_STABLE_RUNTIME_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
+            exit 1
           fi
+
+          tag_commit="$(git rev-list -n 1 "$NEXUS_STABLE_RUNTIME_TAG")"
+          if [[ "$tag_commit" != "$NEXUS_STABLE_RUNTIME_COMMIT" ]]; then
+            echo "${NEXUS_STABLE_RUNTIME_TAG} resolves to ${tag_commit}, expected ${NEXUS_STABLE_RUNTIME_COMMIT}" >&2
+            exit 1
+          fi
+          echo "stable tag binding: PASS (${NEXUS_STABLE_RUNTIME_TAG} -> ${NEXUS_STABLE_RUNTIME_COMMIT})" >> "$GITHUB_STEP_SUMMARY"
+          echo "formalization head: ${NEXUS_FORMALIZATION_COMMIT}" >> "$GITHUB_STEP_SUMMARY"
+          echo "verification checkout: $(git rev-parse HEAD)" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Early proof-hole and assumption scan
         shell: bash
