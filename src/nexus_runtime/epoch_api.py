@@ -5,6 +5,7 @@ from typing import Any
 
 from .civilization_api import CivilizationNexusAPI
 from .compute_epochs import (
+    ComputeEpochClockError,
     compute_epoch_policy_snapshot,
     current_compute_epoch,
     pinned_current_compute_epoch,
@@ -30,6 +31,14 @@ _EPOCH_OPERATIONS = frozenset(
         "security.purgatory.select",
     }
 )
+_CLOCKED_EPOCH_OPERATIONS = frozenset(
+    {
+        "council.epoch.policy",
+        "genesis.capsule.status",
+        "genesis.capsule.reveal",
+        "security.purgatory.select",
+    }
+)
 
 
 class EpochNexusAPI(CivilizationNexusAPI):
@@ -38,39 +47,62 @@ class EpochNexusAPI(CivilizationNexusAPI):
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation") if isinstance(request, dict) else None
         request_id = request.get("request_id") if isinstance(request, dict) else None
+        safe_request_id = request_id if self._request_id_is_preflight_safe(request_id) else None
 
         if operation == "world.create":
             object_type = request.get("object_type")
             if isinstance(object_type, str) and object_type in EPOCH_RESERVED_OBJECT_TYPES:
-                if not self._request_id_is_preflight_safe(request_id):
+                if request_id is not None and safe_request_id is None:
                     return super().handle(request)
                 try:
                     validate_control_request(request)
                 except (RequestBudgetError, RecursionError) as exc:
-                    return self._error(request_id, "invalid_request", str(exc))
+                    return self._error(safe_request_id, "invalid_request", str(exc))
                 try:
                     self.trap_mutation_gate.assert_mutation_allowed()
                 except TrapError:
                     return super().handle(request)
                 return self._error(
-                    request_id,
+                    safe_request_id,
                     "invalid_request",
                     "Compute Epoch admission receipts require validated runtime operations",
                 )
 
         if operation == "council.run":
-            # Resolve the wall clock exactly once. Provider admission, the
-            # returned Chair summary and the durable admission receipt all see
-            # this same ContextVar-pinned epoch even if a slow live Council
-            # happens to cross an epoch boundary while inference is running.
-            with pinned_current_compute_epoch():
-                response = super().handle(request)
-                if response.get("status") == "ok":
-                    return self._attach_epoch_admission_receipt(response)
-                return response
+            # Preserve the core request-id validation before consulting a wall
+            # clock. An invalid identifier must not accidentally bypass the
+            # public epoch overlay into a real Council execution.
+            if request_id is not None and safe_request_id is None:
+                return super().handle(request)
+            try:
+                # Resolve the wall clock exactly once. Provider admission, the
+                # returned Chair summary and the durable admission receipt all
+                # see this same ContextVar-pinned epoch even if a slow live
+                # Council crosses an epoch boundary while inference is running.
+                with pinned_current_compute_epoch():
+                    response = super().handle(request)
+                    if response.get("status") != "ok":
+                        return response
+                    try:
+                        return self._attach_epoch_admission_receipt(response)
+                    except TrapError as exc:
+                        return self._committed_receipt_error(
+                            response,
+                            safe_request_id,
+                            exc.code,
+                            str(exc),
+                        )
+                    except OSError:
+                        return self._committed_receipt_error(
+                            response,
+                            safe_request_id,
+                            "epoch_receipt_unavailable",
+                            "Council session committed but its Compute Epoch admission receipt could not be persisted",
+                        )
+            except ComputeEpochClockError:
+                return self._epoch_clock_error(safe_request_id)
 
         if isinstance(operation, str) and operation in _EPOCH_OPERATIONS:
-            safe_request_id = request_id if self._request_id_is_preflight_safe(request_id) else None
             try:
                 validate_control_request(request)
             except (RequestBudgetError, RecursionError) as exc:
@@ -81,20 +113,58 @@ class EpochNexusAPI(CivilizationNexusAPI):
                     "invalid_request",
                     "request_id must be a bounded non-secret identifier",
                 )
+            if operation in _CLOCKED_EPOCH_OPERATIONS:
+                try:
+                    with pinned_current_compute_epoch():
+                        return self._handle_epoch_operation(request, safe_request_id)
+                except ComputeEpochClockError:
+                    return self._epoch_clock_error(safe_request_id)
             return self._handle_epoch_operation(request, safe_request_id)
 
+        if operation == "system.health":
+            # Pin health too so the Chair, capsule and top-level epoch snapshot
+            # cannot disagree at the exact instant an epoch boundary advances.
+            try:
+                with pinned_current_compute_epoch():
+                    response = super().handle(request)
+                    if response.get("status") == "ok":
+                        response = dict(response)
+                        response["compute_epoch"] = compute_epoch_policy_snapshot()
+                        response["genesis_capsule"] = genesis_capsule_status()
+                        response["purgatory"] = purgatory_policy_snapshot()
+                    return response
+            except ComputeEpochClockError:
+                return self._epoch_clock_error(safe_request_id)
+
         response = super().handle(request)
-        if operation == "system.health" and response.get("status") == "ok":
-            response = dict(response)
-            response["compute_epoch"] = compute_epoch_policy_snapshot()
-            response["genesis_capsule"] = genesis_capsule_status()
-            response["purgatory"] = purgatory_policy_snapshot()
-        elif operation == "system.operations" and response.get("status") == "ok":
+        if operation == "system.operations" and response.get("status") == "ok":
             response = dict(response)
             operations = list(response.get("operations", []))
             operations.extend(sorted(_EPOCH_OPERATIONS))
             response["operations"] = sorted(set(operations))
         return response
+
+    def _epoch_clock_error(self, request_id: str | None) -> dict[str, Any]:
+        return self._error(
+            request_id,
+            "epoch_clock_unavailable",
+            "host wall clock cannot be mapped into the admitted NEXUS Compute Epoch range",
+        )
+
+    def _committed_receipt_error(
+        self,
+        response: dict[str, Any],
+        request_id: str | None,
+        code: str,
+        message: str,
+    ) -> dict[str, Any]:
+        failure = self._error(request_id, code, message)
+        session_ref = response.get("session_ref")
+        if isinstance(session_ref, str):
+            failure["council_session_committed"] = True
+            failure["committed_session_ref"] = session_ref
+            failure["epoch_admission_receipt_persisted"] = False
+        return failure
 
     def _attach_epoch_admission_receipt(self, response: dict[str, Any]) -> dict[str, Any]:
         admission = response.get("council_chair")
@@ -166,6 +236,8 @@ class EpochNexusAPI(CivilizationNexusAPI):
                 }
             else:  # pragma: no cover - closed dispatch set
                 return self._error(request_id, "unknown_operation", "operation is not supported")
+        except ComputeEpochClockError:
+            return self._epoch_clock_error(request_id)
         except TrapError as exc:
             return self._error(request_id, exc.code, str(exc))
         except (KeyError, TypeError, ValueError) as exc:
