@@ -9,6 +9,7 @@ from . import guardian_api as _guardian_api
 from . import civic_due_process_api as _civic_due_process_api
 from . import world_continuity_api as _world_continuity_api
 from . import progression_api as _progression_api
+from . import culture_api as _culture_api
 from .civilization_api import CivilizationNexusAPI
 from .civilization_gauntlet import (
     CivilizationGauntlet,
@@ -40,7 +41,7 @@ from .culture import (
     culture_policy_snapshot,
     performance_catalog,
 )
-from .culture_api import CultureNexusAPI
+from .culture_api_overlay import CultureNexusAPI
 from .epoch_api import EpochNexusAPI as _BaseEpochNexusAPI
 from .guard import EqualityGuard
 from .guardian import (
@@ -130,6 +131,7 @@ _guardian_api.GuardianNexusAPI = CultureNexusAPI
 _civic_due_process_api.CivicDueProcessNexusAPI = CultureNexusAPI
 _world_continuity_api.WorldContinuityNexusAPI = CultureNexusAPI
 _progression_api.ProgressionNexusAPI = CultureNexusAPI
+_culture_api.CultureNexusAPI = CultureNexusAPI
 
 __all__ = [
     "ANARCHY_MODE_ID",
