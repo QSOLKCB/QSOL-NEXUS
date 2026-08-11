@@ -8,7 +8,9 @@ from nexus_runtime.agent_state import (
     CONTEXT_BOTTLENECK_SCHEMA_VERSION,
     LANE_ORDER,
     MAX_CONTEXT_CHARS,
+    publish_agent_state_update,
 )
+from nexus_runtime.world import WorldStore
 
 
 class AgentStatePolicyTests(unittest.TestCase):
@@ -55,6 +57,35 @@ class AgentStatePolicyTests(unittest.TestCase):
                 self.assertEqual(result["status"], "error")
                 self.assertEqual(result["error"]["code"], "invalid_request")
                 self.assertIn("runtime-owned", result["error"]["message"])
+
+
+class AgentStateValidationOwnershipTests(unittest.TestCase):
+    def test_shared_publish_path_owns_identity_lane_and_source_ref_validation(self) -> None:
+        world = WorldStore()
+        with self.assertRaisesRegex(ValueError, "credential-shaped"):
+            publish_agent_state_update(
+                world,
+                actor_id="sk-" + ("A" * 24),
+                lane="memory",
+                content="state",
+                source_refs=[],
+            )
+        with self.assertRaisesRegex(ValueError, "lane must be one of"):
+            publish_agent_state_update(
+                world,
+                actor_id="Alpha",
+                lane="invented_lane",
+                content="state",
+                source_refs=[],
+            )
+        with self.assertRaisesRegex(ValueError, "source_refs must be a list"):
+            publish_agent_state_update(
+                world,
+                actor_id="Alpha",
+                lane="memory",
+                content="state",
+                source_refs="not-a-list",
+            )
 
 
 class AgentStateSnapshotTests(unittest.TestCase):
