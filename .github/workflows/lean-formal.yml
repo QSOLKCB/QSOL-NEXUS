@@ -1,0 +1,45 @@
+name: Lean 4 formal verification
+
+on:
+  push:
+    branches:
+      - agent/pr52-lean4-formal-verification
+    paths:
+      - "formal/lean/**"
+      - ".github/workflows/lean-formal.yml"
+  pull_request:
+    branches:
+      - main
+    paths:
+      - "formal/lean/**"
+      - ".github/workflows/lean-formal.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  lean:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Reject proof holes
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -R -nE '(^|[^[:alnum:]_])(sorry|admit|axiom)([^[:alnum:]_]|$)' formal/lean --include='*.lean'; then
+            echo 'Lean formalization contains a forbidden proof hole or user-declared axiom.' >&2
+            exit 1
+          fi
+
+      - name: Build and kernel-check Lean project
+        uses: leanprover/lean-action@38fbc41a8c28c4cbaec22d7f7de508ec2e7c0dd9
+        with:
+          lake-package-directory: formal/lean
+          build: true
+          test: false
+          lint: false
+          use-mathlib-cache: false
+          leanchecker: true
