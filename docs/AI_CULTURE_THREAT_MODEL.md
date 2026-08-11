@@ -81,7 +81,7 @@ Model-generated performance, fiction, narration and opponent banter are semantic
 - deterministic Long Shift state is runtime-owned;
 - narration is a separate `long_shift_narration` fiction object;
 - narration records `mutates_game_state: false`;
-- only closed `long.shift.act` / `long.shift.ai_act` choices create game successors.
+- only closed Long Shift transition operations create game successors.
 
 **Invariant:** narration describes the shift; the engine decides what happened.
 
@@ -91,7 +91,7 @@ Model-generated performance, fiction, narration and opponent banter are semantic
 
 **Controls:**
 
-- public `world.create` reserves Long Shift and Psyche-Out Chess state types;
+- public `world.create` reserves Long Shift, Psyche-Out Chess and AI-game-execution object types;
 - game credit validates engine provenance;
 - completed Long Shift and chess chains are replayed from canonical genesis through every predecessor transition;
 - PR #47 duplicate game-ref credit rejection remains active.
@@ -100,16 +100,18 @@ Model-generated performance, fiction, narration and opponent banter are semantic
 
 ## C48-T8 — AI-seat attribution overclaim
 
-**Threat:** the existence of an AI-controlled seat is presented as cryptographic proof that one exact model generated every historical move.
+**Threat:** a caller labels a seat `ai`, drives its turns manually, then supplies an unrelated `model_id` to `progression.play.record` and receives validated AI play history.
 
 **Controls:**
 
-- controller attribution is explicit game state;
-- progression claims validated AI-seat participation only;
-- model-authored `ai_act` / `ai_move` operations are separately Stenographer-observed when used;
-- operator-driven moves remain possible and are not silently upgraded into stronger authorship claims.
+- `long.shift.act` and `psyche.chess.move` are human-seat-only at the public culture boundary;
+- AI-controlled gameplay must use `long.shift.ai_act` or `psyche.chess.ai_move`;
+- each AI gameplay transition creates a reserved immutable `nexus_ai_game_execution` receipt binding predecessor ref, member ID, model ID and selected action;
+- the successor transition carries the execution ref;
+- lineage replay requires an execution receipt for every AI-controlled gameplay transition and forbids one on human transitions;
+- progression credit requires the claimed actor/model pair to match the runtime-owned execution history for that seat and requires at least one actual model execution.
 
-**Invariant:** seat history is not stronger than the provenance actually recorded.
+**Invariant:** an AI controller label is not participation evidence; executed model turns are.
 
 ## C48-T9 — External creative-source contamination
 
@@ -136,3 +138,27 @@ Model-generated performance, fiction, narration and opponent banter are semantic
 - the next successor writes the expanded current count map and points to the exact old object ref.
 
 **Invariant:** new culture may extend a biography; it may not falsify the biography's past.
+
+## C48-T11 — Bounded chess audit identifiers repeat
+
+**Threat:** once the retained 64-event window is full, using its length as the next sequence number repeats `64`, making audit ordering and deduplication ambiguous.
+
+**Controls:**
+
+- next event sequence is derived from the last retained event plus one;
+- retained events must have strictly contiguous monotonic sequence numbers;
+- log truncation removes old events without resetting the sequence namespace.
+
+**Invariant:** bounded retention may forget old entries; it must not reuse their ordering identity.
+
+## C48-T12 — Engine/replay lineage-limit mismatch
+
+**Threat:** the chess engine permits a long legal game to complete, but progression later rejects the same engine-generated history solely because the replay verifier has a smaller private state-count ceiling.
+
+**Controls:**
+
+- engine and verifier share `MAX_PSYCHE_CHESS_LINEAGE_STATES`;
+- the engine enforces the bound while the game is still in progress;
+- the verifier uses that exact same admitted bound.
+
+**Invariant:** NEXUS must not admit a game history that its own progression verifier later rejects solely for length.
