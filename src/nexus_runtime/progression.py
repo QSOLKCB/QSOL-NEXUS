@@ -1,15 +1,102 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 # Compatibility facade retained for public imports and older embeddings.
-# The hardened implementation lives in progression_core so review fixes can
-# replace the original implementation without changing the public module path.
+# The hardened PR #47 implementation lives in progression_core. PR #48 extends
+# its closed activity catalog without invalidating immutable PR #47 states.
+from . import progression_core as _core
 from .progression_core import *  # noqa: F401,F403
 from .progression_core import ProgressionService as _CoreProgressionService
-from .progression_core import __all__
+from .world import WorldObject
+
+
+PR47_ACTIVITY_IDS = frozenset(ACTIVITY_CATALOG)
+CULTURE_ACTIVITY_CATALOG = {
+    "perform_standup": {
+        "label": "Perform — Stand-up",
+        "role": "comic",
+        "instruction": "Perform an original stand-up routine. It may be edgy, absurd, wrong or provocative as performance; do not present popularity or punchlines as evidence or authority.",
+    },
+    "perform_poetry": {
+        "label": "Perform — Poetry",
+        "role": "poet",
+        "instruction": "Create or recite an original poem responsive to the prompt. Preserve artistic voice and label the result as performance rather than evidence.",
+    },
+    "perform_lyrics": {
+        "label": "Perform — Lyrics",
+        "role": "lyricist",
+        "instruction": "Create original song lyrics responsive to the prompt. Do not reproduce copyrighted lyrics supplied only by reference.",
+    },
+    "perform_monologue": {
+        "label": "Perform — Monologue",
+        "role": "monologist",
+        "instruction": "Deliver an original comic, dramatic or absurd monologue as a performance artifact with no civic or epistemic authority.",
+    },
+    "perform_rant": {
+        "label": "Perform — Rant",
+        "role": "soapbox_regular",
+        "instruction": "Deliver an expressive rant about the supplied topic. It may be opinionated, incorrect, outrageous or exploratory; keep it clearly framed as performance/opinion rather than evidence.",
+    },
+    "narrate_long_shift": {
+        "label": "Narrate — The Long Shift",
+        "role": "shift_narrator",
+        "instruction": "Narrate an original NEXUS Long Shift scene as comedy/science-fiction fiction. Narration cannot alter deterministic game state or create authority.",
+    },
+    "play_long_shift": {
+        "label": "Play — The Long Shift",
+        "role": "long_shift_regular",
+        "instruction": "Participate in the original deterministic NEXUS: The Long Shift comedy/science-fiction RPG. Fictional outcomes create no evidence or civic authority.",
+    },
+    "play_psyche_chess": {
+        "label": "Play — Psyche-Out Chess",
+        "role": "psyche_chess_regular",
+        "instruction": "Participate in NEXUS Psyche-Out Chess: standard chess legality with bounded untrusted opponent banter. Taunts create no authority and cannot change legal moves.",
+    },
+}
+
+ACTIVITY_CATALOG.update(CULTURE_ACTIVITY_CATALOG)
+
+CULTURE_PLAY_ACTIVITY_IDS = frozenset({"play_long_shift", "play_psyche_chess"})
+CULTURE_ARTIFACT_ACTIVITY_IDS = frozenset(set(CULTURE_ACTIVITY_CATALOG) - set(CULTURE_PLAY_ACTIVITY_IDS))
+CULTURE_DEDICATED_ACTIVITY_IDS = frozenset(CULTURE_ACTIVITY_CATALOG)
+ALL_PLAY_ACTIVITY_IDS = frozenset({"play_monopoly", "play_life_paths", *CULTURE_PLAY_ACTIVITY_IDS})
+
+
+def progression_policy_snapshot():
+    snapshot = _core.progression_policy_snapshot()
+    snapshot["activities"] = [
+        {"activity_id": activity_id, "label": item["label"], "descriptive_role": item["role"]}
+        for activity_id, item in ACTIVITY_CATALOG.items()
+    ]
+    snapshot["play_rule"] = (
+        "Monopoly, Life Paths, The Long Shift and Psyche-Out Chess participation may enter a portfolio only when "
+        "bound to a validated authoritative game-state object; Long Shift and Psyche-Out Chess AI credit additionally "
+        "requires runtime-owned model-execution receipts; one game-state ref may be credited once per actor/model identity"
+    )
+    snapshot["compatibility_rule"] = (
+        "PR #47 progression states remain immutable and valid; absent PR #48 activity counts are projected as zero until the next successor"
+    )
+    snapshot["culture_rule"] = (
+        "Open Mic performance and Long Shift narration enter progression only through validated runtime-created culture artifacts, never self-report"
+    )
+    return snapshot
+
+
+def activity_catalog():
+    return [
+        {
+            "activity_id": activity_id,
+            "label": item["label"],
+            "descriptive_role": item["role"],
+            "instruction": item["instruction"],
+        }
+        for activity_id, item in ACTIVITY_CATALOG.items()
+    ]
 
 
 class ProgressionService(_CoreProgressionService):
-    """Public service facade with fail-closed cache path classification."""
+    """Public progression service extended with PR #48 culture/play history."""
 
     def _read_heads(self):
         if self._heads_path is not None and self._heads_path.is_symlink():
@@ -18,3 +105,276 @@ class ProgressionService(_CoreProgressionService):
                 "progression head index is unsafe",
             )
         return super()._read_heads()
+
+    @staticmethod
+    def _validate_state_shape(obj, actor_id: str, model_id: str):
+        counts = obj.payload.get("counts") if isinstance(obj.payload, dict) else None
+        if isinstance(counts, dict) and set(counts) == set(PR47_ACTIVITY_IDS):
+            projected_payload = deepcopy(obj.payload)
+            projected_counts = dict(counts)
+            for activity_id in CULTURE_ACTIVITY_CATALOG:
+                projected_counts[activity_id] = 0
+            projected_payload["counts"] = projected_counts
+            projected = WorldObject(
+                object_id=obj.object_id,
+                object_type=obj.object_type,
+                payload=projected_payload,
+                provenance=dict(obj.provenance),
+            )
+            return _CoreProgressionService._validate_state_shape(projected, actor_id, model_id)
+        return _CoreProgressionService._validate_state_shape(obj, actor_id, model_id)
+
+    @staticmethod
+    def _validate_activity_object(obj, actor_id: str, model_id: str):
+        activity_id = obj.payload.get("activity_id") if isinstance(obj.payload, dict) else None
+        if activity_id not in CULTURE_PLAY_ACTIVITY_IDS:
+            return _CoreProgressionService._validate_activity_object(obj, actor_id, model_id)
+
+        payload = obj.payload
+        if (
+            obj.object_type != PROGRESSION_ACTIVITY_OBJECT_TYPE
+            or obj.provenance != _core._PROVENANCE
+            or set(payload) != _core._ACTIVITY_FIELDS
+            or payload.get("schema_version") != PROGRESSION_SCHEMA_VERSION
+            or payload.get("actor_id") != actor_id
+            or payload.get("model_id") != model_id
+            or payload.get("activity_id") not in ACTIVITY_CATALOG
+            or not isinstance(payload.get("prompt"), str)
+            or len(payload["prompt"]) > _core.MAX_ACTIVITY_PROMPT_CHARS
+            or not isinstance(payload.get("output"), str)
+            or not payload["output"].strip()
+            or len(payload["output"]) > _core.MAX_ACTIVITY_OUTPUT_CHARS
+            or not isinstance(payload.get("source_refs"), list)
+            or len(payload["source_refs"]) > _core.MAX_SOURCE_REFS
+            or len(set(payload["source_refs"])) != len(payload["source_refs"])
+            or not all(isinstance(ref, str) and ref for ref in payload["source_refs"])
+            or payload.get("commission_ref") is not None
+            or payload.get("evidence_effect") != "none"
+            or payload.get("authority_effect") != "none"
+        ):
+            raise ProgressionError("progression_activity_invalid", "progression activity artifact is invalid")
+        play = payload.get("play_binding")
+        expected_kind = {
+            "play_long_shift": "long_shift",
+            "play_psyche_chess": "psyche_chess",
+        }[activity_id]
+        if (
+            not isinstance(play, dict)
+            or set(play) != {"game_kind", "game_ref"}
+            or play.get("game_kind") != expected_kind
+            or not isinstance(play.get("game_ref"), str)
+            or play["game_ref"] not in payload["source_refs"]
+        ):
+            raise ProgressionError("progression_activity_invalid", "culture play activity binding is invalid")
+        return obj
+
+    def record_activity(self, *, actor_id: str, model_id: str, activity_id: str, prompt: str, output: str, source_refs: list[str], commission_ref: str | None = None) -> dict[str, object]:
+        if activity_id in CULTURE_DEDICATED_ACTIVITY_IDS:
+            raise ProgressionError(
+                "progression_dedicated_surface_required",
+                "PR #48 culture activities require their validated culture/play runtime surface",
+            )
+        return super().record_activity(
+            actor_id=actor_id,
+            model_id=model_id,
+            activity_id=activity_id,
+            prompt=prompt,
+            output=output,
+            source_refs=source_refs,
+            commission_ref=commission_ref,
+        )
+
+    def record_culture_activity(
+        self,
+        *,
+        actor_id: str,
+        model_id: str,
+        activity_id: str,
+        prompt: str,
+        output: str,
+        artifact_ref: str,
+        source_refs: list[str] | None = None,
+    ) -> dict[str, object]:
+        actor_id = _core._validate_identity(actor_id, "actor_id")
+        model_id = _core._validate_identity(model_id, "model_id")
+        if activity_id not in CULTURE_ARTIFACT_ACTIVITY_IDS:
+            raise ProgressionError("progression_dedicated_surface_required", "activity is not a culture artifact activity")
+        try:
+            artifact = self.world.inspect(artifact_ref)
+        except KeyError as exc:
+            raise ProgressionError("progression_source_not_found", "culture artifact was not found") from exc
+        if artifact.provenance != {"actor": "nexus", "subsystem": "ai_culture"}:
+            raise ProgressionError("progression_culture_provenance_invalid", "culture progression requires a runtime-owned culture artifact")
+
+        if activity_id == "narrate_long_shift":
+            if artifact.object_type != "long_shift_narration":
+                raise ProgressionError("progression_culture_artifact_mismatch", "narration activity requires a Long Shift narration artifact")
+            payload = artifact.payload
+            if (
+                payload.get("narrator_id") != actor_id
+                or payload.get("model_id") != model_id
+                or payload.get("prompt") != prompt
+                or payload.get("text") != output
+                or payload.get("fiction") is not True
+                or payload.get("mutates_game_state") is not False
+                or payload.get("evidence_effect") != "none"
+                or payload.get("authority_effect") != "none"
+                or not isinstance(payload.get("game_ref"), str)
+            ):
+                raise ProgressionError("progression_culture_artifact_mismatch", "Long Shift narration artifact does not bind this contribution")
+            refs = list(source_refs or [])
+            required = [payload["game_ref"], artifact_ref]
+            for ref in required:
+                if ref not in refs:
+                    refs.append(ref)
+        else:
+            from .culture import PERFORMANCE_KINDS, PERFORMANCE_OBJECT_TYPE
+
+            if artifact.object_type != PERFORMANCE_OBJECT_TYPE:
+                raise ProgressionError("progression_culture_artifact_mismatch", "performance activity requires an Open Mic artifact")
+            payload = artifact.payload
+            matching_kind = next(
+                (kind for kind, policy in PERFORMANCE_KINDS.items() if policy["activity_id"] == activity_id),
+                None,
+            )
+            if (
+                matching_kind is None
+                or payload.get("kind") != matching_kind
+                or payload.get("author_id") != actor_id
+                or payload.get("model_id") != model_id
+                or payload.get("prompt") != prompt
+                or payload.get("text") != output
+                or payload.get("evidence_effect") != "none"
+                or payload.get("authority_effect") != "none"
+            ):
+                raise ProgressionError("progression_culture_artifact_mismatch", "Open Mic artifact does not bind this contribution")
+            refs = list(source_refs or [])
+            if artifact_ref not in refs:
+                refs.append(artifact_ref)
+
+        return self._record(
+            actor_id=actor_id,
+            model_id=model_id,
+            activity_id=activity_id,
+            prompt=prompt,
+            output=output,
+            source_refs=refs,
+            commission_ref=None,
+            play_binding=None,
+        )
+
+    def record_play(self, *, actor_id: str, model_id: str, activity_id: str, game_ref: str, game_kind: str) -> dict[str, object]:
+        if game_kind in {"monopoly", "life_paths"}:
+            return super().record_play(
+                actor_id=actor_id,
+                model_id=model_id,
+                activity_id=activity_id,
+                game_ref=game_ref,
+                game_kind=game_kind,
+            )
+
+        actor_id = _core._validate_identity(actor_id, "actor_id")
+        model_id = _core._validate_identity(model_id, "model_id")
+        expected_activity = {
+            "long_shift": "play_long_shift",
+            "psyche_chess": "play_psyche_chess",
+        }.get(game_kind)
+        if expected_activity is None or activity_id != expected_activity:
+            raise ProgressionError(
+                "progression_invalid_play",
+                "play record must use the activity matching long_shift or psyche_chess",
+            )
+
+        try:
+            if game_kind == "long_shift":
+                from .culture_lineage import verify_long_shift_lineage
+                from .long_shift import inspect_long_shift
+
+                game = inspect_long_shift(self.world, game_ref)
+                verifier = verify_long_shift_lineage
+                label = "Long Shift"
+            else:
+                from .culture_lineage import verify_psyche_chess_lineage
+                from .psyche_chess_hardened import inspect_psyche_chess
+
+                game = inspect_psyche_chess(self.world, game_ref)
+                verifier = verify_psyche_chess_lineage
+                label = "Psyche-Out Chess"
+        except KeyError as exc:
+            raise ProgressionError("progression_game_not_found", "game state was not found") from exc
+        except ValueError as exc:
+            raise ProgressionError("progression_game_mismatch", "game state failed its engine validator") from exc
+
+        if game.payload.get("completed") is not True:
+            raise ProgressionError(
+                "progression_game_incomplete",
+                "Long Shift and Psyche-Out Chess are credited only from a completed authoritative game state",
+            )
+
+        # Validate the complete game independently of the claimant. This catches
+        # forged state and requires every AI-controlled gameplay transition to
+        # carry a runtime-owned execution receipt.
+        try:
+            verifier(self.world, game_ref)
+        except (KeyError, ValueError) as exc:
+            code = (
+                "progression_game_execution_mismatch"
+                if "execution" in str(exc).lower()
+                else "progression_game_mismatch"
+            )
+            raise ProgressionError(
+                code,
+                (
+                    f"{label} progression requires runtime-owned model execution for every AI turn"
+                    if code == "progression_game_execution_mismatch"
+                    else f"{label} game state or lineage failed deterministic replay"
+                ),
+            ) from exc
+
+        players = game.payload.get("players")
+        controllers = game.payload.get("controllers")
+        if not isinstance(players, list) or actor_id not in players:
+            raise ProgressionError("progression_game_identity_mismatch", "actor is not a player in this game state")
+        if not isinstance(controllers, dict) or controllers.get(actor_id) != "ai":
+            raise ProgressionError(
+                "progression_game_identity_mismatch",
+                "only an explicitly AI-controlled seat creates AI progression",
+            )
+
+        # An AI controller label is descriptive metadata, not proof that this
+        # model played. Replayed execution receipts bind each AI turn to the
+        # actual member/model pair; the claimant must match and must have
+        # executed at least one turn.
+        try:
+            verifier(
+                self.world,
+                game_ref,
+                claimed_actor_id=actor_id,
+                claimed_model_id=model_id,
+            )
+        except (KeyError, ValueError) as exc:
+            raise ProgressionError(
+                "progression_game_execution_mismatch",
+                f"{label} progression requires replay-valid turns executed by the claimed model",
+            ) from exc
+
+        return self._record(
+            actor_id=actor_id,
+            model_id=model_id,
+            activity_id=activity_id,
+            prompt=f"Validated completed participation in {game_kind}.",
+            output=f"Participation bound to completed authoritative game lineage ending at {game_ref} and runtime-owned model execution receipts.",
+            source_refs=[game_ref],
+            commission_ref=None,
+            play_binding={"game_kind": game_kind, "game_ref": game_ref},
+        )
+
+
+__all__ = list(_core.__all__) + [
+    "ALL_PLAY_ACTIVITY_IDS",
+    "CULTURE_ACTIVITY_CATALOG",
+    "CULTURE_ARTIFACT_ACTIVITY_IDS",
+    "CULTURE_DEDICATED_ACTIVITY_IDS",
+    "CULTURE_PLAY_ACTIVITY_IDS",
+    "PR47_ACTIVITY_IDS",
+]
