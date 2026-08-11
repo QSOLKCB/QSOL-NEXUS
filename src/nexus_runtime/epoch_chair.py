@@ -86,8 +86,8 @@ def evaluate_epoch_council_roster_request(
         )
 
     return {
-        "schema": EPOCH_CHAIR_SCHEMA,
-        "legacy_chair_schema": COUNCIL_CHAIR_SCHEMA,
+        "schema": COUNCIL_CHAIR_SCHEMA,
+        "epoch_schema": EPOCH_CHAIR_SCHEMA,
         "status": "admitted",
         "seat_count": len(classifications),
         "slot_counts": {
@@ -123,8 +123,8 @@ def epoch_chair_policy_snapshot(epoch: int | None = None) -> dict[str, Any]:
     protected["compute_epoch"] = resolved_epoch
     return {
         **legacy,
-        "schema": EPOCH_CHAIR_SCHEMA,
-        "legacy_chair_schema": COUNCIL_CHAIR_SCHEMA,
+        "schema": COUNCIL_CHAIR_SCHEMA,
+        "epoch_schema": EPOCH_CHAIR_SCHEMA,
         "compute_epoch": compute_epoch_policy_snapshot(resolved_epoch),
         "protected_small_seat": protected,
         "temporal_compute_equality": (
