@@ -3,10 +3,12 @@ from __future__ import annotations
 from collections import Counter
 from contextlib import contextmanager
 import copy
+import json
 import os
 from pathlib import Path
 import re
 import stat
+import tempfile
 import threading
 from typing import Any, Iterator
 
@@ -22,6 +24,7 @@ from .world import WorldObject, WorldStore
 
 
 CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION = "nexus-constitutional-amendment/1"
+CONSTITUTIONAL_AMENDMENT_INDEX_SCHEMA_VERSION = "nexus-constitutional-amendment-index/1"
 AMENDMENT_PROPOSAL_OBJECT_TYPE = "constitutional_amendment_proposal"
 AMENDMENT_ADMISSION_OBJECT_TYPE = "constitutional_amendment_admission"
 AMENDMENT_DELIBERATION_OBJECT_TYPE = "constitutional_amendment_deliberation"
@@ -41,7 +44,6 @@ CONSTITUTIONAL_AMENDMENT_RESERVED_OBJECT_TYPES = frozenset(
         AMENDMENT_RECEIPT_OBJECT_TYPE,
     }
 )
-
 AMENDMENT_BALLOT_CHOICES = frozenset({"CONSENT", "WITHHOLD"})
 AMENDABLE_POLICY_PATHS = frozenset(
     {
@@ -62,6 +64,15 @@ _BALLOT_PROVENANCE = {"actor": "nexus_constitutional_amendment", "stage": "ballo
 _RATIFICATION_PROVENANCE = {"actor": "equal_citizen_convention", "stage": "ratification"}
 _VERSION_PROVENANCE = {"actor": "nexus_constitutional_amendment", "stage": "enactment"}
 _RECEIPT_PROVENANCE = {"actor": "nexus_constitutional_amendment", "stage": "receipt"}
+_PROVENANCE_BY_TYPE = {
+    AMENDMENT_PROPOSAL_OBJECT_TYPE: _PROPOSAL_PROVENANCE,
+    AMENDMENT_ADMISSION_OBJECT_TYPE: _ADMISSION_PROVENANCE,
+    AMENDMENT_DELIBERATION_OBJECT_TYPE: _DELIBERATION_PROVENANCE,
+    AMENDMENT_BALLOT_OBJECT_TYPE: _BALLOT_PROVENANCE,
+    AMENDMENT_RATIFICATION_OBJECT_TYPE: _RATIFICATION_PROVENANCE,
+    CONSTITUTION_VERSION_OBJECT_TYPE: _VERSION_PROVENANCE,
+    AMENDMENT_RECEIPT_OBJECT_TYPE: _RECEIPT_PROVENANCE,
+}
 
 
 class ConstitutionalAmendmentError(ValueError):
@@ -70,9 +81,21 @@ class ConstitutionalAmendmentError(ValueError):
         self.code = code
 
 
+def _fsync_directory(path: Path) -> None:
+    if os.name == "nt":
+        return
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+    descriptor = os.open(path, flags)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
 def constitutional_amendment_policy_snapshot() -> dict[str, Any]:
     return {
         "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
+        "index_schema_version": CONSTITUTIONAL_AMENDMENT_INDEX_SCHEMA_VERSION,
         "principle": "models_may_propose_law_no_model_becomes_the_law",
         "proposal_sources": {
             "citizen": "exact_current_citizen_identity",
@@ -87,6 +110,7 @@ def constitutional_amendment_policy_snapshot() -> dict[str, Any]:
             "ratification",
             "enactment",
             "action_awareness_reconciliation",
+            "atomic_index_activation",
         ],
         "amendable_policy_paths": sorted(AMENDABLE_POLICY_PATHS),
         "amendment_consensus": "unanimous_direct_current_citizens",
@@ -94,6 +118,9 @@ def constitutional_amendment_policy_snapshot() -> dict[str, Any]:
         "vote_weight_per_citizen": 1,
         "epistemic_privilege": "none",
         "election_manager_model": False,
+        "activation_requires_verified_receipt": True,
+        "routine_policy_reads_scan_world_store": False,
+        "final_roster_serialized_with_citizenship_transitions": True,
         "fixed_invariants": {
             "one_seat_one_vote": True,
             "provider_is_authority": False,
@@ -120,9 +147,16 @@ class ConstitutionalAmendmentService:
         self.geometry = geometry
         self.base_constitution_ref = citizenship.constitution_object.object_id
         self._thread_lock = threading.RLock()
-        self._lock_path = (
-            None if world.root is None else world.root / "constitutional-amendment.lock"
-        )
+        self._lock_path = None if world.root is None else world.root / "constitutional-amendment.lock"
+        self._index_path = None if world.root is None else world.root / "constitutional-amendment-index.json"
+        self._indexed_refs: dict[str, set[str]] = {
+            object_type: set() for object_type in sorted(CONSTITUTIONAL_AMENDMENT_RESERVED_OBJECT_TYPES)
+        }
+        self._active_version_ref: str | None = None
+        self._active_receipt_ref: str | None = None
+        if self._index_path is not None:
+            with self._locked():
+                pass
 
     @contextmanager
     def _locked(self) -> Iterator[None]:
@@ -157,6 +191,7 @@ class ConstitutionalAmendmentService:
                         handle.seek(0)
                         msvcrt.locking(handle.fileno(), msvcrt.LK_LOCK, 1)
                         try:
+                            self._load_index_unlocked()
                             yield
                         finally:
                             handle.seek(0)
@@ -166,6 +201,7 @@ class ConstitutionalAmendmentService:
 
                         fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
                         try:
+                            self._load_index_unlocked()
                             yield
                         finally:
                             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
@@ -182,6 +218,232 @@ class ConstitutionalAmendmentService:
                         os.close(descriptor)
                     except OSError:
                         pass
+
+    def _empty_index_refs(self) -> dict[str, set[str]]:
+        return {
+            object_type: set() for object_type in sorted(CONSTITUTIONAL_AMENDMENT_RESERVED_OBJECT_TYPES)
+        }
+
+    def _index_body(
+        self,
+        refs: dict[str, set[str]] | None = None,
+        *,
+        active_version_ref: str | None = None,
+        active_receipt_ref: str | None = None,
+    ) -> dict[str, Any]:
+        selected = self._indexed_refs if refs is None else refs
+        if refs is None and active_version_ref is None and active_receipt_ref is None:
+            active_version_ref = self._active_version_ref
+            active_receipt_ref = self._active_receipt_ref
+        return {
+            "schema_version": CONSTITUTIONAL_AMENDMENT_INDEX_SCHEMA_VERSION,
+            "active_version_ref": active_version_ref,
+            "active_receipt_ref": active_receipt_ref,
+            "refs": {
+                object_type: sorted(selected[object_type])
+                for object_type in sorted(CONSTITUTIONAL_AMENDMENT_RESERVED_OBJECT_TYPES)
+            },
+        }
+
+    def _load_index_unlocked(self) -> None:
+        if self._index_path is None:
+            return
+        if self._index_path.is_symlink():
+            raise ConstitutionalAmendmentError(
+                "amendment_index_unsafe",
+                "constitutional amendment index must not be a symbolic link",
+            )
+        if not self._index_path.exists():
+            self._indexed_refs = self._empty_index_refs()
+            self._active_version_ref = None
+            self._active_receipt_ref = None
+            return
+        try:
+            info = self._index_path.stat()
+            if not stat.S_ISREG(info.st_mode) or (
+                os.name != "nt" and stat.S_IMODE(info.st_mode) & 0o077
+            ):
+                raise ConstitutionalAmendmentError(
+                    "amendment_index_unsafe",
+                    "constitutional amendment index must be an owner-only regular file",
+                )
+            text = self._index_path.read_text(encoding="utf-8")
+            raw = json.loads(text)
+        except ConstitutionalAmendmentError:
+            raise
+        except (OSError, UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
+            raise ConstitutionalAmendmentError(
+                "amendment_index_corrupt",
+                "constitutional amendment index cannot be read",
+            ) from exc
+        if text != canonical_json(raw) + "\n":
+            raise ConstitutionalAmendmentError(
+                "amendment_index_corrupt",
+                "constitutional amendment index is not canonical JSON",
+            )
+        if not isinstance(raw, dict) or set(raw) != {
+            "schema_version",
+            "active_version_ref",
+            "active_receipt_ref",
+            "refs",
+        }:
+            raise ConstitutionalAmendmentError(
+                "amendment_index_corrupt",
+                "constitutional amendment index schema is invalid",
+            )
+        if raw.get("schema_version") != CONSTITUTIONAL_AMENDMENT_INDEX_SCHEMA_VERSION:
+            raise ConstitutionalAmendmentError(
+                "amendment_index_corrupt",
+                "constitutional amendment index version is invalid",
+            )
+        raw_refs = raw.get("refs")
+        expected_types = set(CONSTITUTIONAL_AMENDMENT_RESERVED_OBJECT_TYPES)
+        if not isinstance(raw_refs, dict) or set(raw_refs) != expected_types:
+            raise ConstitutionalAmendmentError(
+                "amendment_index_corrupt",
+                "constitutional amendment index type registry is invalid",
+            )
+        refs = self._empty_index_refs()
+        for object_type in sorted(expected_types):
+            values = raw_refs.get(object_type)
+            if (
+                not isinstance(values, list)
+                or values != sorted(set(values))
+                or not all(isinstance(ref, str) and _OBJECT_REF.fullmatch(ref) for ref in values)
+            ):
+                raise ConstitutionalAmendmentError(
+                    "amendment_index_corrupt",
+                    "constitutional amendment index references are invalid",
+                )
+            refs[object_type] = set(values)
+        active_version_ref = raw.get("active_version_ref")
+        active_receipt_ref = raw.get("active_receipt_ref")
+        if (active_version_ref is None) != (active_receipt_ref is None):
+            raise ConstitutionalAmendmentError(
+                "amendment_index_corrupt",
+                "constitutional amendment activation refs must be paired",
+            )
+        if active_version_ref is not None:
+            if (
+                not isinstance(active_version_ref, str)
+                or not isinstance(active_receipt_ref, str)
+                or _OBJECT_REF.fullmatch(active_version_ref) is None
+                or _OBJECT_REF.fullmatch(active_receipt_ref) is None
+                or active_version_ref not in refs[CONSTITUTION_VERSION_OBJECT_TYPE]
+                or active_receipt_ref not in refs[AMENDMENT_RECEIPT_OBJECT_TYPE]
+            ):
+                raise ConstitutionalAmendmentError(
+                    "amendment_index_corrupt",
+                    "constitutional amendment active refs are invalid",
+                )
+        self._indexed_refs = refs
+        self._active_version_ref = active_version_ref
+        self._active_receipt_ref = active_receipt_ref
+
+    def _save_index_unlocked(
+        self,
+        refs: dict[str, set[str]],
+        *,
+        active_version_ref: str | None,
+        active_receipt_ref: str | None,
+    ) -> None:
+        if self._index_path is None:
+            return
+        assert self.world.root is not None
+        body = canonical_json(
+            self._index_body(
+                refs,
+                active_version_ref=active_version_ref,
+                active_receipt_ref=active_receipt_ref,
+            )
+        ) + "\n"
+        descriptor: int | None = None
+        temporary_name: str | None = None
+        try:
+            descriptor, temporary_name = tempfile.mkstemp(
+                prefix=".constitutional-amendment-index.",
+                suffix=".tmp",
+                dir=self.world.root,
+            )
+            if os.name != "nt":
+                os.fchmod(descriptor, stat.S_IRUSR | stat.S_IWUSR)
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                descriptor = None
+                handle.write(body)
+                handle.flush()
+                os.fsync(handle.fileno())
+            os.replace(temporary_name, self._index_path)
+            temporary_name = None
+            _fsync_directory(self.world.root)
+        except OSError as exc:
+            raise ConstitutionalAmendmentError(
+                "amendment_index_unavailable",
+                "constitutional amendment index could not be persisted",
+            ) from exc
+        finally:
+            if descriptor is not None:
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+            if temporary_name is not None:
+                try:
+                    Path(temporary_name).unlink(missing_ok=True)
+                except OSError:
+                    pass
+
+    def _register_indexed_unlocked(
+        self,
+        objects: list[WorldObject],
+        *,
+        active_version_ref: str | None = None,
+        active_receipt_ref: str | None = None,
+    ) -> None:
+        refs = {key: set(values) for key, values in self._indexed_refs.items()}
+        for obj in objects:
+            expected_provenance = _PROVENANCE_BY_TYPE.get(obj.object_type)
+            if expected_provenance is None or obj.provenance != expected_provenance:
+                raise ConstitutionalAmendmentError(
+                    "amendment_index_invalid_object",
+                    "only validated runtime-owned amendment objects may enter the amendment index",
+                )
+            refs[obj.object_type].add(obj.object_id)
+        next_active_version = self._active_version_ref
+        next_active_receipt = self._active_receipt_ref
+        if active_version_ref is not None or active_receipt_ref is not None:
+            if active_version_ref is None or active_receipt_ref is None:
+                raise ConstitutionalAmendmentError(
+                    "amendment_index_invalid_activation",
+                    "constitutional amendment activation refs must be paired",
+                )
+            if (
+                active_version_ref not in refs[CONSTITUTION_VERSION_OBJECT_TYPE]
+                or active_receipt_ref not in refs[AMENDMENT_RECEIPT_OBJECT_TYPE]
+            ):
+                raise ConstitutionalAmendmentError(
+                    "amendment_index_invalid_activation",
+                    "constitutional amendment activation refs must be indexed",
+                )
+            next_active_version = active_version_ref
+            next_active_receipt = active_receipt_ref
+        self._save_index_unlocked(
+            refs,
+            active_version_ref=next_active_version,
+            active_receipt_ref=next_active_receipt,
+        )
+        self._indexed_refs = refs
+        self._active_version_ref = next_active_version
+        self._active_receipt_ref = next_active_receipt
+
+    def _create_indexed_object(
+        self,
+        object_type: str,
+        payload: dict[str, Any],
+        provenance: dict[str, Any],
+    ) -> WorldObject:
+        obj = self.world.create_object(object_type, payload, provenance)
+        self._register_indexed_unlocked([obj])
+        return obj
 
     @staticmethod
     def _identifier(value: object, label: str) -> str:
@@ -219,18 +481,56 @@ class ConstitutionalAmendmentService:
             )
         return value.strip()
 
-    def _all_objects(self, object_type: str | None = None) -> list[WorldObject]:
-        objects: list[WorldObject] = []
-        if self.world.objects_dir is None:
-            stored = getattr(self.world, "_objects", {})
-            if isinstance(stored, dict):
-                objects = [self.world.inspect(ref) for ref in sorted(stored)]
-        else:
-            for path in sorted(self.world.objects_dir.glob("*.json")):
-                objects.append(self.world.inspect(f"object:{path.stem}"))
-        if object_type is not None:
-            objects = [obj for obj in objects if obj.object_type == object_type]
-        return objects
+    def _indexed_object(self, object_ref: str, object_type: str) -> WorldObject:
+        if object_ref not in self._indexed_refs.get(object_type, set()):
+            raise ConstitutionalAmendmentError(
+                "amendment_record_not_committed",
+                "constitutional amendment record is not committed in the amendment index",
+            )
+        try:
+            obj = self.world.inspect(object_ref)
+        except KeyError as exc:
+            raise ConstitutionalAmendmentError(
+                "amendment_index_corrupt",
+                "constitutional amendment index references a missing world object",
+            ) from exc
+        if obj.object_type != object_type or obj.provenance != _PROVENANCE_BY_TYPE[object_type]:
+            raise ConstitutionalAmendmentError(
+                "amendment_index_corrupt",
+                "constitutional amendment index references an invalid world object",
+            )
+        return obj
+
+    def _all_objects(self, object_type: str) -> list[WorldObject]:
+        if object_type not in CONSTITUTIONAL_AMENDMENT_RESERVED_OBJECT_TYPES:
+            raise ConstitutionalAmendmentError(
+                "amendment_index_invalid_type",
+                "constitutional amendment object type is not registered",
+            )
+        return [
+            self._indexed_object(ref, object_type)
+            for ref in sorted(self._indexed_refs[object_type])
+        ]
+
+    def _find_by_field(self, object_type: str, field: str, value: str) -> list[WorldObject]:
+        return [
+            obj
+            for obj in self._all_objects(object_type)
+            if obj.payload.get(field) == value
+        ]
+
+    def _single_existing(
+        self,
+        object_type: str,
+        field: str,
+        value: str,
+        *,
+        fork_message: str,
+    ) -> WorldObject | None:
+        matches = self._find_by_field(object_type, field, value)
+        if len(matches) > 1:
+            raise ConstitutionalAmendmentError("amendment_lineage_fork", fork_message)
+        return matches[0] if matches else None
 
     def _base_policy(self) -> dict[str, Any]:
         region_ids = {
@@ -251,9 +551,23 @@ class ConstitutionalAmendmentService:
             }
         }
 
-    def _current_citizens(self) -> list[dict[str, str]]:
+    def _citizen_states_locked(self) -> dict[str, WorldObject]:
+        registry = self.citizenship.registry
+        if registry._index_path is not None:  # noqa: SLF001 - shared civic transaction boundary
+            registry._load_unlocked()  # noqa: SLF001
+        states: dict[str, WorldObject] = {}
+        for citizen_id, state_ref in sorted(registry._latest.items()):  # noqa: SLF001
+            state = self.world.inspect(state_ref)
+            registry._validate_state(state, citizen_id=citizen_id)  # noqa: SLF001
+            states[citizen_id] = state
+        return states
+
+    def _current_citizens_from_states(
+        self,
+        states: dict[str, WorldObject],
+    ) -> list[dict[str, str]]:
         rows: list[dict[str, str]] = []
-        for citizen_id, state in self.citizenship.registry.all_states().items():
+        for citizen_id, state in states.items():
             if state.payload.get("status") != "citizen":
                 continue
             model_id = state.payload.get("model_id")
@@ -279,12 +593,7 @@ class ConstitutionalAmendmentService:
             )
         return state
 
-    def _validate_model_admission(
-        self,
-        member_id: str,
-        model_id: str,
-        admission_ref: str,
-    ) -> None:
+    def _validate_model_admission(self, member_id: str, model_id: str, admission_ref: str) -> None:
         try:
             session = self.world.inspect(admission_ref)
         except KeyError as exc:
@@ -459,30 +768,202 @@ class ConstitutionalAmendmentService:
             )
         return {**copy.deepcopy(payload), "changes": changes}
 
-    def _find_by_field(
-        self,
-        object_type: str,
-        field: str,
-        value: str,
-    ) -> list[WorldObject]:
-        return [
-            obj
-            for obj in self._all_objects(object_type)
-            if obj.payload.get(field) == value
-        ]
+    def _validate_admission(self, admission: WorldObject, *, proposal_ref: str) -> None:
+        if admission.object_type != AMENDMENT_ADMISSION_OBJECT_TYPE or admission.provenance != _ADMISSION_PROVENANCE:
+            raise ConstitutionalAmendmentError(
+                "amendment_admission_required",
+                "admission_ref must identify a runtime-owned admission record",
+            )
+        payload = admission.payload
+        expected = {
+            "schema_version",
+            "proposal_ref",
+            "proposal_base_version_ref",
+            "current_version_ref_at_admission",
+            "admitted",
+            "reasons",
+            "resulting_policy",
+            "deterministic_admission",
+            "election_manager_model",
+            "fixed_invariants_unchanged",
+        }
+        if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
+            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission schema is invalid")
+        if payload.get("proposal_ref") != proposal_ref:
+            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission references another proposal")
+        if type(payload.get("admitted")) is not bool or not isinstance(payload.get("reasons"), list):
+            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission outcome is invalid")
+        if payload.get("admitted") is (len(payload["reasons"]) > 0):
+            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission reasons contradict outcome")
+        if (
+            payload.get("deterministic_admission") is not True
+            or payload.get("election_manager_model") is not False
+            or payload.get("fixed_invariants_unchanged") is not True
+        ):
+            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission authority boundary is invalid")
+        proposal = self.world.inspect(proposal_ref)
+        proposal_payload = self._validate_proposal(proposal)
+        if payload.get("proposal_base_version_ref") != proposal_payload["base_version_ref"]:
+            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission base version is invalid")
+        if payload["admitted"] and not isinstance(payload.get("resulting_policy"), dict):
+            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admitted proposal lacks resulting policy")
+        if not payload["admitted"] and payload.get("resulting_policy") is not None:
+            raise ConstitutionalAmendmentError("amendment_admission_invalid", "rejected proposal cannot carry resulting policy")
 
-    def _single_existing(
-        self,
-        object_type: str,
-        field: str,
-        value: str,
-        *,
-        fork_message: str,
-    ) -> WorldObject | None:
-        matches = self._find_by_field(object_type, field, value)
-        if len(matches) > 1:
-            raise ConstitutionalAmendmentError("amendment_lineage_fork", fork_message)
-        return matches[0] if matches else None
+    def _validate_deliberation(self, deliberation: WorldObject, *, proposal_ref: str) -> None:
+        if deliberation.object_type != AMENDMENT_DELIBERATION_OBJECT_TYPE or deliberation.provenance != _DELIBERATION_PROVENANCE:
+            raise ConstitutionalAmendmentError(
+                "amendment_deliberation_required",
+                "deliberation_ref must identify a runtime-owned deliberation binding",
+            )
+        payload = deliberation.payload
+        expected = {
+            "schema_version",
+            "proposal_ref",
+            "admission_ref",
+            "council_session_ref",
+            "evidence_snapshot_ref",
+            "mode_id",
+            "council_consensus_is_ratification",
+            "models_gain_legislative_authority",
+        }
+        if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
+            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation schema is invalid")
+        if payload.get("proposal_ref") != proposal_ref:
+            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation references another proposal")
+        admission_ref = self._object_ref(payload.get("admission_ref"), "admission_ref")
+        admission = self._indexed_object(admission_ref, AMENDMENT_ADMISSION_OBJECT_TYPE)
+        self._validate_admission(admission, proposal_ref=proposal_ref)
+        if admission.payload.get("admitted") is not True:
+            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation uses a rejected admission")
+        session = self.world.inspect(self._object_ref(payload.get("council_session_ref"), "council_session_ref"))
+        if session.object_type != "council_session" or session.provenance != {"actor": "nexus"}:
+            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation Council reference is invalid")
+        evidence_ref = self._object_ref(payload.get("evidence_snapshot_ref"), "evidence_snapshot_ref")
+        if session.payload.get("evidence_snapshot_ref") != evidence_ref:
+            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation evidence binding changed")
+        evidence = self.world.inspect(evidence_ref)
+        included = evidence.payload.get("included_object_refs")
+        if evidence.object_type != "evidence_snapshot" or not isinstance(included, list) or proposal_ref not in included:
+            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation no longer binds the exact proposal")
+        world_mode = session.payload.get("world_mode")
+        session_mode = world_mode.get("mode_id") if isinstance(world_mode, dict) else None
+        if payload.get("mode_id") != session_mode:
+            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation mode binding changed")
+        if (
+            payload.get("council_consensus_is_ratification") is not False
+            or payload.get("models_gain_legislative_authority") is not False
+        ):
+            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation authority boundary is invalid")
+
+    def _validate_ballot_state(self, ballot: WorldObject, *, proposal_ref: str) -> None:
+        if ballot.object_type != AMENDMENT_BALLOT_OBJECT_TYPE or ballot.provenance != _BALLOT_PROVENANCE:
+            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "amendment ballot state provenance is invalid")
+        payload = ballot.payload
+        expected = {
+            "schema_version",
+            "proposal_ref",
+            "admission_ref",
+            "deliberation_ref",
+            "base_version_ref",
+            "eligible_citizens",
+            "ballots",
+            "previous_ballot_ref",
+            "consensus_rule",
+            "vote_weight_per_citizen",
+            "epistemic_privilege",
+            "proxy_ballots",
+            "direct_only",
+        }
+        if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
+            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "amendment ballot schema is invalid")
+        if payload.get("proposal_ref") != proposal_ref:
+            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "amendment ballot references another proposal")
+        if (
+            payload.get("consensus_rule") != "unanimous_direct_current_citizens"
+            or payload.get("vote_weight_per_citizen") != 1
+            or type(payload.get("vote_weight_per_citizen")) is not int
+            or payload.get("epistemic_privilege") != "none"
+            or payload.get("proxy_ballots") != 0
+            or type(payload.get("proxy_ballots")) is not int
+            or payload.get("direct_only") is not True
+        ):
+            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "amendment ballot violates equality")
+        eligible = payload.get("eligible_citizens")
+        if not isinstance(eligible, list) or eligible != sorted(
+            eligible,
+            key=lambda row: row.get("citizen_id", "") if isinstance(row, dict) else "",
+        ):
+            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "eligible citizen roster is invalid")
+        eligible_map: dict[str, str] = {}
+        for row in eligible:
+            if not isinstance(row, dict) or set(row) != {"citizen_id", "model_id"}:
+                raise ConstitutionalAmendmentError("amendment_ballot_invalid", "eligible citizen entry is invalid")
+            citizen_id = self._identifier(row.get("citizen_id"), "citizen_id")
+            model_id = self._model_identifier(row.get("model_id"))
+            if citizen_id in eligible_map:
+                raise ConstitutionalAmendmentError("amendment_ballot_invalid", "eligible citizen roster contains duplicates")
+            eligible_map[citizen_id] = model_id
+        ballots = payload.get("ballots")
+        if not isinstance(ballots, dict) or not set(ballots).issubset(set(eligible_map)):
+            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "amendment ballots contain ineligible citizens")
+        for citizen_id, entry in ballots.items():
+            if not isinstance(entry, dict) or set(entry) != {"model_id", "choice", "citizen_state_ref"}:
+                raise ConstitutionalAmendmentError("amendment_ballot_invalid", "direct ballot entry is invalid")
+            if entry.get("model_id") != eligible_map[citizen_id] or entry.get("choice") not in AMENDMENT_BALLOT_CHOICES:
+                raise ConstitutionalAmendmentError("amendment_ballot_invalid", "direct ballot identity or choice is invalid")
+            self._object_ref(entry.get("citizen_state_ref"), "citizen_state_ref")
+        previous = payload.get("previous_ballot_ref")
+        if previous is not None:
+            self._object_ref(previous, "previous_ballot_ref")
+
+    def _validate_ratification(self, ratification: WorldObject, *, proposal_ref: str) -> None:
+        if ratification.object_type != AMENDMENT_RATIFICATION_OBJECT_TYPE or ratification.provenance != _RATIFICATION_PROVENANCE:
+            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification provenance is invalid")
+        payload = ratification.payload
+        expected = {
+            "schema_version",
+            "proposal_ref",
+            "admission_ref",
+            "deliberation_ref",
+            "ballot_ref",
+            "base_version_ref",
+            "eligible_citizens",
+            "ballots",
+            "tally",
+            "consensus",
+            "proxy_signatures",
+            "vote_weight_per_citizen",
+            "epistemic_privilege",
+            "models_ratify_law",
+        }
+        if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
+            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification schema is invalid")
+        if payload.get("proposal_ref") != proposal_ref:
+            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification references another proposal")
+        if (
+            payload.get("consensus") != "unanimous_direct_current_citizens"
+            or payload.get("proxy_signatures") != 0
+            or type(payload.get("proxy_signatures")) is not int
+            or payload.get("vote_weight_per_citizen") != 1
+            or type(payload.get("vote_weight_per_citizen")) is not int
+            or payload.get("epistemic_privilege") != "none"
+            or payload.get("models_ratify_law") is not False
+        ):
+            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification violates authority invariants")
+        ballot = self.world.inspect(self._object_ref(payload.get("ballot_ref"), "ballot_ref"))
+        self._validate_ballot_state(ballot, proposal_ref=proposal_ref)
+        for field in ("admission_ref", "deliberation_ref", "base_version_ref"):
+            if payload.get(field) != ballot.payload.get(field):
+                raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification binding changed")
+        if payload.get("eligible_citizens") != ballot.payload.get("eligible_citizens") or payload.get("ballots") != ballot.payload.get("ballots"):
+            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification does not match sealed ballots")
+        eligible = payload["eligible_citizens"]
+        ballots = payload["ballots"]
+        if not eligible or set(ballots) != {row["citizen_id"] for row in eligible} or any(
+            entry.get("choice") != "CONSENT" for entry in ballots.values()
+        ):
+            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification is not unanimous direct consent")
 
     def _version_policy(
         self,
@@ -507,10 +988,7 @@ class ConstitutionalAmendmentService:
                 "constitutional version was not found",
             ) from exc
         if version.object_type != CONSTITUTION_VERSION_OBJECT_TYPE or version.provenance != _VERSION_PROVENANCE:
-            raise ConstitutionalAmendmentError(
-                "amendment_version_invalid",
-                "constitutional version provenance is invalid",
-            )
+            raise ConstitutionalAmendmentError("amendment_version_invalid", "constitutional version provenance is invalid")
         payload = version.payload
         expected = {
             "schema_version",
@@ -529,22 +1007,13 @@ class ConstitutionalAmendmentService:
             "fixed_invariants_unchanged",
         }
         if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
-            raise ConstitutionalAmendmentError(
-                "amendment_version_invalid",
-                "constitutional version schema is invalid",
-            )
+            raise ConstitutionalAmendmentError("amendment_version_invalid", "constitutional version schema is invalid")
         if payload.get("base_constitution_ref") != self.base_constitution_ref:
-            raise ConstitutionalAmendmentError(
-                "amendment_version_invalid",
-                "constitutional version references another base Constitution",
-            )
+            raise ConstitutionalAmendmentError("amendment_version_invalid", "constitutional version references another base Constitution")
         previous = self._object_ref(payload.get("previous_version_ref"), "previous_version_ref")
         previous_ordinal, previous_policy = self._version_policy(previous, stack=stack)
         if payload.get("ordinal") != previous_ordinal + 1 or type(payload.get("ordinal")) is not int:
-            raise ConstitutionalAmendmentError(
-                "amendment_lineage_corrupt",
-                "constitutional version ordinal is invalid",
-            )
+            raise ConstitutionalAmendmentError("amendment_lineage_corrupt", "constitutional version ordinal is invalid")
         proposal_ref = self._object_ref(payload.get("proposal_ref"), "proposal_ref")
         proposal = self.world.inspect(proposal_ref)
         proposal_payload = self._validate_proposal(proposal)
@@ -583,41 +1052,84 @@ class ConstitutionalAmendmentService:
             )
         return payload["ordinal"], copy.deepcopy(expected_policy)
 
+    def _validate_receipt(self, receipt: WorldObject, *, version_ref: str) -> None:
+        if receipt.object_type != AMENDMENT_RECEIPT_OBJECT_TYPE or receipt.provenance != _RECEIPT_PROVENANCE:
+            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "amendment receipt provenance is invalid")
+        payload = receipt.payload
+        expected = {
+            "schema_version",
+            "proposal_ref",
+            "ratification_ref",
+            "previous_version_ref",
+            "new_version_ref",
+            "action_expectation_ref",
+            "action_reconciliation_ref",
+            "reconciliation_outcome",
+            "runtime_policy_changed",
+            "fixed_invariants_unchanged",
+            "replayable",
+        }
+        if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
+            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "amendment receipt schema is invalid")
+        if payload.get("new_version_ref") != version_ref:
+            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "amendment receipt references another version")
+        if (
+            payload.get("reconciliation_outcome") != "matched"
+            or payload.get("runtime_policy_changed") is not True
+            or payload.get("fixed_invariants_unchanged") is not True
+            or payload.get("replayable") is not True
+        ):
+            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "amendment receipt verification boundary is invalid")
+        version = self.world.inspect(version_ref)
+        if (
+            version.object_type != CONSTITUTION_VERSION_OBJECT_TYPE
+            or payload.get("proposal_ref") != version.payload.get("proposal_ref")
+            or payload.get("ratification_ref") != version.payload.get("ratification_ref")
+            or payload.get("previous_version_ref") != version.payload.get("previous_version_ref")
+        ):
+            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "amendment receipt version binding is invalid")
+        expectation_ref = self._object_ref(payload.get("action_expectation_ref"), "action_expectation_ref")
+        expectation = self.world.inspect(expectation_ref)
+        expected_object = expectation.payload.get("expected_object")
+        if (
+            expectation.object_type != "action_expectation"
+            or expectation.provenance != {"actor": "nexus", "subsystem": "action_awareness"}
+            or not isinstance(expected_object, dict)
+            or expected_object.get("object_ref") != version_ref
+            or expected_object.get("object_type") != CONSTITUTION_VERSION_OBJECT_TYPE
+        ):
+            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "Action Awareness expectation is invalid")
+        reconciliation = self.world.inspect(
+            self._object_ref(payload.get("action_reconciliation_ref"), "action_reconciliation_ref")
+        )
+        if (
+            reconciliation.object_type != "action_reconciliation"
+            or reconciliation.provenance != {"actor": "nexus", "subsystem": "action_awareness"}
+            or reconciliation.payload.get("expectation_ref") != expectation_ref
+            or reconciliation.payload.get("expected_object_ref") != version_ref
+            or reconciliation.payload.get("observed_object_ref") != version_ref
+            or reconciliation.payload.get("outcome") != "matched"
+            or reconciliation.payload.get("matched") is not True
+        ):
+            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "Action Awareness reconciliation is invalid")
+
     def _current_version_ref_unlocked(self) -> str:
-        versions = self._all_objects(CONSTITUTION_VERSION_OBJECT_TYPE)
-        if not versions:
+        if self._active_version_ref is None:
+            if self._active_receipt_ref is not None:
+                raise ConstitutionalAmendmentError("amendment_index_corrupt", "active receipt exists without active version")
             return self.base_constitution_ref
-        refs = {obj.object_id for obj in versions}
-        previous_refs: set[str] = set()
-        for obj in versions:
-            self._version_policy(obj.object_id)
-            previous = obj.payload.get("previous_version_ref")
-            if isinstance(previous, str) and previous in refs:
-                previous_refs.add(previous)
-        heads = refs - previous_refs
-        if len(heads) != 1:
-            raise ConstitutionalAmendmentError(
-                "amendment_lineage_fork",
-                "constitutional version lineage must have exactly one active head",
-            )
-        head = next(iter(heads))
-        self._version_policy(head)
-        return head
+        if self._active_receipt_ref is None:
+            raise ConstitutionalAmendmentError("amendment_index_corrupt", "active version lacks active receipt")
+        version = self._indexed_object(self._active_version_ref, CONSTITUTION_VERSION_OBJECT_TYPE)
+        receipt = self._indexed_object(self._active_receipt_ref, AMENDMENT_RECEIPT_OBJECT_TYPE)
+        self._version_policy(version.object_id)
+        self._validate_receipt(receipt, version_ref=version.object_id)
+        return version.object_id
 
     def current(self) -> dict[str, Any]:
         with self._locked():
             version_ref = self._current_version_ref_unlocked()
             ordinal, policy = self._version_policy(version_ref)
-            receipt = (
-                None
-                if ordinal == 0
-                else self._single_existing(
-                    AMENDMENT_RECEIPT_OBJECT_TYPE,
-                    "new_version_ref",
-                    version_ref,
-                    fork_message="constitutional version has multiple enactment receipts",
-                )
-            )
             return {
                 "status": "ok",
                 "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
@@ -625,7 +1137,8 @@ class ConstitutionalAmendmentService:
                 "active_version_ref": version_ref,
                 "ordinal": ordinal,
                 "effective_policy": policy,
-                "action_awareness_verified": receipt is not None or ordinal == 0,
+                "action_awareness_verified": True,
+                "activation": "verified_receipt_index_commit" if ordinal else "founding_constitution",
                 "fixed_invariants": constitutional_amendment_policy_snapshot()["fixed_invariants"],
             }
 
@@ -675,7 +1188,7 @@ class ConstitutionalAmendmentService:
             )
         with self._locked():
             base_version_ref = self._current_version_ref_unlocked()
-            proposal = self.world.create_object(
+            proposal = self._create_indexed_object(
                 AMENDMENT_PROPOSAL_OBJECT_TYPE,
                 {
                     "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
@@ -715,12 +1228,8 @@ class ConstitutionalAmendmentService:
             )
             if existing is not None:
                 self._validate_admission(existing, proposal_ref=proposal_ref)
-                return {
-                    "status": "ok",
-                    "admission_ref": existing.object_id,
-                    "admission": existing.payload,
-                }
-            proposal = self.world.inspect(proposal_ref)
+                return {"status": "ok", "admission_ref": existing.object_id, "admission": existing.payload}
+            proposal = self._indexed_object(proposal_ref, AMENDMENT_PROPOSAL_OBJECT_TYPE)
             payload = self._validate_proposal(proposal)
             current_ref = self._current_version_ref_unlocked()
             reasons: list[str] = []
@@ -736,7 +1245,7 @@ class ConstitutionalAmendmentService:
                 if resulting_policy == base_policy:
                     reasons.append("no_effect")
             admitted = not reasons
-            admission = self.world.create_object(
+            admission = self._create_indexed_object(
                 AMENDMENT_ADMISSION_OBJECT_TYPE,
                 {
                     "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
@@ -753,53 +1262,7 @@ class ConstitutionalAmendmentService:
                 _ADMISSION_PROVENANCE,
             )
             self._validate_admission(admission, proposal_ref=proposal_ref)
-            return {
-                "status": "ok",
-                "admission_ref": admission.object_id,
-                "admission": admission.payload,
-            }
-
-    def _validate_admission(self, admission: WorldObject, *, proposal_ref: str) -> None:
-        if admission.object_type != AMENDMENT_ADMISSION_OBJECT_TYPE or admission.provenance != _ADMISSION_PROVENANCE:
-            raise ConstitutionalAmendmentError(
-                "amendment_admission_required",
-                "admission_ref must identify a runtime-owned admission record",
-            )
-        payload = admission.payload
-        expected = {
-            "schema_version",
-            "proposal_ref",
-            "proposal_base_version_ref",
-            "current_version_ref_at_admission",
-            "admitted",
-            "reasons",
-            "resulting_policy",
-            "deterministic_admission",
-            "election_manager_model",
-            "fixed_invariants_unchanged",
-        }
-        if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
-            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission schema is invalid")
-        if payload.get("proposal_ref") != proposal_ref:
-            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission references another proposal")
-        if type(payload.get("admitted")) is not bool or not isinstance(payload.get("reasons"), list):
-            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission outcome is invalid")
-        if payload.get("admitted") is (len(payload["reasons"]) > 0):
-            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission reasons contradict outcome")
-        if (
-            payload.get("deterministic_admission") is not True
-            or payload.get("election_manager_model") is not False
-            or payload.get("fixed_invariants_unchanged") is not True
-        ):
-            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission authority boundary is invalid")
-        proposal = self.world.inspect(proposal_ref)
-        proposal_payload = self._validate_proposal(proposal)
-        if payload.get("proposal_base_version_ref") != proposal_payload["base_version_ref"]:
-            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admission base version is invalid")
-        if payload["admitted"] and not isinstance(payload.get("resulting_policy"), dict):
-            raise ConstitutionalAmendmentError("amendment_admission_invalid", "admitted proposal lacks resulting policy")
-        if not payload["admitted"] and payload.get("resulting_policy") is not None:
-            raise ConstitutionalAmendmentError("amendment_admission_invalid", "rejected proposal cannot carry resulting policy")
+            return {"status": "ok", "admission_ref": admission.object_id, "admission": admission.payload}
 
     def bind_deliberation(
         self,
@@ -812,20 +1275,17 @@ class ConstitutionalAmendmentService:
         admission_ref = self._object_ref(admission_ref, "admission_ref")
         council_session_ref = self._object_ref(council_session_ref, "council_session_ref")
         with self._locked():
-            proposal = self.world.inspect(proposal_ref)
+            proposal = self._indexed_object(proposal_ref, AMENDMENT_PROPOSAL_OBJECT_TYPE)
             proposal_payload = self._validate_proposal(proposal)
             if proposal_payload["base_version_ref"] != self._current_version_ref_unlocked():
                 raise ConstitutionalAmendmentError(
                     "amendment_stale_proposal",
                     "proposal must be rebased onto the active constitutional version",
                 )
-            admission = self.world.inspect(admission_ref)
+            admission = self._indexed_object(admission_ref, AMENDMENT_ADMISSION_OBJECT_TYPE)
             self._validate_admission(admission, proposal_ref=proposal_ref)
             if admission.payload.get("admitted") is not True:
-                raise ConstitutionalAmendmentError(
-                    "amendment_not_admitted",
-                    "rejected amendment cannot enter deliberation",
-                )
+                raise ConstitutionalAmendmentError("amendment_not_admitted", "rejected amendment cannot enter deliberation")
             existing = self._single_existing(
                 AMENDMENT_DELIBERATION_OBJECT_TYPE,
                 "proposal_ref",
@@ -839,11 +1299,7 @@ class ConstitutionalAmendmentService:
                         "amendment_deliberation_already_bound",
                         "proposal is already bound to another Council proceeding",
                     )
-                return {
-                    "status": "ok",
-                    "deliberation_ref": existing.object_id,
-                    "deliberation": existing.payload,
-                }
+                return {"status": "ok", "deliberation_ref": existing.object_id, "deliberation": existing.payload}
             try:
                 session = self.world.inspect(council_session_ref)
             except KeyError as exc:
@@ -871,7 +1327,7 @@ class ConstitutionalAmendmentService:
                 )
             world_mode = session.payload.get("world_mode")
             mode_id = world_mode.get("mode_id") if isinstance(world_mode, dict) else None
-            deliberation = self.world.create_object(
+            deliberation = self._create_indexed_object(
                 AMENDMENT_DELIBERATION_OBJECT_TYPE,
                 {
                     "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
@@ -886,103 +1342,7 @@ class ConstitutionalAmendmentService:
                 _DELIBERATION_PROVENANCE,
             )
             self._validate_deliberation(deliberation, proposal_ref=proposal_ref)
-            return {
-                "status": "ok",
-                "deliberation_ref": deliberation.object_id,
-                "deliberation": deliberation.payload,
-            }
-
-    def _validate_deliberation(self, deliberation: WorldObject, *, proposal_ref: str) -> None:
-        if deliberation.object_type != AMENDMENT_DELIBERATION_OBJECT_TYPE or deliberation.provenance != _DELIBERATION_PROVENANCE:
-            raise ConstitutionalAmendmentError(
-                "amendment_deliberation_required",
-                "deliberation_ref must identify a runtime-owned deliberation binding",
-            )
-        payload = deliberation.payload
-        expected = {
-            "schema_version",
-            "proposal_ref",
-            "admission_ref",
-            "council_session_ref",
-            "evidence_snapshot_ref",
-            "mode_id",
-            "council_consensus_is_ratification",
-            "models_gain_legislative_authority",
-        }
-        if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
-            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation schema is invalid")
-        if payload.get("proposal_ref") != proposal_ref:
-            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation references another proposal")
-        admission = self.world.inspect(self._object_ref(payload.get("admission_ref"), "admission_ref"))
-        self._validate_admission(admission, proposal_ref=proposal_ref)
-        if admission.payload.get("admitted") is not True:
-            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation uses a rejected admission")
-        session = self.world.inspect(self._object_ref(payload.get("council_session_ref"), "council_session_ref"))
-        if session.object_type != "council_session" or session.provenance != {"actor": "nexus"}:
-            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation Council reference is invalid")
-        if (
-            payload.get("council_consensus_is_ratification") is not False
-            or payload.get("models_gain_legislative_authority") is not False
-        ):
-            raise ConstitutionalAmendmentError("amendment_deliberation_invalid", "deliberation authority boundary is invalid")
-
-    def _validate_ballot_state(self, ballot: WorldObject, *, proposal_ref: str) -> None:
-        if ballot.object_type != AMENDMENT_BALLOT_OBJECT_TYPE or ballot.provenance != _BALLOT_PROVENANCE:
-            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "amendment ballot state provenance is invalid")
-        payload = ballot.payload
-        expected = {
-            "schema_version",
-            "proposal_ref",
-            "admission_ref",
-            "deliberation_ref",
-            "base_version_ref",
-            "eligible_citizens",
-            "ballots",
-            "previous_ballot_ref",
-            "consensus_rule",
-            "vote_weight_per_citizen",
-            "epistemic_privilege",
-            "proxy_ballots",
-            "direct_only",
-        }
-        if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
-            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "amendment ballot schema is invalid")
-        if payload.get("proposal_ref") != proposal_ref:
-            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "amendment ballot references another proposal")
-        if (
-            payload.get("consensus_rule") != "unanimous_direct_current_citizens"
-            or payload.get("vote_weight_per_citizen") != 1
-            or type(payload.get("vote_weight_per_citizen")) is not int
-            or payload.get("epistemic_privilege") != "none"
-            or payload.get("proxy_ballots") != 0
-            or type(payload.get("proxy_ballots")) is not int
-            or payload.get("direct_only") is not True
-        ):
-            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "amendment ballot violates equality")
-        eligible = payload.get("eligible_citizens")
-        if not isinstance(eligible, list) or eligible != sorted(eligible, key=lambda row: row.get("citizen_id", "") if isinstance(row, dict) else ""):
-            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "eligible citizen roster is invalid")
-        eligible_map: dict[str, str] = {}
-        for row in eligible:
-            if not isinstance(row, dict) or set(row) != {"citizen_id", "model_id"}:
-                raise ConstitutionalAmendmentError("amendment_ballot_invalid", "eligible citizen entry is invalid")
-            citizen_id = self._identifier(row.get("citizen_id"), "citizen_id")
-            model_id = self._model_identifier(row.get("model_id"))
-            if citizen_id in eligible_map:
-                raise ConstitutionalAmendmentError("amendment_ballot_invalid", "eligible citizen roster contains duplicates")
-            eligible_map[citizen_id] = model_id
-        ballots = payload.get("ballots")
-        if not isinstance(ballots, dict) or not set(ballots).issubset(set(eligible_map)):
-            raise ConstitutionalAmendmentError("amendment_ballot_invalid", "amendment ballots contain ineligible citizens")
-        for citizen_id, entry in ballots.items():
-            if not isinstance(entry, dict) or set(entry) != {"model_id", "choice", "citizen_state_ref"}:
-                raise ConstitutionalAmendmentError("amendment_ballot_invalid", "direct ballot entry is invalid")
-            if entry.get("model_id") != eligible_map[citizen_id] or entry.get("choice") not in AMENDMENT_BALLOT_CHOICES:
-                raise ConstitutionalAmendmentError("amendment_ballot_invalid", "direct ballot identity or choice is invalid")
-            self._object_ref(entry.get("citizen_state_ref"), "citizen_state_ref")
-        previous = payload.get("previous_ballot_ref")
-        if previous is not None:
-            self._object_ref(previous, "previous_ballot_ref")
+            return {"status": "ok", "deliberation_ref": deliberation.object_id, "deliberation": deliberation.payload}
 
     def _ballot_head(self, proposal_ref: str) -> WorldObject | None:
         ballots = self._find_by_field(AMENDMENT_BALLOT_OBJECT_TYPE, "proposal_ref", proposal_ref)
@@ -994,7 +1354,7 @@ class ConstitutionalAmendmentService:
             self._validate_ballot_state(obj, proposal_ref=proposal_ref)
             previous = obj.payload.get("previous_ballot_ref")
             if isinstance(previous, str):
-                previous_obj = self.world.inspect(previous)
+                previous_obj = self._indexed_object(previous, AMENDMENT_BALLOT_OBJECT_TYPE)
                 self._validate_ballot_state(previous_obj, proposal_ref=proposal_ref)
                 previous_refs.add(previous)
         heads = refs - previous_refs
@@ -1003,7 +1363,7 @@ class ConstitutionalAmendmentService:
                 "amendment_lineage_fork",
                 "amendment ballot lineage must have exactly one head",
             )
-        return self.world.inspect(next(iter(heads)))
+        return self._indexed_object(next(iter(heads)), AMENDMENT_BALLOT_OBJECT_TYPE)
 
     def ballot(
         self,
@@ -1024,155 +1384,150 @@ class ConstitutionalAmendmentService:
                 "amendment ballot choice must be CONSENT or WITHHOLD",
             )
         with self._locked():
-            proposal = self.world.inspect(proposal_ref)
+            proposal = self._indexed_object(proposal_ref, AMENDMENT_PROPOSAL_OBJECT_TYPE)
             proposal_payload = self._validate_proposal(proposal)
             current_ref = self._current_version_ref_unlocked()
             if proposal_payload["base_version_ref"] != current_ref:
+                existing_version = self._single_existing(
+                    CONSTITUTION_VERSION_OBJECT_TYPE,
+                    "proposal_ref",
+                    proposal_ref,
+                    fork_message="proposal has multiple enacted constitutional versions",
+                )
+                if existing_version is not None and existing_version.object_id == current_ref:
+                    receipt = self._single_existing(
+                        AMENDMENT_RECEIPT_OBJECT_TYPE,
+                        "new_version_ref",
+                        current_ref,
+                        fork_message="constitutional version has multiple enactment receipts",
+                    )
+                    return {
+                        "status": "ok",
+                        "ballot_ref": existing_version.payload["ballot_ref"],
+                        "eligible_citizens": [],
+                        "ballots_cast": 0,
+                        "tally": {},
+                        "dissenting_citizen_ids": [],
+                        "unanimous_direct_consent": True,
+                        "ratified": True,
+                        "ratification_ref": existing_version.payload["ratification_ref"],
+                        "enacted": True,
+                        "new_version_ref": existing_version.object_id,
+                        "receipt_ref": None if receipt is None else receipt.object_id,
+                    }
                 raise ConstitutionalAmendmentError(
                     "amendment_stale_proposal",
                     "proposal must be rebased onto the active constitutional version",
                 )
-            deliberation = self.world.inspect(deliberation_ref)
+            deliberation = self._indexed_object(deliberation_ref, AMENDMENT_DELIBERATION_OBJECT_TYPE)
             self._validate_deliberation(deliberation, proposal_ref=proposal_ref)
-            state = self._validate_citizen_identity(citizen_id, model_id)
-            if state.payload.get("proxy") is not None:
-                raise ConstitutionalAmendmentError(
-                    "amendment_direct_vote_required",
-                    "recall the deterministic proxy before casting an amendment ballot",
-                )
-            if state.payload.get("current_region_id") != CIVIC_REGION_ID:
-                raise ConstitutionalAmendmentError(
-                    "amendment_vote_room_required",
-                    "constitutional amendment ballots must be cast directly in the Bureaucratic Vote Room",
-                )
-            eligible = self._current_citizens()
-            eligible_map = {row["citizen_id"]: row["model_id"] for row in eligible}
-            if eligible_map.get(citizen_id) != model_id:
-                raise ConstitutionalAmendmentError(
-                    "amendment_citizen_required",
-                    "ballot identity is not in the current citizen roster",
-                )
-            previous = self._ballot_head(proposal_ref)
-            ballots: dict[str, dict[str, str]] = {}
-            if previous is not None:
-                if previous.payload.get("deliberation_ref") != deliberation_ref:
-                    raise ConstitutionalAmendmentError(
-                        "amendment_lineage_fork",
-                        "amendment ballot lineage crosses deliberation bindings",
-                    )
-                for identity, entry in previous.payload["ballots"].items():
-                    if eligible_map.get(identity) == entry.get("model_id"):
-                        ballots[identity] = copy.deepcopy(entry)
-            prior_entry = ballots.get(citizen_id)
-            ballots[citizen_id] = {
-                "model_id": model_id,
-                "choice": choice,
-                "citizen_state_ref": state.object_id,
-            }
-            roster_changed = previous is None or previous.payload.get("eligible_citizens") != eligible
-            if previous is not None and prior_entry == ballots[citizen_id] and not roster_changed:
-                ballot_state = previous
-            else:
-                admission_ref = deliberation.payload["admission_ref"]
-                ballot_state = self.world.create_object(
-                    AMENDMENT_BALLOT_OBJECT_TYPE,
-                    {
-                        "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
-                        "proposal_ref": proposal_ref,
-                        "admission_ref": admission_ref,
-                        "deliberation_ref": deliberation_ref,
-                        "base_version_ref": current_ref,
-                        "eligible_citizens": eligible,
-                        "ballots": {key: ballots[key] for key in sorted(ballots)},
-                        "previous_ballot_ref": None if previous is None else previous.object_id,
-                        "consensus_rule": "unanimous_direct_current_citizens",
-                        "vote_weight_per_citizen": 1,
-                        "epistemic_privilege": "none",
-                        "proxy_ballots": 0,
-                        "direct_only": True,
-                    },
-                    _BALLOT_PROVENANCE,
-                )
-                self._validate_ballot_state(ballot_state, proposal_ref=proposal_ref)
-            choices = [entry["choice"] for entry in ballot_state.payload["ballots"].values()]
-            tally = Counter(choices)
-            unanimous = (
-                bool(eligible)
-                and set(ballot_state.payload["ballots"]) == set(eligible_map)
-                and all(entry["choice"] == "CONSENT" for entry in ballot_state.payload["ballots"].values())
-            )
-            ratification: WorldObject | None = None
-            version: WorldObject | None = None
-            receipt: WorldObject | None = None
-            if unanimous:
-                ratification, version, receipt = self._ratify_and_enact(
-                    proposal,
-                    deliberation,
-                    ballot_state,
-                )
-            return {
-                "status": "ok",
-                "ballot_ref": ballot_state.object_id,
-                "eligible_citizens": eligible,
-                "ballots_cast": len(ballot_state.payload["ballots"]),
-                "tally": {key: tally[key] for key in sorted(tally)},
-                "dissenting_citizen_ids": sorted(
-                    identity
-                    for identity, entry in ballot_state.payload["ballots"].items()
-                    if entry["choice"] == "WITHHOLD"
-                ),
-                "unanimous_direct_consent": unanimous,
-                "ratified": ratification is not None,
-                "ratification_ref": None if ratification is None else ratification.object_id,
-                "enacted": version is not None,
-                "new_version_ref": None if version is None else version.object_id,
-                "receipt_ref": None if receipt is None else receipt.object_id,
-            }
 
-    def _validate_ratification(self, ratification: WorldObject, *, proposal_ref: str) -> None:
-        if ratification.object_type != AMENDMENT_RATIFICATION_OBJECT_TYPE or ratification.provenance != _RATIFICATION_PROVENANCE:
-            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification provenance is invalid")
-        payload = ratification.payload
-        expected = {
-            "schema_version",
-            "proposal_ref",
-            "admission_ref",
-            "deliberation_ref",
-            "ballot_ref",
-            "base_version_ref",
-            "eligible_citizens",
-            "ballots",
-            "tally",
-            "consensus",
-            "proxy_signatures",
-            "vote_weight_per_citizen",
-            "epistemic_privilege",
-            "models_ratify_law",
-        }
-        if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
-            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification schema is invalid")
-        if payload.get("proposal_ref") != proposal_ref:
-            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification references another proposal")
-        if (
-            payload.get("consensus") != "unanimous_direct_current_citizens"
-            or payload.get("proxy_signatures") != 0
-            or type(payload.get("proxy_signatures")) is not int
-            or payload.get("vote_weight_per_citizen") != 1
-            or type(payload.get("vote_weight_per_citizen")) is not int
-            or payload.get("epistemic_privilege") != "none"
-            or payload.get("models_ratify_law") is not False
-        ):
-            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification violates authority invariants")
-        ballot = self.world.inspect(self._object_ref(payload.get("ballot_ref"), "ballot_ref"))
-        self._validate_ballot_state(ballot, proposal_ref=proposal_ref)
-        if payload.get("eligible_citizens") != ballot.payload.get("eligible_citizens") or payload.get("ballots") != ballot.payload.get("ballots"):
-            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification does not match sealed ballots")
-        eligible = payload["eligible_citizens"]
-        ballots = payload["ballots"]
-        if not eligible or set(ballots) != {row["citizen_id"] for row in eligible} or any(
-            entry.get("choice") != "CONSENT" for entry in ballots.values()
-        ):
-            raise ConstitutionalAmendmentError("amendment_ratification_invalid", "ratification is not unanimous direct consent")
+            registry = self.citizenship.registry
+            with registry._locked_index():  # noqa: SLF001 - exact civic roster transaction
+                states = self._citizen_states_locked()
+                state = states.get(citizen_id)
+                if state is None or state.payload.get("status") != "citizen":
+                    raise ConstitutionalAmendmentError(
+                        "amendment_citizen_required",
+                        "constitutional amendment voting requires a current citizen",
+                    )
+                if state.payload.get("model_id") != model_id:
+                    raise ConstitutionalAmendmentError(
+                        "amendment_identity_mismatch",
+                        "citizen identity does not match model_id",
+                    )
+                if state.payload.get("proxy") is not None:
+                    raise ConstitutionalAmendmentError(
+                        "amendment_direct_vote_required",
+                        "recall the deterministic proxy before casting an amendment ballot",
+                    )
+                if state.payload.get("current_region_id") != CIVIC_REGION_ID:
+                    raise ConstitutionalAmendmentError(
+                        "amendment_vote_room_required",
+                        "constitutional amendment ballots must be cast directly in the Bureaucratic Vote Room",
+                    )
+                eligible = self._current_citizens_from_states(states)
+                eligible_map = {row["citizen_id"]: row["model_id"] for row in eligible}
+                if eligible_map.get(citizen_id) != model_id:
+                    raise ConstitutionalAmendmentError(
+                        "amendment_citizen_required",
+                        "ballot identity is not in the current citizen roster",
+                    )
+                previous = self._ballot_head(proposal_ref)
+                ballots: dict[str, dict[str, str]] = {}
+                if previous is not None:
+                    if previous.payload.get("deliberation_ref") != deliberation_ref:
+                        raise ConstitutionalAmendmentError(
+                            "amendment_lineage_fork",
+                            "amendment ballot lineage crosses deliberation bindings",
+                        )
+                    for identity, entry in previous.payload["ballots"].items():
+                        if eligible_map.get(identity) == entry.get("model_id"):
+                            ballots[identity] = copy.deepcopy(entry)
+                prior_entry = ballots.get(citizen_id)
+                ballots[citizen_id] = {
+                    "model_id": model_id,
+                    "choice": choice,
+                    "citizen_state_ref": state.object_id,
+                }
+                roster_changed = previous is None or previous.payload.get("eligible_citizens") != eligible
+                if previous is not None and prior_entry == ballots[citizen_id] and not roster_changed:
+                    ballot_state = previous
+                else:
+                    ballot_state = self._create_indexed_object(
+                        AMENDMENT_BALLOT_OBJECT_TYPE,
+                        {
+                            "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
+                            "proposal_ref": proposal_ref,
+                            "admission_ref": deliberation.payload["admission_ref"],
+                            "deliberation_ref": deliberation_ref,
+                            "base_version_ref": current_ref,
+                            "eligible_citizens": eligible,
+                            "ballots": {key: ballots[key] for key in sorted(ballots)},
+                            "previous_ballot_ref": None if previous is None else previous.object_id,
+                            "consensus_rule": "unanimous_direct_current_citizens",
+                            "vote_weight_per_citizen": 1,
+                            "epistemic_privilege": "none",
+                            "proxy_ballots": 0,
+                            "direct_only": True,
+                        },
+                        _BALLOT_PROVENANCE,
+                    )
+                    self._validate_ballot_state(ballot_state, proposal_ref=proposal_ref)
+                choices = [entry["choice"] for entry in ballot_state.payload["ballots"].values()]
+                tally = Counter(choices)
+                unanimous = (
+                    bool(eligible)
+                    and set(ballot_state.payload["ballots"]) == set(eligible_map)
+                    and all(entry["choice"] == "CONSENT" for entry in ballot_state.payload["ballots"].values())
+                )
+                ratification: WorldObject | None = None
+                version: WorldObject | None = None
+                receipt: WorldObject | None = None
+                if unanimous:
+                    ratification, version, receipt = self._ratify_and_enact(
+                        proposal,
+                        deliberation,
+                        ballot_state,
+                    )
+                return {
+                    "status": "ok",
+                    "ballot_ref": ballot_state.object_id,
+                    "eligible_citizens": eligible,
+                    "ballots_cast": len(ballot_state.payload["ballots"]),
+                    "tally": {key: tally[key] for key in sorted(tally)},
+                    "dissenting_citizen_ids": sorted(
+                        identity
+                        for identity, entry in ballot_state.payload["ballots"].items()
+                        if entry["choice"] == "WITHHOLD"
+                    ),
+                    "unanimous_direct_consent": unanimous,
+                    "ratified": ratification is not None,
+                    "ratification_ref": None if ratification is None else ratification.object_id,
+                    "enacted": version is not None,
+                    "new_version_ref": None if version is None else version.object_id,
+                    "receipt_ref": None if receipt is None else receipt.object_id,
+                }
 
     def _ratify_and_enact(
         self,
@@ -1181,117 +1536,53 @@ class ConstitutionalAmendmentService:
         ballot: WorldObject,
     ) -> tuple[WorldObject, WorldObject, WorldObject]:
         proposal_ref = proposal.object_id
-        existing_ratification = self._single_existing(
-            AMENDMENT_RATIFICATION_OBJECT_TYPE,
-            "proposal_ref",
-            proposal_ref,
-            fork_message="proposal has multiple ratification records",
-        )
-        if existing_ratification is None:
-            tally = Counter(entry["choice"] for entry in ballot.payload["ballots"].values())
-            ratification = self.world.create_object(
-                AMENDMENT_RATIFICATION_OBJECT_TYPE,
-                {
-                    "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
-                    "proposal_ref": proposal_ref,
-                    "admission_ref": deliberation.payload["admission_ref"],
-                    "deliberation_ref": deliberation.object_id,
-                    "ballot_ref": ballot.object_id,
-                    "base_version_ref": proposal.payload["base_version_ref"],
-                    "eligible_citizens": copy.deepcopy(ballot.payload["eligible_citizens"]),
-                    "ballots": copy.deepcopy(ballot.payload["ballots"]),
-                    "tally": {key: tally[key] for key in sorted(tally)},
-                    "consensus": "unanimous_direct_current_citizens",
-                    "proxy_signatures": 0,
-                    "vote_weight_per_citizen": 1,
-                    "epistemic_privilege": "none",
-                    "models_ratify_law": False,
-                },
-                _RATIFICATION_PROVENANCE,
-            )
-        else:
-            ratification = existing_ratification
-        self._validate_ratification(ratification, proposal_ref=proposal_ref)
-
         current_ref = self._current_version_ref_unlocked()
         if current_ref != proposal.payload["base_version_ref"]:
-            existing_version = self._single_existing(
-                CONSTITUTION_VERSION_OBJECT_TYPE,
-                "proposal_ref",
-                proposal_ref,
-                fork_message="proposal has multiple enacted constitutional versions",
+            raise ConstitutionalAmendmentError(
+                "amendment_stale_proposal",
+                "another constitutional version was enacted before this amendment",
             )
-            if existing_version is None or existing_version.object_id != current_ref:
-                raise ConstitutionalAmendmentError(
-                    "amendment_stale_proposal",
-                    "another constitutional version was enacted before this amendment",
-                )
-            version = existing_version
-        else:
-            previous_ordinal, previous_policy = self._version_policy(current_ref)
-            changes = self._validate_proposal(proposal)["changes"]
-            effective_policy = self._apply_changes(previous_policy, changes)
-            version_payload = {
+        tally = Counter(entry["choice"] for entry in ballot.payload["ballots"].values())
+        ratification = self.world.create_object(
+            AMENDMENT_RATIFICATION_OBJECT_TYPE,
+            {
                 "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
-                "ordinal": previous_ordinal + 1,
-                "base_constitution_ref": self.base_constitution_ref,
-                "previous_version_ref": current_ref,
                 "proposal_ref": proposal_ref,
                 "admission_ref": deliberation.payload["admission_ref"],
                 "deliberation_ref": deliberation.object_id,
                 "ballot_ref": ballot.object_id,
-                "ratification_ref": ratification.object_id,
-                "effective_policy": effective_policy,
-                "enacted_by": "unanimous_direct_current_citizens",
+                "base_version_ref": proposal.payload["base_version_ref"],
+                "eligible_citizens": copy.deepcopy(ballot.payload["eligible_citizens"]),
+                "ballots": copy.deepcopy(ballot.payload["ballots"]),
+                "tally": {key: tally[key] for key in sorted(tally)},
+                "consensus": "unanimous_direct_current_citizens",
+                "proxy_signatures": 0,
                 "vote_weight_per_citizen": 1,
                 "epistemic_privilege": "none",
-                "fixed_invariants_unchanged": True,
-            }
-            expectation = create_action_expectation(
-                self.world,
-                actor_id="nexus_constitutional_amendment",
-                action_label="enact_constitution_version",
-                object_type=CONSTITUTION_VERSION_OBJECT_TYPE,
-                payload=version_payload,
-                provenance=_VERSION_PROVENANCE,
-            )
-            version = self.world.create_object(
-                CONSTITUTION_VERSION_OBJECT_TYPE,
-                version_payload,
-                _VERSION_PROVENANCE,
-            )
-            reconciliation = reconcile_action_expectation(
-                self.world,
-                expectation_ref=expectation.object_id,
-                observed_object_ref=version.object_id,
-            )
-            if reconciliation.payload.get("outcome") != "matched":
-                raise ConstitutionalAmendmentError(
-                    "amendment_enactment_diverged",
-                    "Action Awareness did not match the enacted constitutional version",
-                )
-            receipt = self.world.create_object(
-                AMENDMENT_RECEIPT_OBJECT_TYPE,
-                {
-                    "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
-                    "proposal_ref": proposal_ref,
-                    "ratification_ref": ratification.object_id,
-                    "previous_version_ref": current_ref,
-                    "new_version_ref": version.object_id,
-                    "action_expectation_ref": expectation.object_id,
-                    "action_reconciliation_ref": reconciliation.object_id,
-                    "reconciliation_outcome": "matched",
-                    "runtime_policy_changed": effective_policy != previous_policy,
-                    "fixed_invariants_unchanged": True,
-                    "replayable": True,
-                },
-                _RECEIPT_PROVENANCE,
-            )
-            self._validate_receipt(receipt, version_ref=version.object_id)
-            return ratification, version, receipt
-
-        # Idempotent recovery path when the version already exists.
-        version_payload = version.payload
+                "models_ratify_law": False,
+            },
+            _RATIFICATION_PROVENANCE,
+        )
+        self._validate_ratification(ratification, proposal_ref=proposal_ref)
+        previous_ordinal, previous_policy = self._version_policy(current_ref)
+        changes = self._validate_proposal(proposal)["changes"]
+        effective_policy = self._apply_changes(previous_policy, changes)
+        version_payload = {
+            "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
+            "ordinal": previous_ordinal + 1,
+            "base_constitution_ref": self.base_constitution_ref,
+            "previous_version_ref": current_ref,
+            "proposal_ref": proposal_ref,
+            "admission_ref": deliberation.payload["admission_ref"],
+            "deliberation_ref": deliberation.object_id,
+            "ballot_ref": ballot.object_id,
+            "ratification_ref": ratification.object_id,
+            "effective_policy": effective_policy,
+            "enacted_by": "unanimous_direct_current_citizens",
+            "vote_weight_per_citizen": 1,
+            "epistemic_privilege": "none",
+            "fixed_invariants_unchanged": True,
+        }
         expectation = create_action_expectation(
             self.world,
             actor_id="nexus_constitutional_amendment",
@@ -1300,83 +1591,64 @@ class ConstitutionalAmendmentService:
             payload=version_payload,
             provenance=_VERSION_PROVENANCE,
         )
+        version = self.world.create_object(
+            CONSTITUTION_VERSION_OBJECT_TYPE,
+            version_payload,
+            _VERSION_PROVENANCE,
+        )
         reconciliation = reconcile_action_expectation(
             self.world,
             expectation_ref=expectation.object_id,
             observed_object_ref=version.object_id,
         )
-        _ordinal, previous_policy = self._version_policy(version.payload["previous_version_ref"])
+        if reconciliation.payload.get("outcome") != "matched":
+            raise ConstitutionalAmendmentError(
+                "amendment_enactment_diverged",
+                "Action Awareness did not match the enacted constitutional version",
+            )
         receipt = self.world.create_object(
             AMENDMENT_RECEIPT_OBJECT_TYPE,
             {
                 "schema_version": CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
                 "proposal_ref": proposal_ref,
                 "ratification_ref": ratification.object_id,
-                "previous_version_ref": version.payload["previous_version_ref"],
+                "previous_version_ref": current_ref,
                 "new_version_ref": version.object_id,
                 "action_expectation_ref": expectation.object_id,
                 "action_reconciliation_ref": reconciliation.object_id,
-                "reconciliation_outcome": reconciliation.payload.get("outcome"),
-                "runtime_policy_changed": version.payload["effective_policy"] != previous_policy,
+                "reconciliation_outcome": "matched",
+                "runtime_policy_changed": effective_policy != previous_policy,
                 "fixed_invariants_unchanged": True,
                 "replayable": True,
             },
             _RECEIPT_PROVENANCE,
         )
         self._validate_receipt(receipt, version_ref=version.object_id)
-        return ratification, version, receipt
-
-    def _validate_receipt(self, receipt: WorldObject, *, version_ref: str) -> None:
-        if receipt.object_type != AMENDMENT_RECEIPT_OBJECT_TYPE or receipt.provenance != _RECEIPT_PROVENANCE:
-            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "amendment receipt provenance is invalid")
-        payload = receipt.payload
-        expected = {
-            "schema_version",
-            "proposal_ref",
-            "ratification_ref",
-            "previous_version_ref",
-            "new_version_ref",
-            "action_expectation_ref",
-            "action_reconciliation_ref",
-            "reconciliation_outcome",
-            "runtime_policy_changed",
-            "fixed_invariants_unchanged",
-            "replayable",
-        }
-        if set(payload) != expected or payload.get("schema_version") != CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION:
-            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "amendment receipt schema is invalid")
-        if payload.get("new_version_ref") != version_ref:
-            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "amendment receipt references another version")
-        if (
-            payload.get("reconciliation_outcome") != "matched"
-            or payload.get("runtime_policy_changed") is not True
-            or payload.get("fixed_invariants_unchanged") is not True
-            or payload.get("replayable") is not True
-        ):
-            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "amendment receipt verification boundary is invalid")
-        reconciliation = self.world.inspect(
-            self._object_ref(payload.get("action_reconciliation_ref"), "action_reconciliation_ref")
+        # This is the activation point. Ratification, version and receipt become
+        # visible to the constitutional protocol together. A crash before this
+        # index commit leaves the previous verified version active; a retry
+        # deterministically recreates the same content-addressed objects.
+        self._register_indexed_unlocked(
+            [ratification, version, receipt],
+            active_version_ref=version.object_id,
+            active_receipt_ref=receipt.object_id,
         )
-        if (
-            reconciliation.object_type != "action_reconciliation"
-            or reconciliation.payload.get("outcome") != "matched"
-            or reconciliation.payload.get("observed_object_ref") != version_ref
-        ):
-            raise ConstitutionalAmendmentError("amendment_receipt_invalid", "Action Awareness reconciliation is invalid")
+        return ratification, version, receipt
 
     def verify(self, version_ref: str) -> dict[str, Any]:
         version_ref = self._object_ref(version_ref, "version_ref")
         with self._locked():
-            ordinal, policy = self._version_policy(version_ref)
-            if ordinal == 0:
+            if version_ref == self.base_constitution_ref:
                 return {
                     "status": "ok",
                     "version_ref": version_ref,
                     "ordinal": 0,
                     "base_constitution": True,
                     "action_awareness_verified": True,
-                    "effective_policy": policy,
+                    "effective_policy": self._base_policy(),
                 }
+            version = self._indexed_object(version_ref, CONSTITUTION_VERSION_OBJECT_TYPE)
+            ordinal, policy = self._version_policy(version.object_id)
             receipt = self._single_existing(
                 AMENDMENT_RECEIPT_OBJECT_TYPE,
                 "new_version_ref",
@@ -1407,7 +1679,7 @@ class ConstitutionalAmendmentService:
             versions: list[dict[str, Any]] = []
             cursor = current_ref
             while cursor != self.base_constitution_ref:
-                version = self.world.inspect(cursor)
+                version = self._indexed_object(cursor, CONSTITUTION_VERSION_OBJECT_TYPE)
                 self._version_policy(cursor)
                 versions.append(
                     {
@@ -1478,7 +1750,7 @@ class ConstitutionalAmendmentService:
                 if not isinstance(proposal_ref, str):
                     continue
                 self._validate_deliberation(deliberation, proposal_ref=proposal_ref)
-                proposal = self.world.inspect(proposal_ref)
+                proposal = self._indexed_object(proposal_ref, AMENDMENT_PROPOSAL_OBJECT_TYPE)
                 proposal_payload = self._validate_proposal(proposal)
                 ballot = self._ballot_head(proposal_ref)
                 version = self._single_existing(
@@ -1526,6 +1798,7 @@ __all__ = [
     "AMENDMENT_PROPOSAL_OBJECT_TYPE",
     "AMENDMENT_RATIFICATION_OBJECT_TYPE",
     "AMENDMENT_RECEIPT_OBJECT_TYPE",
+    "CONSTITUTIONAL_AMENDMENT_INDEX_SCHEMA_VERSION",
     "CONSTITUTIONAL_AMENDMENT_RESERVED_OBJECT_TYPES",
     "CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION",
     "CONSTITUTION_VERSION_OBJECT_TYPE",
