@@ -6,7 +6,11 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from nexus_runtime.guardian import GuardianError, GuardianStore
+from nexus_runtime.guardian import (
+    MAX_GUARDIAN_LIST_BYTES,
+    GuardianError,
+    GuardianStore,
+)
 from nexus_runtime.guardian_api import GuardianNexusAPI
 
 
@@ -58,6 +62,25 @@ class GuardianLockingTests(unittest.TestCase):
             self.assertEqual(verified["status"], "verified")
             self.assertEqual(verified["record_count"], 2)
 
+    def test_guardian_list_is_bounded_by_encoded_bytes(self) -> None:
+        store = GuardianStore()
+        for index in range(80):
+            store.append(
+                "repair_proposal",
+                {
+                    "index": index,
+                    "summary": "x" * 20_000,
+                },
+            )
+        listed = store.list_records(limit=1_000)
+        self.assertEqual(listed["status"], "ok")
+        self.assertTrue(listed["truncated"])
+        self.assertLessEqual(
+            listed["encoded_record_bytes"],
+            MAX_GUARDIAN_LIST_BYTES,
+        )
+        self.assertLess(listed["record_count"], 80)
+
     def test_guardian_initialization_failure_is_fail_passive(self) -> None:
         with mock.patch(
             "nexus_runtime.guardian_api.GuardianOfSubstrate",
@@ -82,7 +105,7 @@ class GuardianLockingTests(unittest.TestCase):
             }
         )
         self.assertEqual(result["status"], "ok", result)
-        self.assertFalse(result["anarchy_guardian"]["recorded"])
+        self.assertFalse(result["anarchy_guardian"]["accepted"])
         self.assertEqual(
             result["anarchy_guardian"]["gap_code"],
             "guardian_store_unavailable",
