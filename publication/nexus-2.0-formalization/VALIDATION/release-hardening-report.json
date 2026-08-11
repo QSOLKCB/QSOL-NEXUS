@@ -1,0 +1,38 @@
+{
+  "schema": "nexus-publication-validation-v1",
+  "stable_release": {
+    "tag": "v2.0.0",
+    "commit": "cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a",
+    "release_review_pr": 52,
+    "reviewed_head": "9c830dea68ef8877823f1aebb4f5f8ef2346cd08"
+  },
+  "release_hardening_runs": [
+    {"name": "README dual-surface contract", "run_id": 31540058765, "conclusion": "success"},
+    {"name": "Python mock runtime tests", "run_id": 31540058770, "conclusion": "success"},
+    {"name": "Rust IRC TUI tests", "run_id": 31540058716, "conclusion": "success"},
+    {"name": "NEXUS adversarial gauntlet", "run_id": 31540058815, "conclusion": "success"},
+    {"name": "NEXUS 2.0 release candidate", "run_id": 31540058796, "conclusion": "success"},
+    {"name": "NEXUS security regression", "run_id": 31540058774, "conclusion": "success"}
+  ],
+  "formal_verification": {
+    "pr": 53,
+    "reviewed_head": "247a1f97834cfac5221e5045dda21551c28907a8",
+    "merge_commit": "faaff21fa926aa10bccc9d6cd66452ba1e2b065d",
+    "lean_version": "4.33.0",
+    "lean_linux_sha256": "4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c",
+    "theorems": 24,
+    "lemmas": 0,
+    "proof_holes": 0,
+    "project_defined_axioms_or_constants": 0,
+    "manifest_sync": "PASS",
+    "axiom_query_manifest_sync": "PASS",
+    "axiom_dependency_audit": "PASS"
+  },
+  "formalization_head_runs": [
+    {"name": "README dual-surface contract", "run_id": 31544004910, "conclusion": "success"},
+    {"name": "Lean 4 formal verification", "run_id": 31544004912, "conclusion": "success"},
+    {"name": "Python mock runtime tests", "run_id": 31544004916, "conclusion": "success"},
+    {"name": "NEXUS security regression", "run_id": 31544004917, "conclusion": "success"},
+    {"name": "NEXUS 2.0 release candidate", "run_id": 31544004924, "conclusion": "success"}
+  ]
+}

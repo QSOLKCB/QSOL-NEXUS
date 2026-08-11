@@ -1,0 +1,115 @@
+name: NEXUS 2.0 formalization publication bundle
+
+on:
+  push:
+    branches:
+      - agent/pr54-formalization-reproducibility-zenodo
+    paths:
+      - "publication/nexus-2.0-formalization/**"
+      - "tools/build_nexus_2_formalization_bundle.sh"
+      - ".github/workflows/publication-bundle.yml"
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened, ready_for_review]
+    paths:
+      - "publication/nexus-2.0-formalization/**"
+      - "tools/build_nexus_2_formalization_bundle.sh"
+      - ".github/workflows/publication-bundle.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  LEAN_VERSION: "4.33.0"
+  LEAN_LINUX_SHA256: "4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c"
+  NEXUS_PUBLICATION_COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+  PR_IS_DRAFT: ${{ github.event.pull_request.draft }}
+
+jobs:
+  publication-bundle:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout complete publication history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Verify frozen identities and Zenodo readiness state
+        shell: bash
+        run: |
+          set -euo pipefail
+          source publication/nexus-2.0-formalization/IDENTITY.env
+          git fetch --force --tags origin
+
+          test "$LEAN_VERSION" = "4.33.0"
+          test "$LEAN_LINUX_SHA256" = "4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c"
+          test "$(git rev-list -n 1 "$NEXUS_STABLE_TAG")" = "$NEXUS_STABLE_COMMIT"
+          test "$(git merge-base "$NEXUS_STABLE_COMMIT" "$PR53_REVIEWED_HEAD")" = "$NEXUS_STABLE_COMMIT"
+          git diff --quiet "$PR53_REVIEWED_HEAD" "$NEXUS_PUBLICATION_COMMIT" -- formal/lean
+
+          if [[ "$ZENODO_DOI" != "PENDING" && "$ZENODO_DOI" != 10.*/* ]]; then
+            echo "Invalid Zenodo DOI syntax: $ZENODO_DOI" >&2
+            exit 1
+          fi
+          if [[ "$ZENODO_PUBLICATION_DATE" != "PENDING" && ! "$ZENODO_PUBLICATION_DATE" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+            echo "Invalid Zenodo publication date: $ZENODO_PUBLICATION_DATE" >&2
+            exit 1
+          fi
+
+          if [[ "$GITHUB_EVENT_NAME" == "pull_request" && "$PR_IS_DRAFT" != "true" ]]; then
+            [[ "$ZENODO_DOI" != "PENDING" ]] || {
+              echo 'PR #54 cannot be ready for final review while ZENODO_DOI is PENDING.' >&2
+              exit 1
+            }
+            [[ "$ZENODO_PUBLICATION_DATE" != "PENDING" ]] || {
+              echo 'PR #54 cannot be ready for final review while ZENODO_PUBLICATION_DATE is PENDING.' >&2
+              exit 1
+            }
+          fi
+
+          {
+            echo "stable software: ${NEXUS_STABLE_TAG} -> ${NEXUS_STABLE_COMMIT}"
+            echo "PR #53 reviewed head: ${PR53_REVIEWED_HEAD}"
+            echo "PR #53 merged commit: ${PR53_MERGE_COMMIT}"
+            echo "publication commit: ${NEXUS_PUBLICATION_COMMIT}"
+            echo "Zenodo DOI: ${ZENODO_DOI}"
+            echo "Zenodo publication date: ${ZENODO_PUBLICATION_DATE}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Install pinned official Lean release
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="/tmp/lean-${LEAN_VERSION}-linux.tar.zst"
+          dist="/tmp/nexus-lean-dist"
+          curl -fsSL --retry 5 --retry-delay 2 \
+            "https://github.com/leanprover/lean4/releases/download/v${LEAN_VERSION}/lean-${LEAN_VERSION}-linux.tar.zst" \
+            -o "$archive"
+          printf '%s  %s\n' "$LEAN_LINUX_SHA256" "$archive" | sha256sum -c -
+          mkdir -p "$dist"
+          tar --zstd -xf "$archive" -C "$dist"
+          printf '%s\n' "$dist/lean-${LEAN_VERSION}-linux/bin" >> "$GITHUB_PATH"
+
+      - name: Build and independently verify publication archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          lean --version
+          lake --version
+          bash tools/build_nexus_2_formalization_bundle.sh "${RUNNER_TEMP}/nexus-publication"
+          cd "${RUNNER_TEMP}/nexus-publication"
+          sha256sum -c NEXUS-2.0-FORMALIZATION.tar.gz.sha256
+          cat NEXUS-2.0-FORMALIZATION.tar.gz.sha256 >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Zenodo-ready publication candidate
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: NEXUS-2.0-FORMALIZATION
+          path: |
+            ${{ runner.temp }}/nexus-publication/NEXUS-2.0-FORMALIZATION.tar.gz
+            ${{ runner.temp }}/nexus-publication/NEXUS-2.0-FORMALIZATION.tar.gz.sha256
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 90
