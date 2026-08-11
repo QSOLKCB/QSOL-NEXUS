@@ -64,6 +64,11 @@ class _CultureProgressionService(_BaseProgressionService):
                 continue
             if obj.object_type == expected_type and obj.provenance == {"actor": "nexus", "subsystem": "ai_culture"}:
                 matching.append(ref)
+        if not matching:
+            raise ProgressionError(
+                "progression_dedicated_surface_required",
+                "PR #48 culture activities require their validated culture runtime surface",
+            )
         if len(matching) != 1:
             raise ProgressionError(
                 "progression_culture_artifact_mismatch",
@@ -80,24 +85,56 @@ class _CultureProgressionService(_BaseProgressionService):
         )
 
     def record_play(self, *, actor_id: str, model_id: str, activity_id: str, game_ref: str, game_kind: str):
-        # Validate the claimed model identity against actual runtime-owned model
-        # executions before the ordinary progression layer records play.
+        verifier = None
+        inspector = None
+        label = None
         if game_kind == "long_shift":
-            try:
-                verify_long_shift_lineage(
-                    self.world,
-                    game_ref,
-                    claimed_actor_id=actor_id,
-                    claimed_model_id=model_id,
-                )
-            except (KeyError, ValueError) as exc:
-                raise ProgressionError(
-                    "progression_game_execution_mismatch",
-                    "Long Shift progression requires replay-valid turns executed by the claimed model",
-                ) from exc
+            verifier = verify_long_shift_lineage
+            inspector = inspect_long_shift
+            label = "Long Shift"
         elif game_kind == "psyche_chess":
+            verifier = verify_psyche_chess_lineage
+            inspector = inspect_psyche_chess
+            label = "Psyche-Out Chess"
+
+        if verifier is not None and inspector is not None and label is not None:
             try:
-                verify_psyche_chess_lineage(
+                current = inspector(self.world, game_ref)
+            except KeyError as exc:
+                raise ProgressionError("progression_game_not_found", "game state was not found") from exc
+            except ValueError as exc:
+                raise ProgressionError("progression_game_mismatch", "game state failed its engine validator") from exc
+            if current.payload.get("completed") is not True:
+                raise ProgressionError(
+                    "progression_game_incomplete",
+                    f"{label} is credited only from a completed authoritative game state",
+                )
+
+            # First validate the game itself independently of the claimant so
+            # ordinary state/lineage corruption retains the established
+            # progression_game_mismatch error instead of becoming an identity
+            # error. Missing AI execution receipts are specifically provenance
+            # failures and receive the execution-mismatch code.
+            try:
+                verifier(self.world, game_ref)
+            except (KeyError, ValueError) as exc:
+                code = (
+                    "progression_game_execution_mismatch"
+                    if "execution" in str(exc).lower()
+                    else "progression_game_mismatch"
+                )
+                message = (
+                    f"{label} progression requires runtime-owned model execution for every AI turn"
+                    if code == "progression_game_execution_mismatch"
+                    else f"{label} game state or lineage failed deterministic replay"
+                )
+                raise ProgressionError(code, message) from exc
+
+            # Then bind the claimant to the concrete model executions performed
+            # by that seat. A static controllers[seat] == 'ai' label is never
+            # sufficient evidence of participation.
+            try:
+                verifier(
                     self.world,
                     game_ref,
                     claimed_actor_id=actor_id,
@@ -106,8 +143,9 @@ class _CultureProgressionService(_BaseProgressionService):
             except (KeyError, ValueError) as exc:
                 raise ProgressionError(
                     "progression_game_execution_mismatch",
-                    "Psyche-Out Chess progression requires replay-valid moves executed by the claimed model",
+                    f"{label} progression requires replay-valid turns executed by the claimed model",
                 ) from exc
+
         return super().record_play(
             actor_id=actor_id,
             model_id=model_id,
