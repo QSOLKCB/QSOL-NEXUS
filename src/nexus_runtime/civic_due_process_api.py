@@ -61,7 +61,10 @@ class CivicDueProcessNexusAPI(GuardianNexusAPI):
 
         if operation == "world.create" and isinstance(request, dict):
             object_type = request.get("object_type")
-            if object_type in CIVIC_DUE_PROCESS_RESERVED_OBJECT_TYPES:
+            if (
+                isinstance(object_type, str)
+                and object_type in CIVIC_DUE_PROCESS_RESERVED_OBJECT_TYPES
+            ):
                 return self._error(
                     safe_request_id,
                     "invalid_request",
@@ -86,19 +89,36 @@ class CivicDueProcessNexusAPI(GuardianNexusAPI):
 
         if operation == "failsafe.status" and response.get("status") == "ok":
             member_id = request.get("member_id") if isinstance(request, dict) else None
-            due = self.civic_due_process.status(
-                member_id=member_id if isinstance(member_id, str) else None,
-            )
-            return {**response, "civic_due_process": due}
+            return {
+                **response,
+                "civic_due_process": self._safe_due_process_status(
+                    member_id=member_id if isinstance(member_id, str) else None,
+                ),
+            }
 
         if operation == "citizen.status" and response.get("status") == "ok":
             citizen_id = request.get("citizen_id") if isinstance(request, dict) else None
-            due = self.civic_due_process.status(
-                member_id=citizen_id if isinstance(citizen_id, str) else None,
-            )
-            return {**response, "due_process": due}
+            return {
+                **response,
+                "due_process": self._safe_due_process_status(
+                    member_id=citizen_id if isinstance(citizen_id, str) else None,
+                ),
+            }
 
         return response
+
+    def _safe_due_process_status(self, *, member_id: str | None = None) -> dict[str, Any]:
+        try:
+            return self.civic_due_process.status(member_id=member_id)
+        except (CivicDueProcessError, KeyError, OSError, TypeError, ValueError, RecursionError):
+            # Due-process enrichment must not tear down established Failsafe or
+            # Citizenship read surfaces. Explicit civic.due_process.* reads
+            # remain fail-closed and expose a structured error instead.
+            return {
+                "status": "unavailable",
+                "schema_version": "nexus-civic-due-process/1",
+                "authority_effect": "none",
+            }
 
     def _handle_civic_due_process_operation(
         self,
