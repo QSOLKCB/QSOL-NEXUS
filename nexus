@@ -1,0 +1,121 @@
+#!/usr/bin/env bash
+# QSOL NEXUS one-command bootstrap and operator launcher.
+set -euo pipefail
+
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -h "$SOURCE" ]]; do
+  SOURCE_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+  SOURCE="$(readlink "$SOURCE")"
+  [[ "$SOURCE" != /* ]] && SOURCE="$SOURCE_DIR/$SOURCE"
+done
+ROOT="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+VENV="${NEXUS_VENV:-$ROOT/.venv}"
+PYTHON="${NEXUS_BOOTSTRAP_PYTHON:-python3}"
+VENV_PYTHON="$VENV/bin/python"
+STAMP="$VENV/.nexus-editable-install"
+COMMAND="${1:-tui}"
+
+fail() {
+  printf '[nexus] %s\n' "$*" >&2
+  exit 2
+}
+
+command -v "$PYTHON" >/dev/null 2>&1 || fail "python3 is required to run NEXUS tooling"
+
+# Never let caller-controlled import paths select the operator implementation.
+unset PYTHONPATH PYTHONHOME || true
+
+"$PYTHON" -P -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
+  || fail "Python 3.11 or newer is required"
+
+# Reject a virtualenv that overlaps any persistent/private NEXUS root before
+# venv creation or pip gets a chance to write there. Resolve parents too, so
+# an ancestor symlink into a store cannot bypass the check.
+if ! "$PYTHON" -P - "$ROOT" "$VENV" <<'PY'
+from pathlib import Path
+import sys
+
+root = Path(sys.argv[1]).resolve()
+raw_venv = Path(sys.argv[2]).expanduser()
+if raw_venv.is_symlink():
+    print(f"refusing symlinked virtualenv path: {raw_venv}", file=sys.stderr)
+    raise SystemExit(2)
+
+venv = raw_venv.resolve(strict=False)
+protected = {
+    "world": (root / ".nexus-world").resolve(strict=False),
+    "trap": (root / ".nexus-trap").resolve(strict=False),
+    "stenographer": (root / ".nexus-stenographer").resolve(strict=False),
+    "operator_config": (root / ".nexus").resolve(strict=False),
+}
+
+def overlaps(left: Path, right: Path) -> bool:
+    return left == right or left.is_relative_to(right) or right.is_relative_to(left)
+
+for name, path in protected.items():
+    if overlaps(venv, path):
+        print(f"virtualenv path overlaps {name} storage: {venv} vs {path}", file=sys.stderr)
+        raise SystemExit(2)
+PY
+then
+  fail "virtualenv path failed pre-bootstrap safety checks"
+fi
+
+export NEXUS_REPO_ROOT="$ROOT"
+cd "$ROOT"
+
+# A reused environment must satisfy the same Python floor as the bootstrap
+# interpreter. Do not discover incompatibility only after editable install.
+if [[ -x "$VENV_PYTHON" ]]; then
+  "$VENV_PYTHON" -P -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
+    || fail "existing virtualenv must use Python 3.11 or newer: $VENV_PYTHON"
+fi
+
+# Read-only diagnostic surfaces must remain observational on a fresh clone.
+# They can execute the repository module directly from src/ without creating a venv.
+readonly_tool=0
+case "$COMMAND" in
+  doctor)
+    readonly_tool=1
+    for arg in "$@"; do
+      if [[ "$arg" == "--fix" ]]; then
+        readonly_tool=0
+        break
+      fi
+    done
+    ;;
+  paths|version|-h|--help|help)
+    readonly_tool=1
+    ;;
+esac
+
+if (( readonly_tool )); then
+  if [[ -x "$VENV_PYTHON" && -x "$VENV/bin/nexus" ]]; then
+    exec "$VENV_PYTHON" -P -m nexus_runtime.operator_cli "$@"
+  fi
+  PYTHONPATH="$ROOT/src" exec "$PYTHON" -P -m nexus_runtime.operator_cli "$@"
+fi
+
+if [[ ! -x "$VENV_PYTHON" ]]; then
+  printf '[nexus] creating virtual environment at %s\n' "$VENV" >&2
+  "$PYTHON" -P -m venv "$VENV" || fail "could not create virtual environment"
+  "$VENV_PYTHON" -P -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' \
+    || fail "created virtualenv does not provide Python 3.11 or newer"
+fi
+
+needs_install=0
+if [[ ! -f "$STAMP" ]]; then
+  needs_install=1
+elif [[ "$ROOT/pyproject.toml" -nt "$STAMP" ]]; then
+  needs_install=1
+elif [[ ! -x "$VENV/bin/nexus" ]]; then
+  needs_install=1
+fi
+
+if (( needs_install )); then
+  printf '[nexus] installing editable NEXUS runtime into local virtual environment...\n' >&2
+  "$VENV_PYTHON" -P -m pip install -e "$ROOT" || fail "editable runtime install failed"
+  : > "$STAMP"
+fi
+
+exec "$VENV_PYTHON" -P -m nexus_runtime.operator_cli "$@"

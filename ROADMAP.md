@@ -520,13 +520,17 @@ All contributions remain in one world lineage.
 
 A Council version should demonstrate heterogeneous remote providers and at least one local/open model with equal votes.
 
-## PR #37–#42 — Grounded institutional cognition, durability and temporal equality
+## PR #37–#46 — Grounded institutional cognition, civic durability, operator usability and continuity
 
 Research inspiration: *Project Sid: Many-agent simulations toward AI civilization* (arXiv:2411.00114v1), particularly its work on action awareness, concurrent modules, information bottlenecks, specialization, collective rules, and cultural propagation. NEXUS adapts those ideas to its own deterministic, content-addressed and equality-preserving substrate rather than adopting PIANO wholesale.
 
 PR #39 deliberately interrupts the research sequence for a Stenographer durability defect found during local build-agent testing. Availability/integrity false positives outrank roadmap aesthetics; the constitutional and civilization milestones move down one PR without changing their intended scope.
 
-PR #42 is a second deliberate interruption. Whatever generic provider/onboarding work would otherwise have followed PR #41 is deferred rather than allowed to consume #42. Temporal Compute Equality, the Centennial Genesis Capsule and the defensive Purgatory policy take #42 as one coherent constitutional-evolution milestone. The previously-next provider work remains TBA after #42.
+PR #42 is a second deliberate interruption. Whatever generic provider/onboarding work would otherwise have followed PR #41 is deferred rather than allowed to consume #42. Temporal Compute Equality, the Centennial Genesis Capsule and the defensive Purgatory policy take #42 as one coherent constitutional-evolution milestone.
+
+PR #43 and PR #44 close two additional constitutional-runtime gaps before release hardening: Anarchy/Guardian separates unrestricted rhetoric from substrate health, and Civic Due Process separates earned citizenship from current operational standing while adding deterministic repeat non-citizen re-entry escalation.
+
+PR #45 and PR #46 deliberately precede `2.0-beta — Hardening`. The release-hardening pass must test the operator and persistence surfaces NEXUS will actually ship, so one-command launch/tooling lands first and WorldStore Continuity / The Ark Protocol lands second. Formal 2.0 beta hardening begins only after both are merged.
 
 ### PR #37 — Action Awareness & World Reconciliation
 
@@ -625,7 +629,7 @@ Core invariant:
 
 ### PR #42 — Temporal Compute Equality, Centennial Genesis Capsule & Purgatory
 
-Implemented / targeted in PR #42:
+Implemented in PR #42:
 
 - [x] define `nexus-compute-epoch-v1` with explicit UTC genesis, fixed 1,461-day epochs and exact rational growth;
 - [x] evolve the protected-small Chair ceiling from the PR #34 20B base as `20B * 2^epoch` without floating-point arithmetic;
@@ -650,9 +654,80 @@ Core invariants:
 
 > **Contain first. Confuse second.**
 
-This sequence intentionally takes the experimental machinery from many-agent civilization research while retaining NEXUS's stricter separation between observation, evidence, coordination and authority. PR #42 extends that separation through technological time: compute capacity may move, but constitutional equality does not.
+### PR #43 — Anarchy Mode & Guardian of the Substrate
 
-## 2.0-beta — Hardening
+Implemented in PR #43:
+
+- [x] add `anarchy` as a high-expression, low-authority public mode without changing world topology;
+- [x] make rhetoric alone incapable of triggering punishment, citizenship changes, vote changes, evidence changes or hostile classification;
+- [x] add a separate zero-authority Guardian ledger concerned only with objective substrate outcomes;
+- [x] turn reproducible substrate failures into defect candidates, repair proposals and replay-verified immutable scars;
+- [x] keep Guardian writes fail-passive, bounded, credential-scrubbed and cross-process serialized;
+- [x] forbid Guardian auto-patching, voting, constitutional authority and loyalty scoring.
+
+Core invariant:
+
+> **Say whatever you like. The substrate still has to survive it.**
+
+### PR #44 — Civic Due Process & Cursed XML Re-Entry
+
+Implemented in PR #44:
+
+- [x] separate constitutional identity from current operational standing;
+- [x] preserve earned Citizenship across ordinary Failsafe offences;
+- [x] distinguish non-citizen admission/re-entry parole from Citizen restorative parole;
+- [x] deterministically escalate three non-citizen parole cycles to the bounded inert `cursed_xml_v1` exam;
+- [x] make XML success grant re-entry eligibility only, never Citizenship, votes or authority;
+- [x] add Citizen Restoration without assigning Citizens the XML gate;
+- [x] make due-process lineage append-only, cross-process serialized, reference-bound and restart-verifiable;
+- [x] serialize concurrent XML attempts and preserve explicit audit gaps when Failsafe commits but civic recording fails;
+- [x] allow a successful XML clearance to begin a fresh future parole cycle without erasing lifetime history.
+
+Core invariant:
+
+> **Citizenship is belonging. Parole is conduct.**
+
+### PR #45 — Operator Tooling & One-Command Launch
+
+Implemented / targeted in PR #45:
+
+- [x] add an executable repo-root `./nexus` bootstrapper;
+- [x] create and reuse a repository-local `.venv` without requiring system `pip` installation;
+- [x] preserve the established `.nexus-world`, `.nexus-trap` and `.nexus-stenographer` local storage layout;
+- [x] add a closed, owner-only, non-secret operator configuration containing the bounded nickname only;
+- [x] add `setup`, `doctor`, `doctor --fix`, `tui`, `demo`, `paths`, `version`, `update`, `test` and raw runtime passthrough tooling;
+- [x] auto-build the Rust TUI when the release binary is missing or source is newer;
+- [x] keep safe automatic fixes limited to setup/permission/build concerns and refuse destructive WorldStore repair;
+- [x] expose a fresh-clone golden path of `git clone` -> `cd QSOL-NEXUS` -> `./nexus`;
+- [x] add operator-tooling documentation and regression coverage for permissions, closed config, symlink refusal and stale-build detection.
+
+Core invariant:
+
+> **Convenience may remove ceremony. It may not remove safety boundaries.**
+
+### PR #46 — WorldStore Continuity / The Ark Protocol
+
+Planned before 2.0 beta hardening:
+
+- [ ] define replicated WorldStore continuity with explicit independent failure-domain reporting;
+- [ ] add deterministic durability/write quorum semantics where multiple replicas are configured;
+- [ ] make recognized history depend on verified quorum rather than newest-file-wins recency;
+- [ ] add hash-chained World Continuity manifests and deterministic scrub/repair from known-good replicas;
+- [ ] fail closed on ambiguous corruption or zero-known-good-copy cases;
+- [ ] keep mutable indexes reconstructable from immutable state and manifests;
+- [ ] add append-only/cold NEXUS World Arks with self-describing schemas, checksums and recovery instructions;
+- [ ] support safe recovery into a new target rather than destructive in-place overwrite;
+- [ ] design digest/format migration with preserved source bytes and migration provenance;
+- [ ] bind continuity to Guardian substrate scars without granting the Guardian storage authority;
+- [ ] produce an immutable Ark at Compute Epoch boundaries where practical.
+
+Core invariant:
+
+> **A degraded WorldStore may become read-only. It must not invent history merely to remain writable.**
+
+## 2.0-beta — Hardening (deferred until PR #45 and PR #46 are merged)
+
+PR #45 and PR #46 are mandatory pre-beta milestones. The formal release-hardening pass begins only after the one-command operator surface and WorldStore continuity/Ark surface exist, so beta tests the actual launch, storage and recovery contracts intended for stable 2.0.
 
 - adapter threat models implemented and tested;
 - credential handling audited;
@@ -669,7 +744,11 @@ This sequence intentionally takes the experimental machinery from many-agent civ
 - TUI state-file and transcript-redaction tests;
 - operational logging/redaction tests;
 - endpoint/process impersonation tests;
-- provider destination allowlisting tests.
+- provider destination allowlisting tests;
+- one-command bootstrap/setup/doctor failure fixtures;
+- launcher privilege/path/symlink/redaction fixtures;
+- WorldStore replica/quorum/scrub/recovery/Ark corruption fixtures;
+- stable-release upgrade/recovery rehearsal from a representative pre-beta world.
 
 ## 2.0 release criterion
 
@@ -684,7 +763,10 @@ NEXUS 2.0 should not be called stable until:
 7. an evidence-producing instrument can be called through the world protocol;
 8. minority reports and failed hypotheses survive in lineage;
 9. the Rust CLI/TUI remains a replaceable shell rather than the source of truth;
-10. information/geometry telemetry is clearly separated from evidence and authority.
+10. information/geometry telemetry is clearly separated from evidence and authority;
+11. a fresh supported checkout can bootstrap, diagnose and launch through the reviewed one-command operator surface;
+12. the persistent world has a verified continuity/Ark recovery path and a rehearsed non-destructive restore procedure;
+13. the complete deferred 2.0-beta hardening matrix passes against those final operator and persistence surfaces.
 
 ## Optimization policy
 
@@ -700,43 +782,44 @@ shared evidence - Done
   ↓
 modes + geometry - Done
   ↓
-IRC operator world - Done.
+IRC operator world - Done
   ↓
-telemetry - Done.
+telemetry - Done
   ↓
-ordered parallel execution - Done.
+ordered parallel execution - Done
   ↓
-UN simulation - Done.
+UN simulation / MUD / cognitive rooms / Citizen Mode - Done
   ↓
-MUD - Done.
+Failsafe / Trap Base / Stenographer - Done
   ↓
-PURE HISTORY / epistemic discipline - Done.
+Action Awareness / Context Bottleneck - PR #37 / #38 - Done
   ↓
-GO64 / SECRET ALIAS RETRO MODE - Done.
+Constitutional Amendment / Civilization Gauntlet - PR #40 / #41 - Done
   ↓
-FAILSAFE / UPSIDE DOWN / SHADOW REALM - Done.
+Compute Epochs / Genesis Capsule / Purgatory - PR #42 - Done
+  ↓
+Anarchy / Guardian of the Substrate - PR #43 - Done
+  ↓
+Civic Due Process / Cursed XML Re-Entry - PR #44 - Done
+  ↓
+OPERATOR TOOLING / ONE-COMMAND LAUNCH - PR #45
+  ↓
+WORLDSTORE CONTINUITY / THE ARK PROTOCOL - PR #46
   ↓
 ==============================
-      HARDEN THE SUBSTRATE
+        2.0 BETA HARDENING
 ==============================
   ↓
-credentials / adapters - TBA
-provider isolation - TBA
-failure containment - Initial failsafe implemented; hardening TBA
-rate limits - TBA
-cloud trust boundaries - TBA
-big-model onboarding - TBA
+adapter + credential audit
+provider isolation + destination allowlists
+failure containment + rate limits
+replay/tamper + migration fixtures
+operator bootstrap/doctor hardening
+WorldStore quorum/scrub/Ark/recovery hardening
+full release rehearsal
   ↓
-ACTION AWARENESS / WORLD RECONCILIATION - PR #37
+==============================
+          NEXUS 2.0 STABLE
+==============================
   ↓
-CONCURRENT AGENT STATE / CONTEXT BOTTLENECK - PR #38
-  ↓
-STENOGRAPHER TEMP-FILE DURABILITY HOTFIX - PR #39
-  ↓
-CONSTITUTIONAL AMENDMENT PROTOCOL - PR #40
-  ↓
-CIVILIZATION GAUNTLET / CLAIM PROPAGATION GRAPH - PR #41
-  ↓
-COMPUTE EPOCHS / GENESIS CAPSULE / PURGATORY - PR #42
-  ↓
-GPT / Claude / Gemini / Grok / etc. - TBA (deferred by PR #42)
+deferred/provider/instrument expansion resumes under stable contracts
