@@ -263,16 +263,10 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                     operation,
                     {"actor_id", "lane", "content", "source_refs"},
                 )
-                actor_id = self._require_str(request, "actor_id")
-                lane = self._require_str(request, "lane")
+                actor_id = request.get("actor_id")
+                lane = request.get("lane")
                 raw_content = self._require_str(request, "content")
                 source_refs = request.get("source_refs", [])
-                if not isinstance(source_refs, list) or not all(
-                    isinstance(ref, str) and ref for ref in source_refs
-                ):
-                    raise ValueError("source_refs must be a list of non-empty strings")
-                if self.scrubber.scrub(actor_id).changed:
-                    raise ValueError("actor_id must not contain credential-shaped text")
                 scrubbed = self.scrubber.scrub(raw_content)
                 update = self._run_real_mutation(
                     lambda: publish_agent_state_update(
@@ -280,7 +274,7 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                         actor_id=actor_id,
                         lane=lane,
                         content=scrubbed.text,
-                        source_refs=list(source_refs),
+                        source_refs=source_refs,
                     )
                 )
                 response = {
@@ -298,19 +292,13 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                     operation,
                     {"actor_id", "update_refs"},
                 )
-                actor_id = self._require_str(request, "actor_id")
+                actor_id = request.get("actor_id")
                 update_refs = request.get("update_refs")
-                if not isinstance(update_refs, list) or not all(
-                    isinstance(ref, str) and ref for ref in update_refs
-                ):
-                    raise ValueError("update_refs must be a list of non-empty strings")
-                if self.scrubber.scrub(actor_id).changed:
-                    raise ValueError("actor_id must not contain credential-shaped text")
                 snapshot = self._run_real_mutation(
                     lambda: create_agent_state_snapshot(
                         self.world,
                         actor_id=actor_id,
-                        update_refs=list(update_refs),
+                        update_refs=update_refs,
                     )
                 )
                 response = {
