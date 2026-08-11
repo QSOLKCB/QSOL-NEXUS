@@ -104,14 +104,19 @@ def _ensure_private_directory(path: Path, *, fix_permissions: bool = True) -> No
 
 def _ensure_disjoint(paths: OperatorPaths) -> None:
     named = {
+        "venv": paths.venv.resolve(),
         "world": paths.world.resolve(),
         "trap": paths.trap.resolve(),
         "stenographer": paths.stenographer.resolve(),
         "operator_config": paths.config_dir.resolve(),
     }
-    values = list(named.values())
-    if len(values) != len(set(values)):
-        raise OperatorToolError("operator storage roots must be disjoint")
+    items = list(named.items())
+    for index, (left_name, left) in enumerate(items):
+        for right_name, right in items[index + 1 :]:
+            if left == right or left.is_relative_to(right) or right.is_relative_to(left):
+                raise OperatorToolError(
+                    f"operator roots must be disjoint: {left_name}={left} overlaps {right_name}={right}"
+                )
 
 
 def _load_config(paths: OperatorPaths) -> dict[str, object]:
