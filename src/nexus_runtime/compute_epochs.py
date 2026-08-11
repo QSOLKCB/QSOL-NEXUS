@@ -24,6 +24,10 @@ _PINNED_COMPUTE_EPOCH: ContextVar[int | None] = ContextVar(
 )
 
 
+class ComputeEpochClockError(RuntimeError):
+    """The host wall clock cannot be mapped into the admitted epoch policy."""
+
+
 @dataclass(frozen=True)
 class ComputeEpoch:
     policy_id: str
@@ -59,7 +63,13 @@ def resolve_compute_epoch(timestamp_unix: int) -> int:
 
 
 def _wall_clock_compute_epoch() -> int:
-    return resolve_compute_epoch(int(time.time()))
+    try:
+        timestamp = int(time.time())
+        return resolve_compute_epoch(timestamp)
+    except (OSError, OverflowError, TypeError, ValueError) as exc:
+        raise ComputeEpochClockError(
+            "host wall clock is outside the admitted NEXUS Compute Epoch range"
+        ) from exc
 
 
 def current_compute_epoch() -> int:
@@ -122,6 +132,7 @@ __all__ = [
     "COMPUTE_EPOCH_POLICY_ID",
     "COMPUTE_EPOCH_SCHEMA",
     "ComputeEpoch",
+    "ComputeEpochClockError",
     "EPOCH_DURATION_DAYS",
     "EPOCH_DURATION_SECONDS",
     "GENESIS_UNIX",
