@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from copy import deepcopy
 import hashlib
 import json
 from typing import Any
@@ -80,7 +81,14 @@ def reveal_genesis_capsule(epoch: int | None = None) -> dict[str, Any]:
     status = genesis_capsule_status(epoch)
     if status["status"] != "revealed":
         return {"status": "sealed", "capsule": status, "payload": None}
-    return {"status": "revealed", "capsule": status, "payload": GENESIS_CAPSULE_PAYLOAD}
+    # Never expose the module-level canonical object itself. A programmatic
+    # caller may freely mutate its returned document without changing later
+    # reveals or invalidating the fingerprint advertised by capsule status.
+    return {
+        "status": "revealed",
+        "capsule": status,
+        "payload": deepcopy(GENESIS_CAPSULE_PAYLOAD),
+    }
 
 
 __all__ = [
