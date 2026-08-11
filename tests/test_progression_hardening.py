@@ -3,8 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 from nexus_runtime import NexusAPI
+from nexus_runtime.trap import TrapError
 
 
 class ProgressionHardeningTests(unittest.TestCase):
@@ -54,6 +56,82 @@ class ProgressionHardeningTests(unittest.TestCase):
             )
             self.assertEqual(response["status"], "error")
             self.assertEqual(response["error"]["code"], "progression_play_requires_game_ref")
+
+    def test_commission_sources_enter_model_context_before_completion(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            api = self._api(Path(temporary))
+            source = api.handle(
+                {
+                    "operation": "world.create",
+                    "object_type": "note",
+                    "payload": {"content": "commission source"},
+                }
+            )["object"]["object_id"]
+            commission = api.handle(
+                {
+                    "operation": "progression.commission.create",
+                    "title": "Use the source",
+                    "activity_id": "research",
+                    "brief": "Research the source object.",
+                    "source_refs": [source],
+                    "assignee_id": "Alpha",
+                }
+            )["commission"]["object_id"]
+            with mock.patch.object(
+                api.council,
+                "build_evidence_context",
+                wraps=api.council.build_evidence_context,
+            ) as build_context:
+                response = api.handle(
+                    {
+                        "operation": "progression.act",
+                        "member": self._alpha(),
+                        "activity_id": "research",
+                        "prompt": "Complete the commission.",
+                        "source_refs": [],
+                        "commission_ref": commission,
+                    }
+                )
+            self.assertEqual(response["status"], "ok")
+            build_context.assert_called_once_with([source])
+            self.assertEqual(response["activity"]["payload"]["source_refs"], [source])
+
+    def test_trap_gate_rejects_mutating_progression_before_actor_inference(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            api = self._api(Path(temporary))
+            with mock.patch.object(
+                api.trap_mutation_gate,
+                "assert_mutation_allowed",
+                side_effect=TrapError("trap_incident_active", "quarantine active"),
+            ), mock.patch.object(api, "_activity_actor") as actor:
+                response = api.handle(
+                    {
+                        "operation": "progression.act",
+                        "member": self._alpha(),
+                        "activity_id": "research",
+                        "prompt": "Do not call the actor.",
+                        "source_refs": [],
+                    }
+                )
+            self.assertEqual(response["status"], "error")
+            self.assertEqual(response["error"]["code"], "trap_incident_active")
+            actor.assert_not_called()
+
+    def test_life_paths_seed_is_scrubbed_before_persistence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            api = self._api(Path(temporary))
+            raw = "xai-1234567890abcdefghijklmnopqrstuvwxyz"
+            response = api.handle(
+                {
+                    "operation": "life.paths.new",
+                    "seed": raw,
+                    "players": ["Alpha"],
+                    "human_players": [],
+                }
+            )
+            self.assertEqual(response["status"], "ok")
+            self.assertTrue(response["secret_scrub"]["seed_changed"])
+            self.assertNotIn(raw, response["game"]["seed"])
 
     def test_malformed_life_paths_operation_returns_structured_error(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
