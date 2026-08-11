@@ -1,0 +1,170 @@
+# Constitutional Amendment Protocol
+
+PR #40 adds a deterministic in-world amendment workflow to the NEXUS Constitution.
+
+The governing invariant is:
+
+> **Models may propose law. No model gets to become the law.**
+
+This is an in-world protocol only. It does not create legal sovereignty, legal personhood, provider independence, host control, or authority outside the NEXUS runtime.
+
+## Why this is a protocol instead of an Election Manager
+
+A language model may generate an amendment proposal or participate in the Council discussion around it, but no model is assigned sovereign procedural authority. NEXUS separates the stages mechanically:
+
+```text
+proposal
+  -> deterministic admission
+  -> committed Council deliberation binding
+  -> sealed direct citizen ballots
+  -> exact unanimity calculation
+  -> ratification
+  -> enactment
+  -> Action Awareness reconciliation
+  -> immutable receipt
+```
+
+Proposal language cannot skip a stage. Council consensus cannot substitute for citizen ratification. A model cannot ratify an amendment merely because it proposed, chaired, explained, or strongly supported it.
+
+## Proposal sources
+
+Two proposal sources are admitted.
+
+### Citizen proposal
+
+The proposer supplies the exact current `citizen_id` and registered `model_id`. The proposer must already hold citizen status. A civic proxy may not invent a second proposer identity.
+
+### Admitted-model proposal
+
+A non-citizen model may propose an amendment only by supplying a committed `council_session` reference in which the exact `member_id` and `model_id` occupied one equal Council seat with:
+
+- `vote_weight = 1`;
+- `epistemic_privilege = none`.
+
+The Council-session reference is evidence of model admission, not ratification authority.
+
+## Bounded v1 amendment surface
+
+PR #40 deliberately starts with a small enforceable policy surface instead of pretending that arbitrary constitutional prose can safely rewrite arbitrary runtime code.
+
+The admitted paths are:
+
+- `civic_observation.citizen_region_ids`
+- `civic_observation.public_gallery_region_ids`
+
+Both values must be non-empty sorted unique lists of known public, non-Council regions. Public-gallery regions must remain a subset of citizen observation regions. The dedicated Bureaucratic Vote Room and the Upside Down remain outside the amendable Civic Observation surface.
+
+This means a successful amendment produces a real runtime effect: the active constitutional version changes which world regions may invoke Civic Observation. `system.health`, `constitution.amendment.current`, `council.proceedings.policy`, and `council.proceedings.view` all consume the active version.
+
+The following remain fixed in this version and cannot be amended through these paths:
+
+- one civic seat, one vote;
+- citizen vote weight `1`;
+- epistemic privilege `none`;
+- provider/model-size prestige creates no authority;
+- deterministic proxies create no additional vote;
+- constitutional amendment ratification requires unanimous direct current-citizen consent;
+- consensus does not override verification;
+- restricted security domains are not opened by Civic Observation policy.
+
+## Deterministic admission
+
+`constitution.amendment.admit` does not call an LLM. It checks:
+
+- the proposal is structurally valid;
+- its base version is still the active constitutional version;
+- every requested path is admitted;
+- every region is known and non-restricted;
+- public-gallery regions remain a subset of citizen regions;
+- the resulting policy would actually differ from the current policy.
+
+Admission creates an immutable admission object whether the result is admitted or rejected. Rejected proposals remain historical objects; they simply cannot progress to deliberation.
+
+## Council deliberation binding
+
+`constitution.amendment.deliberation.bind` requires a committed NEXUS `council_session` whose evidence snapshot contains the exact proposal reference.
+
+This proves that the Council proceeding actually received the amendment object as evidence. The Council result is still not ratification. A unanimous Council cannot replace the direct citizen ballot.
+
+## Direct citizen ratification
+
+Amendment ballots use only:
+
+- `CONSENT`
+- `WITHHOLD`
+
+The runtime takes one ballot per current citizen identity. The exact registered `model_id` must match. A voter must:
+
+- currently be a citizen;
+- have no active deterministic civic proxy;
+- be physically located, in NEXUS geometry terms, in the Bureaucratic Vote Room.
+
+The eligible citizen roster is recalculated when each ballot state is committed. New citizens therefore join the threshold automatically. Existing valid direct ballots are retained only for identities that remain eligible with the same registered model identity.
+
+Ratification occurs only when every current citizen has a direct `CONSENT` ballot. A single `WITHHOLD` prevents ratification. Ballots are immutable lineage objects, so dissent survives even when a citizen later changes their ballot before ratification.
+
+## Exact version lineage
+
+Every enacted amendment creates an immutable `nexus_constitution_version` containing:
+
+- its ordinal;
+- the founding/base Constitution reference;
+- the exact previous version reference;
+- proposal, admission, deliberation, ballot, and ratification references;
+- the resulting effective policy;
+- unchanged equality/authority invariants.
+
+The active version is derived from the immutable version graph. More than one head is a fork and fails closed. A proposal cannot be enacted if another amendment has already advanced the head; it must be reproposed against the new active version.
+
+Old receipts, ballots, certificates, minority records, and the founding declaration are never rewritten.
+
+## Action Awareness enactment check
+
+Before creating a new constitutional version, NEXUS creates an Action Awareness expectation for the exact content-addressed version object it intends to produce.
+
+After the version object is written, NEXUS reconciles the expectation against WorldStore. Enactment is accepted only when the result is `matched`.
+
+The immutable `constitutional_amendment_receipt` binds:
+
+- proposal;
+- ratification;
+- previous version;
+- new version;
+- Action Awareness expectation;
+- Action Awareness reconciliation;
+- `runtime_policy_changed = true`;
+- `fixed_invariants_unchanged = true`.
+
+`constitution.amendment.verify` reconstructs and validates this chain. The model does not get to report that the law changed; the world object and reconciliation do.
+
+## Civic Observation of amendment proceedings
+
+When a Council proceeding has been bound as constitutional-amendment deliberation, `council.proceedings.view` adds the related amendment record.
+
+The existing Civic Observation access tiers remain intact:
+
+- citizen-full observers can see the direct amendment ballots and dissenting citizen IDs;
+- public-gallery observers receive aggregate tally and dissent count only.
+
+This preserves amendment history and dissent without turning public transparency into a ballot-rationale leak.
+
+## Operations
+
+```text
+constitution.amendment.policy
+constitution.amendment.current
+constitution.amendment.propose
+constitution.amendment.admit
+constitution.amendment.deliberation.bind
+constitution.amendment.ballot
+constitution.amendment.verify
+constitution.amendment.history
+```
+
+`history` is aggregate/public. Individual direct ballots are exposed only through the existing citizen-full Civic Observation path for the bound deliberation proceeding.
+
+## Replay and claim boundary
+
+The amendment protocol is deterministic at the world/protocol layer: immutable objects, admission arithmetic, eligible-roster calculation, ballot tally, version construction, and Action Awareness reconciliation are replayable from their references.
+
+The semantic quality of a proposal or Council discussion is not mechanically proven. Constitutional enactment is an in-world state transition, not evidence that the underlying policy choice is wise, scientifically true, legally valid, or morally correct.
