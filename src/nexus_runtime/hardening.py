@@ -19,6 +19,7 @@ from .control_plane import (
 )
 from .provider_api import ProviderNexusAPI as _ProviderNexusAPI
 from .scrub import SecretScrubber
+from .trap import TrapError
 
 
 _PATHISH_ERROR = re.compile(
@@ -27,6 +28,9 @@ _PATHISH_ERROR = re.compile(
 )
 _CIVIC_OBSERVATION_OPERATIONS = frozenset(
     {"council.proceedings.policy", "council.proceedings.view"}
+)
+_RUNTIME_RESERVED_WORLD_TYPES = frozenset(
+    {"council_session", "evidence_snapshot", "receipt", "world_presence"}
 )
 
 
@@ -112,6 +116,32 @@ def sanitize_public_response(response: dict[str, Any]) -> dict[str, Any]:
     return sanitized
 
 
+def _public_gallery_result(result: Any) -> dict[str, Any]:
+    if not isinstance(result, dict):
+        raise CivicObservationError(
+            "council_proceeding_invalid",
+            "committed Council proceeding has an invalid result",
+        )
+    tally = result.get("tally")
+    threshold = result.get("consensus_threshold")
+    minority_reports = result.get("minority_reports")
+    if not isinstance(tally, dict) or not isinstance(threshold, dict) or not isinstance(minority_reports, list):
+        raise CivicObservationError(
+            "council_proceeding_invalid",
+            "committed Council proceeding has an invalid result",
+        )
+    return {
+        "disposition": result.get("disposition"),
+        "tally": dict(tally),
+        "consensus_label": result.get("consensus_label"),
+        "consensus_threshold": dict(threshold),
+        "evidence_state": result.get("evidence_state"),
+        "minority_or_disagreement_present": bool(minority_reports),
+        "minority_report_count": len(minority_reports),
+        "individual_minority_reports_visible": False,
+    }
+
+
 class HardenedNexusAPI(_ProviderNexusAPI):
     """Provider-aware API with alpha-exit control-plane hardening."""
 
@@ -130,6 +160,27 @@ class HardenedNexusAPI(_ProviderNexusAPI):
             )
 
         operation = request.get("operation")
+        if operation == "world.create":
+            object_type = request.get("object_type")
+            provenance = request.get("provenance", {"actor": "human_operator"})
+            reserved = (
+                isinstance(object_type, str) and object_type in _RUNTIME_RESERVED_WORLD_TYPES
+            ) or (
+                isinstance(provenance, dict) and provenance.get("actor") == "nexus"
+            )
+            if reserved:
+                # Preserve Trap Base precedence for a mutation that would
+                # otherwise be rejected by this hardened public boundary.
+                try:
+                    self.trap_mutation_gate.assert_mutation_allowed()
+                except TrapError:
+                    return super().handle(request)
+                return self._error(
+                    safe_request_id,
+                    "invalid_request",
+                    "reserved runtime Council objects and nexus provenance require validated runtime operations",
+                )
+
         # Keep malformed/unhashable operation values inside the established
         # Provider/Core structured-error boundary. The civic overlay only owns
         # its two exact string operation names.
@@ -199,12 +250,28 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                     viewer_id=viewer_id,
                     viewer_model_id=viewer_model_id,
                 )
+                if response.get("access_tier") == "public_gallery":
+                    council = response.get("council")
+                    if not isinstance(council, dict):
+                        raise CivicObservationError(
+                            "council_proceeding_invalid",
+                            "committed Council proceeding has an invalid Council summary",
+                        )
+                    response = dict(response)
+                    response["council"] = dict(council)
+                    response["council"]["result"] = _public_gallery_result(council.get("result"))
             else:  # pragma: no cover - dispatch set is closed above
                 return self._error(request_id, "unknown_operation", "operation is not supported")
         except CivicObservationError as exc:
             return self._error(request_id, exc.code, str(exc))
         except (KeyError, TypeError, ValueError) as exc:
             return self._error(request_id, "invalid_request", str(exc))
+        except OSError:
+            return self._error(
+                request_id,
+                "adapter_unavailable",
+                "adapter or local storage operation is unavailable",
+            )
 
         if request_id is not None:
             response = {"request_id": request_id, **response}
