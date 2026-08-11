@@ -3,8 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from .control_plane import RequestBudgetError, validate_control_request
-from .culture import LONG_SHIFT_NARRATION_OBJECT_TYPE, PERFORMANCE_OBJECT_TYPE
+from .culture import LONG_SHIFT_NARRATION_OBJECT_TYPE, MAX_PERFORMANCE_PROMPT_CHARS, PERFORMANCE_OBJECT_TYPE
 from .culture_api import CultureNexusAPI as _BaseCultureNexusAPI
+from .modes import get_mode
 from .progression import (
     CULTURE_ARTIFACT_ACTIVITY_IDS,
     CULTURE_DEDICATED_ACTIVITY_IDS,
@@ -71,6 +72,29 @@ class CultureNexusAPI(_BaseCultureNexusAPI):
     def __init__(self, world_root=None, **kwargs: Any) -> None:
         super().__init__(world_root, **kwargs)
         self.progression = _CultureProgressionService(self.world)
+
+    def _perform_open_mic(self, request: dict[str, Any], request_id: str | None) -> dict[str, Any]:
+        # The base implementation performs the actual model call/persistence.
+        # Preflight here preserves the same civic mode-admission contract as
+        # progression.act without starting inference first.
+        prompt = request.get("prompt")
+        if not isinstance(prompt, str) or not prompt:
+            return self._error(request_id, "invalid_request", "prompt must be a non-empty string")
+        if len(prompt) > MAX_PERFORMANCE_PROMPT_CHARS:
+            return self._error(request_id, "culture_performance_prompt_too_large", "Open Mic prompt exceeds the admitted bound")
+        mode_id = request.get("mode", "anarchy")
+        if not isinstance(mode_id, str):
+            return self._error(request_id, "culture_invalid_mode", "mode must be text")
+        try:
+            mode = get_mode(mode_id)
+            actor = self._culture_actor(request.get("member"))
+            self.citizenship.assert_mode_access(actor, mode.mode_id)
+        except ProgressionError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except Exception as exc:
+            code = getattr(exc, "code", "invalid_request")
+            return self._error(request_id, code, str(exc))
+        return super()._perform_open_mic(request, request_id)
 
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation") if isinstance(request, dict) else None
