@@ -65,7 +65,7 @@ def _ensure_stenographer_disjoint(
 
 
 def _drain_stenographer_on_exit(api: object) -> None:
-    """Best-effort drain of accepted observer writes at a graceful process boundary."""
+    """Best-effort drain of accepted passive-observer writes on graceful exit."""
 
     try:
         stenographer = getattr(api, "stenographer", None)
@@ -73,9 +73,17 @@ def _drain_stenographer_on_exit(api: object) -> None:
         if callable(shutdown):
             shutdown()
     except Exception:
-        # The Stenographer is fail-passive by contract. Process shutdown must
-        # never gain authority over an already-produced runtime result, including
-        # failures while lazily resolving the stenographer attribute itself.
+        # Passive observers never gain authority over an already-produced
+        # runtime result, including failures while resolving their attributes.
+        pass
+
+    try:
+        guardian_shutdown = getattr(api, "shutdown_guardian_observer", None)
+        if callable(guardian_shutdown):
+            guardian_shutdown()
+    except Exception:
+        # The Guardian shares the Stenographer's fail-passive process-boundary
+        # rule: best-effort durability must not turn graceful exit into failure.
         pass
 
 
