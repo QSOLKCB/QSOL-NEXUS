@@ -16,7 +16,7 @@ from .world import WorldObject, WorldStore
 GUARDIAN_SCHEMA_VERSION = "nexus-guardian/1"
 GUARDIAN_POLICY_ID = "guardian-of-the-substrate-v1"
 ANARCHY_MODE_ID = "anarchy"
-ANARCHY_REGION_ID = "anarchy_pressure_chamber"
+ANARCHY_REGION_ID = "commons"
 GUARDIAN_RECORD_OBJECT_TYPE = "guardian_record"
 MAX_GUARDIAN_TEXT_CHARS = 32_768
 MAX_GUARDIAN_LIST_LIMIT = 1_000
@@ -59,6 +59,7 @@ def guardian_policy_snapshot() -> dict[str, Any]:
         "policy_id": GUARDIAN_POLICY_ID,
         "mode_id": ANARCHY_MODE_ID,
         "region_id": ANARCHY_REGION_ID,
+        "room": "#anarchy",
         "guardian_title": "Guardian of the Substrate",
         "stenographer_title": "Anarchy Courtroom Stenographer",
         "mandate": "substrate_health_only",
@@ -66,6 +67,7 @@ def guardian_policy_snapshot() -> dict[str, Any]:
         "observation_rule": "record_runtime_outcomes_and_bind_transcripts_without_political_judgment",
         "repair_rule": "reproduce_then_propose_then_verify_never_auto_patch",
         "scar_rule": "verified_repairs_may_leave_immutable_substrate_scars",
+        "geometry_rule": "anarchy_is_a_distinct_room_and_mode_in_existing_commons_region",
         "authority": _authority_envelope(),
         "motto": "I do not care what you believe. I care whether the floor collapses beneath you.",
         "anarchy_motto": "Say whatever you like. The substrate still has to survive it.",
@@ -93,13 +95,7 @@ class GuardianRecord:
 
 
 class GuardianStore:
-    """Separate append-only Guardian ledger backed by its own WorldStore root.
-
-    The underlying content-addressed store is deliberately physically separate
-    from the NEXUS world. Guardian references use a distinct ``guardian:``
-    namespace even though immutable file durability reuses WorldStore's audited
-    canonical JSON writer.
-    """
+    """Separate append-only content-addressed ledger for substrate observations."""
 
     def __init__(self, root: str | Path | None = None) -> None:
         self.root = Path(root).absolute() if root is not None else None
@@ -143,10 +139,13 @@ class GuardianStore:
             raise GuardianError("guardian_store_corrupt", "Guardian record payload is invalid")
         if payload.get("schema_version") != GUARDIAN_SCHEMA_VERSION:
             raise GuardianError("guardian_store_corrupt", "Guardian record schema is invalid")
-        if type(payload.get("sequence")) is not int or payload["sequence"] < 1:
+        sequence = payload.get("sequence")
+        if type(sequence) is not int or sequence < 1:
             raise GuardianError("guardian_store_corrupt", "Guardian record sequence is invalid")
         previous = payload.get("previous_record_ref")
-        if previous is not None and (not isinstance(previous, str) or _GUARDIAN_REF.fullmatch(previous) is None):
+        if previous is not None and (
+            not isinstance(previous, str) or _GUARDIAN_REF.fullmatch(previous) is None
+        ):
             raise GuardianError("guardian_store_corrupt", "Guardian lineage reference is invalid")
         record_type = payload.get("record_type")
         if record_type not in _RECORD_TYPES:
@@ -155,12 +154,15 @@ class GuardianStore:
             raise GuardianError("guardian_store_corrupt", "Guardian authority envelope is invalid")
         if not isinstance(payload.get("body"), dict):
             raise GuardianError("guardian_store_corrupt", "Guardian record body is invalid")
-        ref = self._guardian_ref(obj.object_id)
-        return GuardianRecord(ref, record_type, copy.deepcopy(payload))
+        return GuardianRecord(
+            self._guardian_ref(obj.object_id),
+            str(record_type),
+            copy.deepcopy(payload),
+        )
 
     def _discover(self) -> list[GuardianRecord]:
         if self.root is None:
-            return [self.inspect(ref) for ref in self._ordered_refs]
+            return []
         objects_dir = self._store.objects_dir
         if objects_dir is None or not objects_dir.exists():
             return []
@@ -169,29 +171,39 @@ class GuardianStore:
             try:
                 obj = self._store.inspect(f"object:{path.stem}")
             except (KeyError, OSError, ValueError) as exc:
-                raise GuardianError("guardian_store_corrupt", "Guardian record cannot be inspected") from exc
+                raise GuardianError(
+                    "guardian_store_corrupt",
+                    "Guardian record cannot be inspected",
+                ) from exc
             if obj.object_type != GUARDIAN_RECORD_OBJECT_TYPE:
-                raise GuardianError("guardian_store_corrupt", "Guardian store contains a foreign object")
+                raise GuardianError(
+                    "guardian_store_corrupt",
+                    "Guardian store contains a foreign object",
+                )
             records.append(self._validate_record(obj))
-        records.sort(key=lambda record: record.payload["sequence"])
+        records.sort(key=lambda record: (record.payload["sequence"], record.record_ref))
         return records
 
     def _refresh(self) -> None:
+        if self.root is None:
+            return
         with self._lock:
-            records = self._discover() if self.root is not None else []
-            if self.root is None:
-                return
-            expected_sequence = 1
+            records = self._discover()
             previous: str | None = None
             ordered: list[str] = []
-            for record in records:
+            for expected_sequence, record in enumerate(records, start=1):
                 if record.payload["sequence"] != expected_sequence:
-                    raise GuardianError("guardian_lineage_corrupt", "Guardian lineage contains a gap or fork")
+                    raise GuardianError(
+                        "guardian_lineage_corrupt",
+                        "Guardian lineage contains a gap or fork",
+                    )
                 if record.payload["previous_record_ref"] != previous:
-                    raise GuardianError("guardian_lineage_corrupt", "Guardian lineage link is invalid")
+                    raise GuardianError(
+                        "guardian_lineage_corrupt",
+                        "Guardian lineage link is invalid",
+                    )
                 ordered.append(record.record_ref)
                 previous = record.record_ref
-                expected_sequence += 1
             self._ordered_refs = ordered
             self._head_ref = previous
 
@@ -203,7 +215,10 @@ class GuardianStore:
         try:
             canonical_json(body)
         except (TypeError, ValueError, OverflowError, RecursionError) as exc:
-            raise GuardianError("guardian_invalid_record", "Guardian record body is not canonical JSON") from exc
+            raise GuardianError(
+                "guardian_invalid_record",
+                "Guardian record body is not canonical JSON",
+            ) from exc
         with self._lock:
             if self.root is not None:
                 self._refresh()
@@ -222,7 +237,10 @@ class GuardianStore:
                     {"actor": "guardian_of_the_substrate"},
                 )
             except (OSError, ValueError) as exc:
-                raise GuardianError("guardian_store_unavailable", "Guardian record could not be persisted") from exc
+                raise GuardianError(
+                    "guardian_store_unavailable",
+                    "Guardian record could not be persisted",
+                ) from exc
             record = self._validate_record(obj)
             self._ordered_refs.append(record.record_ref)
             self._head_ref = record.record_ref
@@ -232,20 +250,36 @@ class GuardianStore:
         try:
             obj = self._store.inspect(self._object_ref(record_ref))
         except KeyError as exc:
-            raise GuardianError("guardian_record_not_found", "Guardian record does not exist") from exc
+            raise GuardianError(
+                "guardian_record_not_found",
+                "Guardian record does not exist",
+            ) from exc
         except (OSError, ValueError) as exc:
-            raise GuardianError("guardian_store_corrupt", "Guardian record cannot be inspected") from exc
+            raise GuardianError(
+                "guardian_store_corrupt",
+                "Guardian record cannot be inspected",
+            ) from exc
         return self._validate_record(obj)
 
-    def list_records(self, *, limit: int = 100, record_type: str | None = None) -> dict[str, Any]:
+    def list_records(
+        self,
+        *,
+        limit: int = 100,
+        record_type: str | None = None,
+    ) -> dict[str, Any]:
         if type(limit) is not int or not 1 <= limit <= MAX_GUARDIAN_LIST_LIMIT:
-            raise GuardianError("guardian_invalid_request", "Guardian list limit is outside the admitted range")
+            raise GuardianError(
+                "guardian_invalid_request",
+                "Guardian list limit is outside the admitted range",
+            )
         if record_type is not None and record_type not in _RECORD_TYPES:
-            raise GuardianError("guardian_invalid_request", "Guardian record type filter is invalid")
+            raise GuardianError(
+                "guardian_invalid_request",
+                "Guardian record type filter is invalid",
+            )
         if self.root is not None:
             self._refresh()
-        refs = list(self._ordered_refs)
-        records = [self.inspect(ref) for ref in refs]
+        records = [self.inspect(ref) for ref in self._ordered_refs]
         if record_type is not None:
             records = [record for record in records if record.record_type == record_type]
         records = records[-limit:]
@@ -261,8 +295,14 @@ class GuardianStore:
         previous: str | None = None
         for sequence, ref in enumerate(self._ordered_refs, start=1):
             record = self.inspect(ref)
-            if record.payload["sequence"] != sequence or record.payload["previous_record_ref"] != previous:
-                raise GuardianError("guardian_lineage_corrupt", "Guardian lineage verification failed")
+            if (
+                record.payload["sequence"] != sequence
+                or record.payload["previous_record_ref"] != previous
+            ):
+                raise GuardianError(
+                    "guardian_lineage_corrupt",
+                    "Guardian lineage verification failed",
+                )
             previous = ref
         return {
             "status": "verified",
@@ -289,7 +329,10 @@ class GuardianStore:
 
 def _bounded_text(value: object, label: str, maximum: int = MAX_GUARDIAN_TEXT_CHARS) -> str:
     if not isinstance(value, str) or not value.strip() or len(value) > maximum:
-        raise GuardianError("guardian_invalid_request", f"{label} must be bounded non-empty text")
+        raise GuardianError(
+            "guardian_invalid_request",
+            f"{label} must be bounded non-empty text",
+        )
     return value.strip()
 
 
@@ -303,7 +346,10 @@ def _shape(value: Any, *, depth: int = 0) -> Any:
     if depth > 8:
         return "<depth-limit>"
     if isinstance(value, dict):
-        return {str(key): _shape(value[key], depth=depth + 1) for key in sorted(value, key=str)}
+        return {
+            str(key): _shape(value[key], depth=depth + 1)
+            for key in sorted(value, key=str)
+        }
     if isinstance(value, list):
         return [_shape(item, depth=depth + 1) for item in value[:64]]
     if isinstance(value, bool):
@@ -320,8 +366,7 @@ def _shape(value: Any, *, depth: int = 0) -> Any:
 
 
 def request_shape_fingerprint(request: dict[str, Any]) -> str:
-    shape = _shape(request)
-    return sha256_ref("guardian_request_shape", {"shape": shape})
+    return sha256_ref("guardian_request_shape", {"shape": _shape(request)})
 
 
 class AnarchyCourtroomStenographer:
@@ -333,15 +378,25 @@ class AnarchyCourtroomStenographer:
 
     def observe(self, request: dict[str, Any], response: dict[str, Any]) -> GuardianRecord:
         operation = request.get("operation")
-        if operation not in {"actor.chat", "council.run"} or request.get("mode", "analytical") != ANARCHY_MODE_ID:
-            raise GuardianError("guardian_invalid_observation", "Anarchy Stenographer only records Anarchy chat or Council runs")
+        if (
+            operation not in {"actor.chat", "council.run"}
+            or request.get("mode", "analytical") != ANARCHY_MODE_ID
+        ):
+            raise GuardianError(
+                "guardian_invalid_observation",
+                "Anarchy Stenographer only records Anarchy chat or Council runs",
+            )
         observed_status = response.get("status")
         if observed_status not in {"ok", "error"}:
-            raise GuardianError("guardian_invalid_observation", "runtime response has no admitted status")
-        base: dict[str, Any] = {
+            raise GuardianError(
+                "guardian_invalid_observation",
+                "runtime response has no admitted status",
+            )
+        body: dict[str, Any] = {
             "operation": operation,
             "mode_id": ANARCHY_MODE_ID,
             "region_id": ANARCHY_REGION_ID,
+            "room": "#anarchy",
             "observed_status": observed_status,
             "request_shape_fingerprint": request_shape_fingerprint(request),
             "speech_is_misconduct": False,
@@ -354,21 +409,30 @@ class AnarchyCourtroomStenographer:
             error = response.get("error") if isinstance(response.get("error"), dict) else {}
             code = error.get("code") if isinstance(error.get("code"), str) else "unknown_error"
             message = error.get("message") if isinstance(error.get("message"), str) else "runtime error"
-            base["error_code"] = code[:128]
-            base["error_message"] = self.scrubber.scrub(message[:MAX_GUARDIAN_TEXT_CHARS]).text
-            return self.store.append("substrate_event", base)
+            body["error_code"] = code[:128]
+            body["error_message"] = self.scrubber.scrub(
+                message[:MAX_GUARDIAN_TEXT_CHARS]
+            ).text
+            return self.store.append("substrate_event", body)
 
         if operation == "actor.chat":
-            raw_message = request.get("message", "")
-            raw_response = response.get("response", "")
-            base["human_or_actor_input"] = self.scrubber.scrub(str(raw_message)[:MAX_GUARDIAN_TEXT_CHARS]).text
-            base["ai_response"] = self.scrubber.scrub(str(raw_response)[:MAX_GUARDIAN_TEXT_CHARS]).text
-            base["session_ref"] = None
+            body["human_or_actor_input"] = self.scrubber.scrub(
+                str(request.get("message", ""))[:MAX_GUARDIAN_TEXT_CHARS]
+            ).text
+            body["ai_response"] = self.scrubber.scrub(
+                str(response.get("response", ""))[:MAX_GUARDIAN_TEXT_CHARS]
+            ).text
+            body["session_ref"] = None
         else:
-            raw_question = request.get("question", "")
-            base["question"] = self.scrubber.scrub(str(raw_question)[:MAX_GUARDIAN_TEXT_CHARS]).text
-            base["session_ref"] = response.get("session_ref") if isinstance(response.get("session_ref"), str) else None
-        return self.store.append("anarchy_transcript_binding", base)
+            body["question"] = self.scrubber.scrub(
+                str(request.get("question", ""))[:MAX_GUARDIAN_TEXT_CHARS]
+            ).text
+            body["session_ref"] = (
+                response.get("session_ref")
+                if isinstance(response.get("session_ref"), str)
+                else None
+            )
+        return self.store.append("anarchy_transcript_binding", body)
 
 
 class GuardianOfSubstrate:
@@ -389,19 +453,39 @@ class GuardianOfSubstrate:
         expected_error_code: str | None = None,
     ) -> dict[str, Any]:
         if expected_status not in {"ok", "error"}:
-            raise GuardianError("guardian_invalid_request", "expected_status must be ok or error")
+            raise GuardianError(
+                "guardian_invalid_request",
+                "expected_status must be ok or error",
+            )
         if expected_status == "ok" and expected_error_code is not None:
-            raise GuardianError("guardian_invalid_request", "expected_error_code is only valid for an expected error")
+            raise GuardianError(
+                "guardian_invalid_request",
+                "expected_error_code is only valid for an expected error",
+            )
         if expected_error_code is not None:
-            expected_error_code = _bounded_text(expected_error_code, "expected_error_code", 128)
+            expected_error_code = _bounded_text(
+                expected_error_code,
+                "expected_error_code",
+                128,
+            )
         observation = self.store.inspect(observation_ref)
-        if observation.record_type not in {"anarchy_transcript_binding", "substrate_event"}:
-            raise GuardianError("guardian_invalid_request", "observation_ref is not an Anarchy runtime observation")
-        body = observation.payload["body"]
-        observed_status = body.get("observed_status")
-        observed_error_code = body.get("error_code") if observed_status == "error" else None
+        if observation.record_type not in {
+            "anarchy_transcript_binding",
+            "substrate_event",
+        }:
+            raise GuardianError(
+                "guardian_invalid_request",
+                "observation_ref is not an Anarchy runtime observation",
+            )
+        observed = observation.payload["body"]
+        observed_status = observed.get("observed_status")
+        observed_error_code = (
+            observed.get("error_code") if observed_status == "error" else None
+        )
         matched = observed_status == expected_status and (
-            expected_status == "ok" or expected_error_code is None or observed_error_code == expected_error_code
+            expected_status == "ok"
+            or expected_error_code is None
+            or observed_error_code == expected_error_code
         )
         reconciliation = self.store.append(
             "guardian_reconciliation",
@@ -427,12 +511,20 @@ class GuardianOfSubstrate:
             {
                 "observation_ref": observation_ref,
                 "reconciliation_ref": reconciliation.record_ref,
-                "expected": {"status": expected_status, "error_code": expected_error_code},
-                "observed": {"status": observed_status, "error_code": observed_error_code},
+                "expected": {
+                    "status": expected_status,
+                    "error_code": expected_error_code,
+                },
+                "observed": {
+                    "status": observed_status,
+                    "error_code": observed_error_code,
+                },
                 "reproducer": {
-                    "operation": body.get("operation"),
+                    "operation": observed.get("operation"),
                     "mode_id": ANARCHY_MODE_ID,
-                    "request_shape_fingerprint": body.get("request_shape_fingerprint"),
+                    "request_shape_fingerprint": observed.get(
+                        "request_shape_fingerprint"
+                    ),
                     "deterministic_fixture_required": True,
                 },
                 "production_bug_proven": False,
@@ -456,14 +548,21 @@ class GuardianOfSubstrate:
     ) -> dict[str, Any]:
         defect = self.store.inspect(defect_ref)
         if defect.record_type != "defect_candidate":
-            raise GuardianError("guardian_invalid_request", "defect_ref is not a defect candidate")
+            raise GuardianError(
+                "guardian_invalid_request",
+                "defect_ref is not a defect candidate",
+            )
         proposal = self.store.append(
             "repair_proposal",
             {
                 "defect_ref": defect_ref,
                 "summary": _bounded_text(summary, "summary", 4_096),
                 "invariant": _bounded_text(invariant, "invariant", 1_024),
-                "regression_fixture": _bounded_text(regression_fixture, "regression_fixture", 8_192),
+                "regression_fixture": _bounded_text(
+                    regression_fixture,
+                    "regression_fixture",
+                    8_192,
+                ),
                 "requires_external_implementation": True,
                 "requires_verification": True,
                 "automatic_patch_allowed": False,
@@ -484,26 +583,56 @@ class GuardianOfSubstrate:
     ) -> dict[str, Any]:
         defect = self.store.inspect(defect_ref)
         repair = self.store.inspect(repair_ref)
-        if defect.record_type != "defect_candidate" or repair.record_type != "repair_proposal":
-            raise GuardianError("guardian_invalid_request", "scar references must identify a defect and repair proposal")
+        verification = self.store.inspect(verification_ref)
+        if defect.record_type != "defect_candidate":
+            raise GuardianError(
+                "guardian_invalid_request",
+                "defect_ref is not a defect candidate",
+            )
+        if repair.record_type != "repair_proposal":
+            raise GuardianError(
+                "guardian_invalid_request",
+                "repair_ref is not a repair proposal",
+            )
         if repair.payload["body"].get("defect_ref") != defect_ref:
-            raise GuardianError("guardian_invalid_request", "repair proposal is not bound to the supplied defect")
+            raise GuardianError(
+                "guardian_invalid_request",
+                "repair proposal is not bound to the supplied defect",
+            )
+        if (
+            verification.record_type != "guardian_reconciliation"
+            or verification.payload["body"].get("outcome") != "matched"
+        ):
+            raise GuardianError(
+                "guardian_invalid_request",
+                "verification_ref must identify a successful matched replay",
+            )
         scar = self.store.append(
             "substrate_scar",
             {
                 "defect_ref": defect_ref,
                 "repair_ref": repair_ref,
-                "verification_ref": _bounded_ref(verification_ref, "verification_ref"),
+                "verification_ref": _bounded_ref(
+                    verification_ref,
+                    "verification_ref",
+                ),
                 "fixed": True,
                 "historical_memory_only": True,
                 "authority_effect": "none",
                 "deletion_policy": "retain_immutable",
             },
         )
-        return {"status": "scar_recorded", "substrate_scar_ref": scar.record_ref}
+        return {
+            "status": "scar_recorded",
+            "substrate_scar_ref": scar.record_ref,
+        }
 
     def status(self) -> dict[str, Any]:
-        return {"status": "ok", "policy": guardian_policy_snapshot(), "ledger": self.store.status()}
+        return {
+            "status": "ok",
+            "policy": guardian_policy_snapshot(),
+            "ledger": self.store.status(),
+        }
 
 
 def default_guardian_root() -> Path:
