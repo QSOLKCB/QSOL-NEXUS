@@ -13,7 +13,8 @@ theorem every_seat_weight_one (roster : Roster) :
   induction roster with
   | nil => rfl
   | cons participant rest ih =>
-      simp [seatWeights, voteWeight, ih]
+      change 1 :: seatWeights rest = 1 :: List.replicate rest.length 1
+      exact congrArg (fun weights => 1 :: weights) ih
 
 /-- Same-seat relief is modeled as replacement, not insertion. -/
 def reliefRoster (roster : Roster) (replacement : Participant → Participant) : Roster :=
