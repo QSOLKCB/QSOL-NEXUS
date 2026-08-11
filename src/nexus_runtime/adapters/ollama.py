@@ -92,6 +92,26 @@ class OllamaTransport:
         except ValueError:
             return False
 
+    @staticmethod
+    def _read_bounded_response(response: Any) -> bytes:
+        """Prefer a bounded HTTP read while retaining simple test-double compatibility.
+
+        urllib/http.client response objects accept the size argument. Older
+        hermetic NEXUS test doubles expose only ``read()``; those are allowed as
+        a compatibility seam, but their returned byte string is still checked
+        against the exact same hard ceiling before JSON decoding.
+        """
+
+        try:
+            encoded = response.read(OLLAMA_MAX_RESPONSE_BYTES + 1)
+        except TypeError:
+            encoded = response.read()
+        if not isinstance(encoded, (bytes, bytearray)):
+            raise AdapterProtocolError("Ollama returned a non-byte response")
+        if len(encoded) > OLLAMA_MAX_RESPONSE_BYTES:
+            raise AdapterProtocolError("Ollama response exceeded the size limit")
+        return bytes(encoded)
+
     def _open(self, request: Request) -> Any:
         if self._local_opener is None:
             raise RuntimeError("Ollama opener was not initialized")
@@ -129,15 +149,16 @@ class OllamaTransport:
         )
         try:
             with self._open(request) as response:
-                encoded = response.read(OLLAMA_MAX_RESPONSE_BYTES + 1)
+                encoded = self._read_bounded_response(response)
         except HTTPError as exc:
+            # The no-redirect handler deliberately surfaces 3xx as HTTPError.
+            # Preserve that established public/test contract while still never
+            # following the redirect or forwarding request material.
             if 300 <= exc.code < 400:
-                raise AdapterProtocolError("Ollama host attempted to redirect the request") from exc
+                raise
             raise AdapterError("Ollama inference host rejected the request") from exc
         except (URLError, TimeoutError, OSError, HTTPException) as exc:
             raise AdapterError("Ollama inference host is unavailable") from exc
-        if len(encoded) > OLLAMA_MAX_RESPONSE_BYTES:
-            raise AdapterProtocolError("Ollama response exceeded the size limit")
         try:
             body = json.loads(encoded.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError, RecursionError) as exc:
