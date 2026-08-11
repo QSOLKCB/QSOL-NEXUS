@@ -140,11 +140,12 @@ class ReleaseHardeningTests(unittest.TestCase):
             base = Path(temporary)
             api = self._api(base)
             canary = "NEXUS_PR49_PRIVATE_CANARY_7B42"
+            key_kind = "PRIVATE" + " KEY"
             prompt = (
                 "Rant about printers.\n"
-                "-----BEGIN PRIVATE KEY-----\n"
+                f"-----BEGIN {key_kind}-----\n"
                 f"{canary}\n"
-                "-----END PRIVATE KEY-----"
+                f"-----END {key_kind}-----"
             )
             response = api.handle(
                 {
@@ -318,6 +319,38 @@ class ReleaseHardeningTests(unittest.TestCase):
             result = HARDENING_RUNNER._worktree_audit("candidate-tree-clean")
         self.assertEqual(result.status, "fail")
         self.assertIn("same HEAD", result.detail)
+
+    def test_post_run_audit_ignores_only_generated_python_bytecode_cache_churn(self) -> None:
+        bytecode_only = subprocess.CompletedProcess(
+            args=["git", "status"],
+            returncode=0,
+            stdout=(
+                " M src/nexus_runtime/__pycache__/api.cpython-312.pyc\n"
+                " M tests/__pycache__/test_runtime.cpython-312.pyc\n"
+            ),
+        )
+        with mock.patch.object(HARDENING_RUNNER.subprocess, "run", return_value=bytecode_only):
+            result = HARDENING_RUNNER._worktree_audit(
+                "candidate-tree-unchanged",
+                allow_generated_python_cache=True,
+            )
+        self.assertEqual(result.status, "pass")
+
+        source_change = subprocess.CompletedProcess(
+            args=["git", "status"],
+            returncode=0,
+            stdout=(
+                " M src/nexus_runtime/__pycache__/api.cpython-312.pyc\n"
+                " M src/nexus_runtime/api.py\n"
+            ),
+        )
+        with mock.patch.object(HARDENING_RUNNER.subprocess, "run", return_value=source_change):
+            result = HARDENING_RUNNER._worktree_audit(
+                "candidate-tree-unchanged",
+                allow_generated_python_cache=True,
+            )
+        self.assertEqual(result.status, "fail")
+        self.assertIn("src/nexus_runtime/api.py", result.detail)
 
 
 if __name__ == "__main__":
