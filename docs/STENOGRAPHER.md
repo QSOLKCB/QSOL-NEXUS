@@ -138,6 +138,31 @@ verification operation, never by the AI response path. Read views wait up to a
 bounded drain interval for accepted observations and otherwise return a
 sanitized `stenographer_observer_busy` error.
 
+### Crash-safe temporary-write boundary
+
+Immutable record scratch files are written under the private
+`$STENO_ROOT/.write-tmp/` directory and hard-linked into `objects/` only after
+the scratch file has been fully written and fsynced. The permanent `objects/`
+directory therefore remains a ledger-object namespace rather than a mixed
+object/scratch namespace. Crash debris under `.write-tmp/` is not scanned as a
+record and cannot create a false integrity failure.
+
+Stores created by older NEXUS revisions may contain a leftover writer scratch
+file directly under `objects/` with the exact historical shape
+`.<64-lowercase-hex>.tmp-<pid>-<thread-id>`. That one legacy pattern is treated
+as non-ledger debris rather than `stenographer_store_corrupt`; when the matching
+permanent JSON object already exists it is reaped best-effort. Temp-shaped
+symlinks, directories, unsafe-permission files, and every other unexpected
+filename under `objects/` still fail closed. This exception does not weaken
+canonical JSON, content-hash, lineage, permission, or symlink verification of
+permanent records.
+
+The JSONL runtime and `--demo` path perform a bounded best-effort observer drain
+on graceful process exit. This does not move persistence back into the AI
+response path: accepted observations remain asynchronous during normal runtime
+operation, and exit draining remains fail-passive if the recorder cannot finish
+within its bounded wait.
+
 ## Read-only interfaces
 
 Start the JSONL runtime with a persistent private store:

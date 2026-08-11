@@ -64,6 +64,21 @@ def _ensure_stenographer_disjoint(
         )
 
 
+def _drain_stenographer_on_exit(api: object) -> None:
+    """Best-effort drain of accepted observer writes at a graceful process boundary."""
+
+    try:
+        stenographer = getattr(api, "stenographer", None)
+        shutdown = getattr(stenographer, "shutdown", None)
+        if callable(shutdown):
+            shutdown()
+    except Exception:
+        # The Stenographer is fail-passive by contract. Process shutdown must
+        # never gain authority over an already-produced runtime result, including
+        # failures while lazily resolving the stenographer attribute itself.
+        pass
+
+
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="QSOL NEXUS Council reference runtime")
     parser.add_argument("--world", default=None, help="optional file-backed development world directory")
@@ -222,29 +237,33 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
         )
         return 2
-    if args.demo:
-        print(json.dumps(api.handle(_demo_request()), indent=2, sort_keys=True))
-        return 0
 
-    for bounded in iter_bounded_jsonl_lines(sys.stdin):
-        if bounded.error is not None:
-            code = "request_too_large" if "byte limit" in bounded.error else "invalid_json"
-            response = {"status": "error", "error": {"code": code, "message": bounded.error}}
+    try:
+        if args.demo:
+            print(json.dumps(api.handle(_demo_request()), indent=2, sort_keys=True))
+            return 0
+
+        for bounded in iter_bounded_jsonl_lines(sys.stdin):
+            if bounded.error is not None:
+                code = "request_too_large" if "byte limit" in bounded.error else "invalid_json"
+                response = {"status": "error", "error": {"code": code, "message": bounded.error}}
+                print(json.dumps(response, sort_keys=True, separators=(",", ":")), flush=True)
+                continue
+            assert bounded.text is not None
+            line = bounded.text.strip()
+            if not line:
+                continue
+            try:
+                request = json.loads(line)
+                if not isinstance(request, dict):
+                    raise ValueError("request must be a JSON object")
+                response = api.handle(request)
+            except (json.JSONDecodeError, ValueError, RecursionError) as exc:
+                response = {"status": "error", "error": {"code": "invalid_json", "message": str(exc)}}
             print(json.dumps(response, sort_keys=True, separators=(",", ":")), flush=True)
-            continue
-        assert bounded.text is not None
-        line = bounded.text.strip()
-        if not line:
-            continue
-        try:
-            request = json.loads(line)
-            if not isinstance(request, dict):
-                raise ValueError("request must be a JSON object")
-            response = api.handle(request)
-        except (json.JSONDecodeError, ValueError, RecursionError) as exc:
-            response = {"status": "error", "error": {"code": "invalid_json", "message": str(exc)}}
-        print(json.dumps(response, sort_keys=True, separators=(",", ":")), flush=True)
-    return 0
+        return 0
+    finally:
+        _drain_stenographer_on_exit(api)
 
 
 if __name__ == "__main__":
