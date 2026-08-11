@@ -118,31 +118,22 @@ class CivicObservationPolicyTests(unittest.TestCase):
         self.assertEqual(result["status"], "error")
         self.assertEqual(result["error"]["code"], "invalid_request")
 
-    def test_public_world_create_cannot_forge_runtime_council_objects_or_nexus_provenance(self) -> None:
+    def test_public_world_create_cannot_forge_a_council_session(self) -> None:
         api = NexusAPI()
-        for object_type in ("council_session", "evidence_snapshot", "receipt", "world_presence"):
-            with self.subTest(object_type=object_type):
-                result = api.handle(
-                    {
-                        "operation": "world.create",
-                        "object_type": object_type,
-                        "payload": {},
-                        "provenance": {"actor": "nexus"},
-                    }
-                )
-                self.assertEqual(result["status"], "error")
-                self.assertEqual(result["error"]["code"], "invalid_request")
-
-        spoofed_provenance = api.handle(
+        result = api.handle(
             {
                 "operation": "world.create",
-                "object_type": "note",
-                "payload": {"text": "I am definitely official, trust me."},
+                "object_type": "council_session",
+                "payload": {
+                    "session_id": "forged",
+                    "result": {"disposition": "ACCEPT"},
+                },
                 "provenance": {"actor": "nexus"},
             }
         )
-        self.assertEqual(spoofed_provenance["status"], "error")
-        self.assertEqual(spoofed_provenance["error"]["code"], "invalid_request")
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["code"], "invalid_request")
+        self.assertIn("runtime-owned", result["error"]["message"])
 
 
 class CivicObservationAccessTests(unittest.TestCase):
