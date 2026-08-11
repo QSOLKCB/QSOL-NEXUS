@@ -12,10 +12,10 @@ from .adapters import (
 )
 from .api import MAX_REMOTE_COUNCIL_SEATS, NexusAPI as CoreNexusAPI
 from .citizenship import PAROLE_MODE_ID
-from .council_chair import (
-    chair_policy_snapshot,
-    evaluate_council_roster_request,
-    validate_council_roster_request,
+from .epoch_chair import (
+    epoch_chair_policy_snapshot,
+    evaluate_epoch_council_roster_request,
+    validate_epoch_council_roster_request,
 )
 from .local_role_runtime import LocalAwareCitizenship, LocalAwareFailsafe
 from .local_roles import LocalRoleBackendConfig, LocalRoleRegistry
@@ -113,8 +113,10 @@ class ProviderNexusAPI(CoreNexusAPI):
             # Keep the legacy core-engine council_limits shape stable. The
             # public admission layer is stricter and is exposed separately so
             # operators can distinguish the coordinator's internal ceiling
-            # from the Chair's constitutional voting-roster rule.
-            response["council_chair"] = chair_policy_snapshot()
+            # from the Chair's constitutional voting-roster rule. PR #42 makes
+            # the size boundary epoch-aware while preserving the same seat
+            # counts and exactly equal vote/privilege contract.
+            response["council_chair"] = epoch_chair_policy_snapshot()
         elif operation == "system.operations" and response.get("status") == "ok":
             response = dict(response)
             operations = list(response.get("operations", []))
@@ -123,10 +125,11 @@ class ProviderNexusAPI(CoreNexusAPI):
         elif operation == "council.run" and response.get("status") == "ok":
             # The exact public roster was already admitted by
             # _validate_council_request_limits before any actor/auth creation.
-            # Return the deterministic admission summary so operators can audit
-            # which protected/general slot each requested model occupied.
+            # Return the deterministic epoch-aware admission summary so
+            # operators can audit which protected/general slot each requested
+            # model occupied and which temporal envelope applied.
             response = dict(response)
-            response["council_chair"] = evaluate_council_roster_request(
+            response["council_chair"] = evaluate_epoch_council_roster_request(
                 request.get("members", [])
             )
         return response
@@ -172,9 +175,9 @@ class ProviderNexusAPI(CoreNexusAPI):
     @staticmethod
     def _validate_council_request_limits(members: list[Any]) -> None:
         # Preserve the existing spend/network caps first so their historical
-        # diagnostics remain stable, then apply the stricter Chair composition
-        # contract. All of this happens before actor construction, credential
-        # resolution, or provider inference.
+        # diagnostics remain stable, then apply the stricter epoch-aware Chair
+        # composition contract. All of this happens before actor construction,
+        # credential resolution, or provider inference.
         CoreNexusAPI._validate_council_request_limits(members)
         remote_seats = sum(
             1
@@ -185,7 +188,7 @@ class ProviderNexusAPI(CoreNexusAPI):
             raise ValueError(
                 f"Council permits at most {MAX_REMOTE_COUNCIL_SEATS} remote provider seats"
             )
-        validate_council_roster_request(members)
+        validate_epoch_council_roster_request(members)
 
     def _actor(self, item: Any) -> Any:
         if not isinstance(item, dict):
