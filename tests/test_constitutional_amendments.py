@@ -5,7 +5,6 @@ import tempfile
 import unittest
 
 from nexus_runtime import NexusAPI
-from nexus_runtime.citizenship import CIVIC_REGION_ID
 from nexus_runtime.constitutional_amendment import (
     CONSTITUTIONAL_AMENDMENT_SCHEMA_VERSION,
     CONSTITUTION_VERSION_OBJECT_TYPE,
@@ -243,6 +242,8 @@ class ConstitutionalAmendmentWorkflowTests(unittest.TestCase):
             }
         )
         self.assertFalse(first["ratified"])
+        self.assertEqual(first["ballot_status"], "sealed_pending")
+        self.assertNotIn("tally", first)
 
         withheld = self.api.handle(
             {
@@ -255,7 +256,26 @@ class ConstitutionalAmendmentWorkflowTests(unittest.TestCase):
             }
         )
         self.assertFalse(withheld["ratified"])
-        self.assertEqual(withheld["dissenting_citizen_ids"], ["Beta"])
+        self.assertEqual(withheld["ballot_status"], "sealed_pending")
+        self.assertEqual(withheld["eligible_citizen_count"], 3)
+        self.assertNotIn("tally", withheld)
+        self.assertNotIn("dissenting_citizen_ids", withheld)
+
+        partial_history = self.api.handle({"operation": "constitution.amendment.history"})
+        partial_record = next(
+            item
+            for item in partial_history["proposals"]
+            if item["proposal_ref"] == proposal_ref
+        )
+        self.assertEqual(partial_record["ballot_status"], "sealed_pending")
+        self.assertEqual(partial_record["tally"], {})
+        self.assertEqual(partial_record["dissent_count"], 0)
+
+        private_partial = self.api.handle(
+            {"operation": "world.inspect", "object_ref": withheld["ballot_ref"]}
+        )
+        self.assertEqual(private_partial["status"], "error")
+        self.assertEqual(private_partial["error"]["code"], "civic_private_record")
 
         third = self.api.handle(
             {
@@ -268,6 +288,8 @@ class ConstitutionalAmendmentWorkflowTests(unittest.TestCase):
             }
         )
         self.assertFalse(third["ratified"])
+        self.assertEqual(third["ballot_status"], "revealed_complete")
+        self.assertEqual(third["dissenting_citizen_ids"], ["Beta"])
 
         public_view = self.api.handle(
             {
@@ -277,6 +299,7 @@ class ConstitutionalAmendmentWorkflowTests(unittest.TestCase):
             }
         )
         amendment_public = public_view["constitutional_amendments"][0]
+        self.assertEqual(amendment_public["ballot_status"], "revealed_complete")
         self.assertEqual(amendment_public["dissent_count"], 1)
         self.assertNotIn("ballots", amendment_public)
 
@@ -311,6 +334,7 @@ class ConstitutionalAmendmentWorkflowTests(unittest.TestCase):
                 "choice": "CONSENT",
             }
         )
+        self.assertEqual(enacted["ballot_status"], "revealed_complete")
         self.assertTrue(enacted["unanimous_direct_consent"])
         self.assertTrue(enacted["ratified"])
         self.assertTrue(enacted["enacted"])
@@ -348,6 +372,12 @@ class ConstitutionalAmendmentWorkflowTests(unittest.TestCase):
         self.assertEqual(after["error"]["code"], "council_observation_public_gallery_required")
         policy = self.api.handle({"operation": "council.proceedings.policy"})["policy"]
         self.assertEqual(policy["non_citizen"]["allowed_region_ids"], ["archive", "observatory"])
+
+        private_ratification = self.api.handle(
+            {"operation": "world.inspect", "object_ref": enacted["ratification_ref"]}
+        )
+        self.assertEqual(private_ratification["status"], "error")
+        self.assertEqual(private_ratification["error"]["code"], "civic_private_record")
 
         ratification = self.api.world.inspect(enacted["ratification_ref"])
         self.assertEqual(ratification.payload["proxy_signatures"], 0)
