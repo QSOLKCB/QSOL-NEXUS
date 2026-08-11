@@ -1,15 +1,42 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
+from unittest import mock
 
 from nexus_runtime import NexusAPI
 from nexus_runtime.culture import CULTURE_RESERVED_OBJECT_TYPES
 
 
 ROOT = Path(__file__).resolve().parents[1]
+EXPECTED_PR48_RESERVED_OBJECT_TYPES = frozenset(
+    {
+        "nexus_performance_artifact",
+        "long_shift_narration",
+        "nexus_ai_game_execution",
+        "long_shift_state",
+        "psyche_chess_state",
+    }
+)
+
+
+def _load_hardening_runner():
+    path = ROOT / "tools" / "nexus_release_hardening.py"
+    spec = importlib.util.spec_from_file_location("nexus_release_hardening_test_target", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load release hardening runner")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+HARDENING_RUNNER = _load_hardening_runner()
 
 
 class ReleaseHardeningTests(unittest.TestCase):
@@ -137,9 +164,14 @@ class ReleaseHardeningTests(unittest.TestCase):
                     self.assertNotIn(needle, path.read_bytes(), str(path))
 
     def test_generic_world_create_cannot_forge_pr48_runtime_objects(self) -> None:
+        self.assertEqual(
+            CULTURE_RESERVED_OBJECT_TYPES,
+            EXPECTED_PR48_RESERVED_OBJECT_TYPES,
+            "the hardening test must independently pin every PR #48 runtime-owned object type",
+        )
         with tempfile.TemporaryDirectory() as temporary:
             api = self._api(Path(temporary))
-            for object_type in sorted(CULTURE_RESERVED_OBJECT_TYPES):
+            for object_type in sorted(EXPECTED_PR48_RESERVED_OBJECT_TYPES):
                 response = api.handle(
                     {
                         "operation": "world.create",
@@ -220,6 +252,72 @@ class ReleaseHardeningTests(unittest.TestCase):
         self.assertFalse(matrix["stable_release"])
         self.assertEqual(matrix["authority_effect"], "none")
         self.assertIn("PR #51", matrix["post_wall_rule"])
+
+    def test_hardening_runner_requires_exact_eight_gate_inventory(self) -> None:
+        matrix = json.loads((ROOT / "release" / "hardening_matrix.json").read_text(encoding="utf-8"))
+        configured = {gate["id"] for gate in matrix["gates"]}
+        self.assertEqual(configured, HARDENING_RUNNER.REQUIRED_GATE_IDS)
+        self.assertIn("8 required gates", HARDENING_RUNNER._audit_matrix_data(matrix, ROOT / "tests"))
+
+        incomplete = json.loads(json.dumps(matrix))
+        incomplete["gates"] = incomplete["gates"][1:]
+        with self.assertRaisesRegex(ValueError, "gate inventory mismatch"):
+            HARDENING_RUNNER._audit_matrix_data(incomplete, ROOT / "tests")
+
+    def test_hardening_runner_requires_every_declared_pattern_to_match(self) -> None:
+        matrix = json.loads((ROOT / "release" / "hardening_matrix.json").read_text(encoding="utf-8"))
+        broken = json.loads(json.dumps(matrix))
+        broken["gates"][0]["patterns"].append("test_pr49_deleted_critical_family.py")
+        with self.assertRaisesRegex(ValueError, "pattern .* matches no tests"):
+            HARDENING_RUNNER._audit_matrix_data(broken, ROOT / "tests")
+
+    def test_skip_flags_cannot_produce_a_passing_complete_report(self) -> None:
+        checks = [
+            HARDENING_RUNNER.CheckResult(name, "pass", 0.0, "ok")
+            for name in sorted(HARDENING_RUNNER.REQUIRED_CHECK_NAMES)
+        ]
+        checks = [
+            HARDENING_RUNNER.CheckResult(check.name, "skip", 0.0, "diagnostic skip")
+            if check.name == "rust-tests"
+            else check
+            for check in checks
+        ]
+        report = HARDENING_RUNNER._build_report(checks)
+        self.assertFalse(report["complete"])
+        self.assertFalse(report["passed"])
+        self.assertEqual(report["status"], "incomplete")
+        self.assertEqual(report["skipped_required_checks"], ["rust-tests"])
+
+    def test_operator_rehearsal_environment_drops_external_nexus_and_python_overrides(self) -> None:
+        clean = HARDENING_RUNNER._clean_rehearsal_env(
+            {
+                "PATH": "/usr/bin",
+                "HOME": "/tmp/home",
+                "NEXUS_VENV": "/outside/venv",
+                "NEXUS_REPO_ROOT": "/outside/repo",
+                "NEXUS_BOOTSTRAP_PYTHON": "/outside/python",
+                "PYTHONPATH": "/outside/src",
+                "PYTHONHOME": "/outside/python-home",
+                "VIRTUAL_ENV": "/outside/active-venv",
+            }
+        )
+        self.assertEqual(clean["PATH"], "/usr/bin")
+        self.assertEqual(clean["HOME"], "/tmp/home")
+        self.assertFalse(any(key.startswith("NEXUS_") for key in clean))
+        self.assertNotIn("PYTHONPATH", clean)
+        self.assertNotIn("PYTHONHOME", clean)
+        self.assertNotIn("VIRTUAL_ENV", clean)
+
+    def test_dirty_worktree_is_a_hard_failure_before_candidate_archive(self) -> None:
+        completed = subprocess.CompletedProcess(
+            args=["git", "status"],
+            returncode=0,
+            stdout=" M tools/nexus_release_hardening.py\n?? untracked-release-input.txt\n",
+        )
+        with mock.patch.object(HARDENING_RUNNER.subprocess, "run", return_value=completed):
+            result = HARDENING_RUNNER._worktree_audit("candidate-tree-clean")
+        self.assertEqual(result.status, "fail")
+        self.assertIn("same HEAD", result.detail)
 
 
 if __name__ == "__main__":
