@@ -130,7 +130,10 @@ class HardenedNexusAPI(_ProviderNexusAPI):
             )
 
         operation = request.get("operation")
-        if operation in _CIVIC_OBSERVATION_OPERATIONS:
+        # Keep malformed/unhashable operation values inside the established
+        # Provider/Core structured-error boundary. The civic overlay only owns
+        # its two exact string operation names.
+        if isinstance(operation, str) and operation in _CIVIC_OBSERVATION_OPERATIONS:
             return self._handle_civic_observation(request, safe_request_id)
 
         response = super().handle(request)
