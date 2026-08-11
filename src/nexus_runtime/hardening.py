@@ -29,6 +29,8 @@ from .civic_observation import (
     view_council_proceeding,
 )
 from .constitutional_amendment import (
+    AMENDMENT_BALLOT_OBJECT_TYPE,
+    AMENDMENT_RATIFICATION_OBJECT_TYPE,
     CONSTITUTIONAL_AMENDMENT_RESERVED_OBJECT_TYPES,
     ConstitutionalAmendmentError,
     ConstitutionalAmendmentService,
@@ -78,6 +80,9 @@ _CONSTITUTIONAL_AMENDMENT_OPERATIONS = frozenset(
         "constitution.amendment.propose",
         "constitution.amendment.verify",
     }
+)
+_PRIVATE_AMENDMENT_OBJECT_TYPES = frozenset(
+    {AMENDMENT_BALLOT_OBJECT_TYPE, AMENDMENT_RATIFICATION_OBJECT_TYPE}
 )
 _RUNTIME_RESERVED_WORLD_TYPES = (
     frozenset({"council_session"})
@@ -206,6 +211,60 @@ class HardenedNexusAPI(_ProviderNexusAPI):
             self.geometry,
         )
 
+    def _amendment_ballot_complete(self, ballot_ref: object) -> tuple[bool, int, int]:
+        if not isinstance(ballot_ref, str):
+            return False, 0, 0
+        ballot = self.world.inspect(ballot_ref)
+        if ballot.object_type != AMENDMENT_BALLOT_OBJECT_TYPE:
+            raise ConstitutionalAmendmentError(
+                "amendment_ballot_invalid",
+                "amendment ballot reference is invalid",
+            )
+        eligible = ballot.payload.get("eligible_citizens")
+        ballots = ballot.payload.get("ballots")
+        if not isinstance(eligible, list) or not isinstance(ballots, dict):
+            raise ConstitutionalAmendmentError(
+                "amendment_ballot_invalid",
+                "amendment ballot state is invalid",
+            )
+        return len(ballots) == len(eligible) and bool(eligible), len(ballots), len(eligible)
+
+    def _seal_amendment_record(self, item: dict[str, Any], *, full: bool) -> dict[str, Any]:
+        result = dict(item)
+        ballot_ref = result.get("ballot_ref")
+        if ballot_ref is None:
+            result["ballot_status"] = "not_started"
+            return result
+        complete, ballots_cast, eligible_count = self._amendment_ballot_complete(ballot_ref)
+        result["ballots_cast"] = ballots_cast
+        result["eligible_citizen_count"] = eligible_count
+        if complete:
+            result["ballot_status"] = "revealed_complete"
+            return result
+        result["ballot_status"] = "sealed_pending"
+        result["tally"] = {}
+        result["dissent_count"] = 0
+        result.pop("ballots", None)
+        result.pop("dissenting_citizen_ids", None)
+        result["direct_ballots_visible"] = False
+        return result
+
+    def _seal_amendment_history(self, response: dict[str, Any]) -> dict[str, Any]:
+        proposals = response.get("proposals")
+        if not isinstance(proposals, list):
+            raise ConstitutionalAmendmentError(
+                "amendment_history_invalid",
+                "constitutional amendment history is invalid",
+            )
+        output = dict(response)
+        output["proposals"] = [
+            self._seal_amendment_record(item, full=False)
+            if isinstance(item, dict)
+            else item
+            for item in proposals
+        ]
+        return output
+
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("request_id") if isinstance(request, dict) else None
         safe_request_id = request_id if self._request_id_is_preflight_safe(request_id) else None
@@ -235,6 +294,26 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                     "invalid_request",
                     "runtime-owned world object type requires a validated runtime operation",
                 )
+        elif operation == "world.inspect":
+            object_ref = request.get("object_ref")
+            if isinstance(object_ref, str):
+                try:
+                    inspected = self.world.inspect(object_ref)
+                except KeyError:
+                    pass
+                except OSError:
+                    return self._error(
+                        safe_request_id,
+                        "adapter_unavailable",
+                        "adapter or local storage operation is unavailable",
+                    )
+                else:
+                    if inspected.object_type in _PRIVATE_AMENDMENT_OBJECT_TYPES:
+                        return self._error(
+                            safe_request_id,
+                            "civic_private_record",
+                            "direct constitutional amendment ballots are available only through the Civic Observation access tiers",
+                        )
 
         # Keep malformed/unhashable operation values inside the established
         # Provider/Core structured-error boundary. Hardened overlays only own
@@ -311,7 +390,9 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                 response = self.constitutional_amendments.current()
             elif operation == "constitution.amendment.history":
                 self._require_exact_fields(request, operation, set())
-                response = self.constitutional_amendments.history()
+                response = self._seal_amendment_history(
+                    self.constitutional_amendments.history()
+                )
             elif operation == "constitution.amendment.verify":
                 self._require_exact_fields(request, operation, {"version_ref"})
                 response = self.constitutional_amendments.verify(
@@ -415,6 +496,22 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                         choice=choice,
                     )
                 )
+                eligible = response.get("eligible_citizens")
+                ballots_cast = response.get("ballots_cast")
+                eligible_count = len(eligible) if isinstance(eligible, list) else 0
+                complete = (
+                    type(ballots_cast) is int
+                    and eligible_count > 0
+                    and ballots_cast == eligible_count
+                )
+                response = dict(response)
+                response["eligible_citizen_count"] = eligible_count
+                if complete:
+                    response["ballot_status"] = "revealed_complete"
+                else:
+                    response["ballot_status"] = "sealed_pending"
+                    response.pop("tally", None)
+                    response.pop("dissenting_citizen_ids", None)
             else:  # pragma: no cover - dispatch set is closed above
                 return self._error(request_id, "unknown_operation", "operation is not supported")
         except ConstitutionalAmendmentError as exc:
@@ -685,8 +782,12 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                     full=response.get("access_tier") == "citizen_full",
                 )
                 if amendment_records:
+                    full = response.get("access_tier") == "citizen_full"
                     response = dict(response)
-                    response["constitutional_amendments"] = amendment_records
+                    response["constitutional_amendments"] = [
+                        self._seal_amendment_record(item, full=full)
+                        for item in amendment_records
+                    ]
                 if response.get("access_tier") == "public_gallery":
                     council = response.get("council")
                     if not isinstance(council, dict):
