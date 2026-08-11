@@ -31,6 +31,13 @@ class OperatorToolingTests(unittest.TestCase):
             self.assertEqual(paths.config, root / ".nexus" / "operator.json")
             self.assertEqual(paths.tui_binary, root / "tui" / "target" / "release" / "nexus")
 
+    @unittest.skipIf(os.name == "nt", "POSIX executable-bit contract")
+    def test_repo_root_launcher_is_executable(self) -> None:
+        launcher = Path(__file__).resolve().parents[1] / "nexus"
+        self.assertTrue(launcher.is_file())
+        self.assertTrue(os.access(launcher, os.X_OK))
+        self.assertEqual(launcher.read_text(encoding="utf-8").splitlines()[0], "#!/usr/bin/env bash")
+
     @unittest.skipIf(os.name == "nt", "POSIX permission contract")
     def test_private_directory_is_owner_only_and_symlink_is_refused(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
