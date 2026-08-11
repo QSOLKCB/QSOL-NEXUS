@@ -4,6 +4,13 @@ from dataclasses import asdict
 import re
 from typing import Any
 
+from .action_awareness import (
+    ACTION_AWARENESS_RESERVED_OBJECT_TYPES,
+    ActionAwarenessError,
+    action_awareness_policy_snapshot,
+    create_action_expectation,
+    reconcile_action_expectation,
+)
 from .adapters.base import AdapterProtocolError
 from .adapters.local_ai import LocalAIActor
 from .adapters.ollama import OllamaActor
@@ -29,7 +36,16 @@ _PATHISH_ERROR = re.compile(
 _CIVIC_OBSERVATION_OPERATIONS = frozenset(
     {"council.proceedings.policy", "council.proceedings.view"}
 )
-_RUNTIME_RESERVED_WORLD_TYPES = frozenset({"council_session"})
+_ACTION_AWARENESS_OPERATIONS = frozenset(
+    {
+        "action.awareness.expect_create",
+        "action.awareness.policy",
+        "action.awareness.reconcile",
+    }
+)
+_RUNTIME_RESERVED_WORLD_TYPES = (
+    frozenset({"council_session"}) | ACTION_AWARENESS_RESERVED_OBJECT_TYPES
+)
 
 
 def _scrub_summary(scrubber: SecretScrubber, text: str) -> tuple[str, dict[str, Any]]:
@@ -170,24 +186,28 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                 return self._error(
                     safe_request_id,
                     "invalid_request",
-                    "council_session is runtime-owned and requires a validated Council run",
+                    "runtime-owned world object type requires a validated runtime operation",
                 )
 
         # Keep malformed/unhashable operation values inside the established
-        # Provider/Core structured-error boundary. The civic overlay only owns
-        # its two exact string operation names.
+        # Provider/Core structured-error boundary. Hardened overlays only own
+        # their exact string operation names.
         if isinstance(operation, str) and operation in _CIVIC_OBSERVATION_OPERATIONS:
             return self._handle_civic_observation(request, safe_request_id)
+        if isinstance(operation, str) and operation in _ACTION_AWARENESS_OPERATIONS:
+            return self._handle_action_awareness(request, safe_request_id)
 
         response = super().handle(request)
         if operation == "system.health" and response.get("status") == "ok":
             response = dict(response)
             response["control_plane_limits"] = control_plane_policy_snapshot()
             response["civic_observation"] = civic_observation_policy_snapshot(self.geometry)
+            response["action_awareness"] = action_awareness_policy_snapshot()
         elif operation == "system.operations" and response.get("status") == "ok":
             response = dict(response)
             operations = list(response.get("operations", []))
             operations.extend(sorted(_CIVIC_OBSERVATION_OPERATIONS))
+            operations.extend(sorted(_ACTION_AWARENESS_OPERATIONS))
             response["operations"] = sorted(set(operations))
 
         if operation == "actor.chat" and response.get("status") == "ok":
@@ -198,6 +218,107 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                 response["response"] = scrubbed_text
                 response["response_secret_scrub"] = summary
 
+        return sanitize_public_response(response)
+
+    def _handle_action_awareness(
+        self,
+        request: dict[str, Any],
+        request_id: str | None,
+    ) -> dict[str, Any]:
+        operation = request.get("operation")
+        try:
+            if operation == "action.awareness.policy":
+                self._require_exact_fields(request, operation, set())
+                response: dict[str, Any] = {
+                    "status": "ok",
+                    "policy": action_awareness_policy_snapshot(),
+                }
+            elif operation == "action.awareness.expect_create":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"actor_id", "action_label", "object_type", "payload", "provenance"},
+                )
+                actor_id = self._require_str(request, "actor_id")
+                object_type = self._require_str(request, "object_type")
+                action_label = self._require_str(request, "action_label")
+                if self.scrubber.scrub(actor_id).changed:
+                    raise ValueError("actor_id must not contain credential-shaped text")
+                if self.scrubber.scrub(object_type).changed:
+                    raise ValueError("object_type must not contain credential-shaped text")
+
+                payload = request.get("payload")
+                if not isinstance(payload, dict):
+                    raise ValueError("payload must be an object")
+                provenance = request.get("provenance", {"actor": "human_operator"})
+                if not isinstance(provenance, dict):
+                    raise ValueError("provenance must be an object")
+
+                label_result = self.scrubber.scrub(action_label)
+                clean_payload, payload_events = self._scrub_semantic_value(payload)
+                clean_provenance, provenance_events = self._scrub_semantic_value(provenance)
+                events = list(label_result.events) + payload_events + provenance_events
+                expectation = self._run_real_mutation(
+                    lambda: create_action_expectation(
+                        self.world,
+                        actor_id=actor_id,
+                        action_label=label_result.text,
+                        object_type=object_type,
+                        payload=clean_payload,
+                        provenance=clean_provenance,
+                    )
+                )
+                response = {
+                    "status": "ok",
+                    "expectation_ref": expectation.object_id,
+                    "expectation": expectation.payload,
+                    "secret_scrub": {
+                        "changed": bool(events),
+                        "event_count": len(events),
+                        "secret_types": sorted({event.secret_type for event in events}),
+                    },
+                }
+            elif operation == "action.awareness.reconcile":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"expectation_ref", "observed_object_ref"},
+                )
+                expectation_ref = self._require_str(request, "expectation_ref")
+                observed_object_ref = request.get("observed_object_ref")
+                if observed_object_ref is not None and (
+                    not isinstance(observed_object_ref, str) or not observed_object_ref
+                ):
+                    raise ValueError("observed_object_ref must be a non-empty string when supplied")
+                reconciliation = self._run_real_mutation(
+                    lambda: reconcile_action_expectation(
+                        self.world,
+                        expectation_ref=expectation_ref,
+                        observed_object_ref=observed_object_ref,
+                    )
+                )
+                response = {
+                    "status": "ok",
+                    "reconciliation_ref": reconciliation.object_id,
+                    "reconciliation": reconciliation.payload,
+                }
+            else:  # pragma: no cover - dispatch set is closed above
+                return self._error(request_id, "unknown_operation", "operation is not supported")
+        except ActionAwarenessError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except TrapError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except (KeyError, TypeError, ValueError) as exc:
+            return self._error(request_id, "invalid_request", str(exc))
+        except OSError:
+            return self._error(
+                request_id,
+                "adapter_unavailable",
+                "adapter or local storage operation is unavailable",
+            )
+
+        if request_id is not None:
+            response = {"request_id": request_id, **response}
         return sanitize_public_response(response)
 
     def _handle_civic_observation(
