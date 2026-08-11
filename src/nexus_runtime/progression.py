@@ -71,7 +71,8 @@ def progression_policy_snapshot():
     ]
     snapshot["play_rule"] = (
         "Monopoly, Life Paths, The Long Shift and Psyche-Out Chess participation may enter a portfolio only when "
-        "bound to a validated authoritative game-state object; one game-state ref may be credited once per actor/model identity"
+        "bound to a validated authoritative game-state object; Long Shift and Psyche-Out Chess AI credit additionally "
+        "requires runtime-owned model-execution receipts; one game-state ref may be credited once per actor/model identity"
     )
     snapshot["compatibility_rule"] = (
         "PR #47 progression states remain immutable and valid; absent PR #48 activity counts are projected as zero until the next successor"
@@ -283,24 +284,53 @@ class ProgressionService(_CoreProgressionService):
                 "progression_invalid_play",
                 "play record must use the activity matching long_shift or psyche_chess",
             )
+
         try:
             if game_kind == "long_shift":
                 from .culture_lineage import verify_long_shift_lineage
+                from .long_shift import inspect_long_shift
 
-                game = verify_long_shift_lineage(self.world, game_ref)
+                game = inspect_long_shift(self.world, game_ref)
+                verifier = verify_long_shift_lineage
+                label = "Long Shift"
             else:
                 from .culture_lineage import verify_psyche_chess_lineage
+                from .psyche_chess_hardened import inspect_psyche_chess
 
-                game = verify_psyche_chess_lineage(self.world, game_ref)
+                game = inspect_psyche_chess(self.world, game_ref)
+                verifier = verify_psyche_chess_lineage
+                label = "Psyche-Out Chess"
         except KeyError as exc:
             raise ProgressionError("progression_game_not_found", "game state was not found") from exc
         except ValueError as exc:
-            raise ProgressionError("progression_game_mismatch", "game state or lineage failed its engine validator") from exc
+            raise ProgressionError("progression_game_mismatch", "game state failed its engine validator") from exc
+
         if game.payload.get("completed") is not True:
             raise ProgressionError(
                 "progression_game_incomplete",
                 "Long Shift and Psyche-Out Chess are credited only from a completed authoritative game state",
             )
+
+        # Validate the complete game independently of the claimant. This catches
+        # forged state and requires every AI-controlled gameplay transition to
+        # carry a runtime-owned execution receipt.
+        try:
+            verifier(self.world, game_ref)
+        except (KeyError, ValueError) as exc:
+            code = (
+                "progression_game_execution_mismatch"
+                if "execution" in str(exc).lower()
+                else "progression_game_mismatch"
+            )
+            raise ProgressionError(
+                code,
+                (
+                    f"{label} progression requires runtime-owned model execution for every AI turn"
+                    if code == "progression_game_execution_mismatch"
+                    else f"{label} game state or lineage failed deterministic replay"
+                ),
+            ) from exc
+
         players = game.payload.get("players")
         controllers = game.payload.get("controllers")
         if not isinstance(players, list) or actor_id not in players:
@@ -310,12 +340,30 @@ class ProgressionService(_CoreProgressionService):
                 "progression_game_identity_mismatch",
                 "only an explicitly AI-controlled seat creates AI progression",
             )
+
+        # An AI controller label is descriptive metadata, not proof that this
+        # model played. Replayed execution receipts bind each AI turn to the
+        # actual member/model pair; the claimant must match and must have
+        # executed at least one turn.
+        try:
+            verifier(
+                self.world,
+                game_ref,
+                claimed_actor_id=actor_id,
+                claimed_model_id=model_id,
+            )
+        except (KeyError, ValueError) as exc:
+            raise ProgressionError(
+                "progression_game_execution_mismatch",
+                f"{label} progression requires replay-valid turns executed by the claimed model",
+            ) from exc
+
         return self._record(
             actor_id=actor_id,
             model_id=model_id,
             activity_id=activity_id,
             prompt=f"Validated completed participation in {game_kind}.",
-            output=f"Participation bound to completed authoritative game lineage ending at {game_ref}.",
+            output=f"Participation bound to completed authoritative game lineage ending at {game_ref} and runtime-owned model execution receipts.",
             source_refs=[game_ref],
             commission_ref=None,
             play_binding={"game_kind": game_kind, "game_ref": game_ref},
