@@ -24,6 +24,27 @@ For this compact constitutional layer, the only imported logical dependencies pe
 
 These are Lean's standard logical/kernel-facing dependencies, not NEXUS-specific assumptions. Any additional dependency printed by an advertised theorem causes `audit.sh` to fail until it is reviewed and the trust boundary is explicitly reconsidered.
 
+## Current observed dependency profile
+
+On the audited 24-theorem surface under Lean 4.33.0:
+
+- **19 theorems depend on no axioms**;
+- **5 theorems depend only on `propext`**;
+- **0 theorems currently depend on `Classical.choice`**;
+- **0 theorems currently depend on `Quot.sound`**;
+- **0 advertised theorems depend on a NEXUS-defined axiom**;
+- **0 proof holes are present**.
+
+The five current `propext` users are:
+
+1. `Nexus.no_agi_assumption`
+2. `Nexus.consensus_is_not_assumed_truth`
+3. `Nexus.identity_is_not_assumed_authority`
+4. `Nexus.relief_replacement_does_not_create_extra_seat`
+5. `Nexus.civic_proxy_does_not_create_extra_vote`
+
+This profile is observational, not hard-coded as a theorem claim. The final #52/#53 publication must regenerate it from the exact reviewed formalization head.
+
 ## Advertised declarations
 
 The current audit covers all **24 theorem declarations** in the project:
