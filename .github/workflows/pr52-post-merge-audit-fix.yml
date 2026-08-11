@@ -30,8 +30,9 @@ jobs:
           python3 tools/pr52_post_merge_audit_fix.py
           python3 - <<'PY'
           from pathlib import Path
-          path = Path('tools/nexus_release_hardening.py')
-          text = path.read_text(encoding='utf-8')
+
+          runner = Path('tools/nexus_release_hardening.py')
+          text = runner.read_text(encoding='utf-8')
           if 'import re\n' not in text:
               text = text.replace('import os\n', 'import os\nimport re\n', 1)
           text = text.replace(
@@ -39,7 +40,18 @@ jobs:
               '12/12 Grok findings (PR49) and 6/6 post-merge findings pinned',
               1,
           )
-          path.write_text(text, encoding='utf-8')
+          runner.write_text(text, encoding='utf-8')
+
+          main = Path('tui/src/main.rs')
+          source = main.read_text(encoding='utf-8')
+          old = '        app.append(&format!("*** NEXUS TUI {} — local room, no IRC server", env!("CARGO_PKG_VERSION")));'
+          new = '''        app.append(&format!(
+              "*** NEXUS TUI {} — local room, no IRC server",
+              env!("CARGO_PKG_VERSION")
+          ));'''
+          if source.count(old) != 1:
+              raise SystemExit('expected exactly one unformatted TUI release banner')
+          main.write_text(source.replace(old, new, 1), encoding='utf-8')
           PY
           python3 -m unittest \
             tests.test_post_merge_grok_audit \
