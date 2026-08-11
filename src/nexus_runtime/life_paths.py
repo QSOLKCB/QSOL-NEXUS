@@ -4,7 +4,7 @@ from copy import deepcopy
 import hashlib
 from typing import Any, Sequence
 
-from .game_cards import clean_seed, player_roster
+from .game_cards import PLAYER_ID_RE, clean_seed
 from .world import WorldObject, WorldStore
 
 
@@ -96,6 +96,29 @@ def life_paths_catalog() -> dict[str, Any]:
     }
 
 
+def _roster(players: Sequence[str], human_players: Sequence[str]) -> tuple[list[str], dict[str, str]]:
+    if isinstance(players, (str, bytes)) or not isinstance(players, Sequence):
+        raise ValueError("Life Paths players must be a list of player ids")
+    if not 1 <= len(players) <= MAX_PLAYERS:
+        raise ValueError(f"Life Paths requires between 1 and {MAX_PLAYERS} players")
+    clean: list[str] = []
+    folded: set[str] = set()
+    for player in players:
+        if not isinstance(player, str) or PLAYER_ID_RE.fullmatch(player) is None:
+            raise ValueError("Life Paths player ids must use 1-32 ASCII letters, digits, _, . or -")
+        key = player.casefold()
+        if key in folded:
+            raise ValueError("Life Paths player ids must be unique ignoring case")
+        folded.add(key)
+        clean.append(player)
+    if isinstance(human_players, (str, bytes)) or not isinstance(human_players, Sequence):
+        raise ValueError("Life Paths human_players must be a list of registered player ids")
+    humans = set(human_players)
+    if not all(isinstance(player, str) for player in humans) or not humans.issubset(set(clean)):
+        raise ValueError("Life Paths human_players must name registered players")
+    return clean, {player: ("human" if player in humans else "ai") for player in clean}
+
+
 def _bonus(seed: str, player: str, chapter_id: str, choice_id: str) -> tuple[str, int]:
     digest = hashlib.sha256(f"{seed}|{player}|{chapter_id}|{choice_id}".encode("utf-8")).digest()
     trait = TRAITS[digest[0] % len(TRAITS)]
@@ -123,8 +146,8 @@ def _content(state: dict[str, Any]) -> str:
     for player in state["players"]:
         account = state["accounts"][player]
         lines.append(
-            f"- {player} curiosity={account['curiosity']} craft={account['craft']} "
-            f"community={account['community']} resilience={account['resilience']}"
+            f"- {player} controller={state['controllers'][player]} curiosity={account['curiosity']} "
+            f"craft={account['craft']} community={account['community']} resilience={account['resilience']}"
         )
     if state["completed"]:
         for player in state["players"]:
@@ -140,12 +163,7 @@ def new_life_paths(
     players: Sequence[str] = ("Alpha",),
     human_players: Sequence[str] = (),
 ) -> WorldObject:
-    roster, controllers = player_roster(
-        players,
-        human_players=human_players,
-        minimum=1,
-        maximum=MAX_PLAYERS,
-    )
+    roster, controllers = _roster(players, human_players)
     state: dict[str, Any] = {
         "schema": LIFE_PATHS_SCHEMA,
         "game_kind": LIFE_PATHS_KIND,
@@ -153,10 +171,7 @@ def new_life_paths(
         "seed": clean_seed(seed, "long-road-home"),
         "players": roster,
         "controllers": controllers,
-        "accounts": {
-            player: {trait: 2 for trait in TRAITS}
-            for player in roster
-        },
+        "accounts": {player: {trait: 2 for trait in TRAITS} for player in roster},
         "chapter_index": 0,
         "turn_index": 0,
         "completed": False,
@@ -190,6 +205,8 @@ def _validate(state: dict[str, Any]) -> None:
         raise ValueError("Life Paths player roster is invalid")
     if not isinstance(controllers, dict) or set(controllers) != set(players):
         raise ValueError("Life Paths controllers are invalid")
+    if not all(controllers[player] in {"human", "ai"} for player in players):
+        raise ValueError("Life Paths controller types are invalid")
     if not isinstance(accounts, dict) or set(accounts) != set(players):
         raise ValueError("Life Paths accounts are invalid")
     for player in players:
