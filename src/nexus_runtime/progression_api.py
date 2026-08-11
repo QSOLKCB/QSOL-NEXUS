@@ -12,6 +12,7 @@ from .life_paths import (
 )
 from .modes import get_mode
 from .progression import (
+    ACTIVITY_CATALOG,
     PROGRESSION_RESERVED_OBJECT_TYPES,
     ProgressionError,
     ProgressionService,
@@ -36,16 +37,6 @@ _PROGRESSION_OPERATIONS = frozenset(
         "life.paths.catalog",
         "life.paths.new",
         "life.paths.inspect",
-        "life.paths.act",
-    }
-)
-
-_MUTATING_PROGRESSION_OPERATIONS = frozenset(
-    {
-        "progression.commission.create",
-        "progression.act",
-        "progression.play.record",
-        "life.paths.new",
         "life.paths.act",
     }
 )
@@ -123,8 +114,19 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
                     operation,
                     {"member", "activity_id", "prompt", "source_refs", "commission_ref", "mode"},
                 )
-                actor = self._activity_actor(request.get("member"))
                 activity_id = self._require_str(request, "activity_id")
+                activity_policy = ACTIVITY_CATALOG.get(activity_id)
+                if activity_policy is None:
+                    raise ProgressionError(
+                        "progression_unknown_activity",
+                        "activity_id must name a registered NEXUS progression activity",
+                    )
+                if activity_id in {"play_monopoly", "play_life_paths"}:
+                    raise ProgressionError(
+                        "progression_play_requires_game_ref",
+                        "play activities must use progression.play.record with an authoritative game state",
+                    )
+                actor = self._activity_actor(request.get("member"))
                 raw_prompt = self._require_str(request, "prompt")
                 clean_prompt = self.scrubber.scrub(raw_prompt)
                 source_refs = request.get("source_refs", [])
@@ -138,9 +140,6 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
                     raise ProgressionError("progression_invalid_mode", "mode must be text")
                 mode = get_mode(mode_id)
                 self.citizenship.assert_mode_access(actor, mode.mode_id)
-                activity_policy = next(
-                    item for item in activity_catalog() if item["activity_id"] == activity_id
-                )
                 evidence_context = self.council.build_evidence_context(source_refs)
                 activity_instruction = (
                     mode.prompt_instruction
@@ -263,12 +262,15 @@ class ProgressionNexusAPI(WorldContinuityNexusAPI):
                 response = {"status": "ok", "game_ref": state.object_id, "game": state.payload}
             elif operation == "life.paths.act":
                 self._require_exact_fields(request, operation, {"game_ref", "player_id", "choice_id"})
+                game_ref = self._require_str(request, "game_ref")
+                player_id = self._require_str(request, "player_id")
+                choice_id = self._require_str(request, "choice_id")
                 state = self._run_real_mutation(
                     lambda: apply_life_paths_choice(
                         self.world,
-                        self._require_str(request, "game_ref"),
-                        player_id=self._require_str(request, "player_id"),
-                        choice_id=self._require_str(request, "choice_id"),
+                        game_ref,
+                        player_id=player_id,
+                        choice_id=choice_id,
                     )
                 )
                 response = {"status": "ok", "game_ref": state.object_id, "game": state.payload}
