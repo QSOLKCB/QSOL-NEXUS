@@ -137,7 +137,7 @@ class AnarchyModeTests(unittest.TestCase):
         self.assertTrue(result["anarchy_guardian"]["accepted"])
         failsafe = api.handle({"operation": "failsafe.status", "member_id": "Riot"})
         self.assertEqual(failsafe["status"], "ok")
-        self.assertEqual(failsafe["states"], [])
+        self.assertEqual(failsafe["members"], {})
         session = api.world.inspect(result["session_ref"])
         riot_events = [
             event["event"]
