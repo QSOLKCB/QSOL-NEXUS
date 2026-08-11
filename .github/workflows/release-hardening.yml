@@ -6,6 +6,7 @@ on:
       - '.github/workflows/**'
       - 'nexus'
       - 'pyproject.toml'
+      - 'rust-toolchain.toml'
       - 'release/**'
       - 'src/nexus_runtime/**'
       - 'tests/**'
@@ -22,11 +23,14 @@ jobs:
   pre-wall-hardening:
     runs-on: ubuntu-latest
     timeout-minutes: 35
+    env:
+      HARDENING_REPORT: ${{ runner.temp }}/nexus-release-hardening-${{ github.run_id }}-${{ github.run_attempt }}.json
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          fetch-depth: 0
+          fetch-depth: 1
+          persist-credentials: false
 
       - name: Toolchain versions
         shell: bash
@@ -35,22 +39,33 @@ jobs:
           python3 --version
           cargo --version
           rustc --version
+          test "$(cargo --version | awk '{print $2}')" = "1.97.1"
+          test "$(rustc --version | awk '{print $2}')" = "1.97.1"
 
-      - name: Run PR49 hardening matrix
+      - name: Run pre-stable hardening matrix
         env:
           PYTHONPATH: src
         run: |
           set -euo pipefail
           python3 tools/nexus_release_hardening.py \
             --iterations 128 \
-            --json-out /tmp/nexus-release-hardening.json
+            --json-out "$HARDENING_REPORT"
 
       - name: Show machine-readable report
         if: always()
         shell: bash
         run: |
-          if test -f /tmp/nexus-release-hardening.json; then
-            cat /tmp/nexus-release-hardening.json
+          if test -f "$HARDENING_REPORT"; then
+            cat "$HARDENING_REPORT"
           else
             echo 'release hardening report was not produced'
           fi
+
+      - name: Upload machine-readable hardening report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: nexus-release-hardening-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.HARDENING_REPORT }}
+          if-no-files-found: warn
+          retention-days: 30
