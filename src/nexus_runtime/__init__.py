@@ -145,6 +145,44 @@ _culture_api.add_psyche = add_psyche
 _culture_api.apply_psyche_chess_move = apply_psyche_chess_move
 _culture_api.inspect_psyche_chess = inspect_psyche_chess
 
+# PR #50 is the final feature overlay before the release-candidate pass.
+# The Wall is append-only social memory: never evidence or governance authority.
+from . import culture_api_overlay as _culture_api_overlay
+from . import wall_api as _wall_api
+from .wall import (
+    WALL_POLICY_ID,
+    WALL_POST_OBJECT_TYPE,
+    WALL_RESERVED_OBJECT_TYPES,
+    WALL_SCHEMA_VERSION,
+    WALL_TOMBSTONE_OBJECT_TYPE,
+    WallError,
+    WallService,
+    wall_policy_snapshot,
+)
+from .wall_api import WallNexusAPI as _FinalWallNexusAPI
+
+WallNexusAPI = _FinalWallNexusAPI
+HardenedNexusAPI = _FinalWallNexusAPI
+ProviderNexusAPI = _FinalWallNexusAPI
+EpochNexusAPI = _FinalWallNexusAPI
+GuardianNexusAPI = _FinalWallNexusAPI
+CivicDueProcessNexusAPI = _FinalWallNexusAPI
+WorldContinuityNexusAPI = _FinalWallNexusAPI
+ProgressionNexusAPI = _FinalWallNexusAPI
+CultureNexusAPI = _FinalWallNexusAPI
+NexusAPI = _FinalWallNexusAPI
+
+_api.NexusAPI = _FinalWallNexusAPI
+_epoch_api.EpochNexusAPI = _FinalWallNexusAPI
+_provider_api.ProviderNexusAPI = _FinalWallNexusAPI
+_guardian_api.GuardianNexusAPI = _FinalWallNexusAPI
+_civic_due_process_api.CivicDueProcessNexusAPI = _FinalWallNexusAPI
+_world_continuity_api.WorldContinuityNexusAPI = _FinalWallNexusAPI
+_progression_api.ProgressionNexusAPI = _FinalWallNexusAPI
+_culture_api.CultureNexusAPI = _FinalWallNexusAPI
+_culture_api_overlay.CultureNexusAPI = _FinalWallNexusAPI
+_wall_api.WallNexusAPI = _FinalWallNexusAPI
+
 __all__ = [
     "ANARCHY_MODE_ID",
     "ANARCHY_REGION_ID",
@@ -238,3 +276,15 @@ __all__ = [
     "progression_policy_snapshot",
     "psyche_chess_catalog",
 ]
+
+__all__.extend([
+    "WALL_POLICY_ID",
+    "WALL_POST_OBJECT_TYPE",
+    "WALL_RESERVED_OBJECT_TYPES",
+    "WALL_SCHEMA_VERSION",
+    "WALL_TOMBSTONE_OBJECT_TYPE",
+    "WallError",
+    "WallNexusAPI",
+    "WallService",
+    "wall_policy_snapshot",
+])

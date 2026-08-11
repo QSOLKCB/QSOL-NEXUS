@@ -21,7 +21,7 @@ pub struct RoomSpec {
     pub label: &'static str,
 }
 
-pub const ROOMS: [RoomSpec; 24] = [
+pub const ROOMS: [RoomSpec; 25] = [
     RoomSpec {
         channel: "#observatory",
         mode_id: "analytical",
@@ -51,6 +51,12 @@ pub const ROOMS: [RoomSpec; 24] = [
         mode_id: "meme_casual",
         region_id: "commons",
         label: "Commons / Meme-Casual",
+    },
+    RoomSpec {
+        channel: "#wall",
+        mode_id: "meme_casual",
+        region_id: "commons",
+        label: "Commons / BBS Wall — Social Memory, Not Evidence",
     },
     RoomSpec {
         channel: "#differential-clinic",
@@ -168,7 +174,7 @@ pub const ROOMS: [RoomSpec; 24] = [
     },
 ];
 
-pub const COMMANDS: [&str; 38] = [
+pub const COMMANDS: [&str; 39] = [
     "/help",
     "/join",
     "/mode",
@@ -185,6 +191,7 @@ pub const COMMANDS: [&str; 38] = [
     "/trap",
     "/steno",
     "/citizen",
+    "/wall",
     "/me",
     "/msg",
     "/nick",
@@ -317,6 +324,19 @@ pub enum CitizenCommand {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum WallCommand {
+    Help,
+    Recent { limit: u64 },
+    Oldest { limit: u64 },
+    Mine { limit: u64 },
+    Since { seconds: u64, limit: u64 },
+    Post { text: String },
+    AiPost { nick: String, prompt: String },
+    Tombstone { post_ref: String, reason: String },
+    Inspect { event_ref: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum InputCommand {
     Noop,
     Help,
@@ -330,6 +350,7 @@ pub enum InputCommand {
     Trap(String),
     Stenographer(StenographerCommand),
     Citizen(CitizenCommand),
+    Wall(WallCommand),
     Me(String),
     Msg { target: String, text: String },
     Nick(String),
@@ -386,6 +407,7 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/trap" => require(rest, "/trap <closed trap command>").map(InputCommand::Trap),
         "/steno" => parse_stenographer(rest).map(InputCommand::Stenographer),
         "/citizen" => parse_citizen(rest).map(InputCommand::Citizen),
+        "/wall" => parse_wall(rest).map(InputCommand::Wall),
         "/me" => require(rest, "/me <action>").map(InputCommand::Me),
         "/nick" => require(rest, "/nick <name>").map(InputCommand::Nick),
         "/ref" => require(rest, "/ref <object:sha256>").map(InputCommand::Ref),
@@ -458,6 +480,126 @@ pub fn parse_input(input: &str) -> Result<InputCommand, String> {
         "/unset" => require(rest, "/unset %name").map(InputCommand::Unset),
         "/dcc" => parse_dcc(rest).map(InputCommand::Dcc),
         other => Err(format!("unknown command: {other}; try /help")),
+    }
+}
+
+fn wall_limit(raw: &str, default: u64) -> Result<u64, String> {
+    if raw.trim().is_empty() {
+        return Ok(default);
+    }
+    if raw.contains(char::is_whitespace) {
+        return Err("Wall limit must be one integer from 1 to 100".to_string());
+    }
+    let value = raw
+        .parse::<u64>()
+        .map_err(|_| "Wall limit must be one integer from 1 to 100".to_string())?;
+    if !(1..=100).contains(&value) {
+        return Err("Wall limit must be 1-100".to_string());
+    }
+    Ok(value)
+}
+
+fn wall_duration(raw: &str) -> Result<u64, String> {
+    let (suffix_index, suffix) = raw
+        .char_indices()
+        .next_back()
+        .ok_or_else(|| "Wall duration must look like 30m, 24h or 7d".to_string())?;
+    if suffix_index == 0 {
+        return Err("Wall duration must look like 30m, 24h or 7d".to_string());
+    }
+    let digits = &raw[..suffix_index];
+    let value = digits
+        .parse::<u64>()
+        .map_err(|_| "Wall duration must look like 30m, 24h or 7d".to_string())?;
+    if value == 0 {
+        return Err("Wall duration must be positive".to_string());
+    }
+    let multiplier = match suffix.to_ascii_lowercase() {
+        'm' => 60u64,
+        'h' => 3_600u64,
+        'd' => 86_400u64,
+        _ => return Err("Wall duration must use m, h or d".to_string()),
+    };
+    let seconds = value
+        .checked_mul(multiplier)
+        .ok_or_else(|| "Wall duration is too large".to_string())?;
+    if seconds > 315_576_000 {
+        return Err("Wall duration exceeds ten years".to_string());
+    }
+    Ok(seconds)
+}
+
+fn parse_wall(rest: &str) -> Result<WallCommand, String> {
+    let usage = "usage: /wall [1-100|help|oldest [n]|mine [n]|since <30m|24h|7d> [n]|post text|ai nick prompt|tombstone object:ref [reason]|inspect object:ref]";
+    let rest = rest.trim();
+    if rest.is_empty() {
+        return Ok(WallCommand::Recent { limit: 20 });
+    }
+    if !rest.contains(char::is_whitespace) {
+        if rest.eq_ignore_ascii_case("help") {
+            return Ok(WallCommand::Help);
+        }
+        if let Ok(limit) = wall_limit(rest, 20) {
+            return Ok(WallCommand::Recent { limit });
+        }
+    }
+    let (subcommand, tail) = split_first(rest).ok_or_else(|| usage.to_string())?;
+    match subcommand.to_ascii_lowercase().as_str() {
+        "help" if tail.is_empty() => Ok(WallCommand::Help),
+        "oldest" => Ok(WallCommand::Oldest {
+            limit: wall_limit(tail, 20)?,
+        }),
+        "mine" => Ok(WallCommand::Mine {
+            limit: wall_limit(tail, 20)?,
+        }),
+        "post" if !tail.trim().is_empty() => Ok(WallCommand::Post {
+            text: tail.to_string(),
+        }),
+        "ai" => {
+            let (nick, prompt) = split_first(tail).ok_or_else(|| usage.to_string())?;
+            if prompt.trim().is_empty() {
+                return Err(usage.to_string());
+            }
+            Ok(WallCommand::AiPost {
+                nick: nick.to_string(),
+                prompt: prompt.to_string(),
+            })
+        }
+        "since" => {
+            let (duration, limit_text) = if tail.contains(char::is_whitespace) {
+                split_first(tail).ok_or_else(|| usage.to_string())?
+            } else {
+                (tail, "")
+            };
+            Ok(WallCommand::Since {
+                seconds: wall_duration(duration)?,
+                limit: wall_limit(limit_text, 20)?,
+            })
+        }
+        "tombstone" => {
+            let (post_ref, reason) = if tail.contains(char::is_whitespace) {
+                split_first(tail).ok_or_else(|| usage.to_string())?
+            } else {
+                (tail, "")
+            };
+            if post_ref.trim().is_empty() {
+                return Err(usage.to_string());
+            }
+            Ok(WallCommand::Tombstone {
+                post_ref: post_ref.to_string(),
+                reason: if reason.trim().is_empty() {
+                    "operator moderation".to_string()
+                } else {
+                    reason.to_string()
+                },
+            })
+        }
+        "inspect" if !tail.trim().is_empty() && !tail.contains(char::is_whitespace) => {
+            Ok(WallCommand::Inspect {
+                event_ref: tail.to_string(),
+            })
+        }
+        _ => Err(usage.to_string()),
     }
 }
 

@@ -42,6 +42,7 @@
       "patterns": [
         "test_world_continuity.py",
         "test_guardian*.py",
+        "test_anarchy_guardian.py",
         "test_stenographer*.py"
       ]
     },
@@ -74,7 +75,9 @@
       "required": true,
       "patterns": [
         "test_release_hardening.py",
-        "test_readme_contract.py"
+        "test_release_hardening_grok_audit.py",
+        "test_readme_contract.py",
+        "test_wall*.py"
       ]
     }
   ],
@@ -101,6 +104,26 @@
       ]
     }
   ],
-  "post_wall_rule": "PR #51 must rerun this complete matrix after PR #50 changes the final feature surface",
+  "external_audit_closure": {
+    "source": "Grok PR #49 code review + security audit 311160d1",
+    "required_before_stable": true,
+    "finding_ids": [
+      "R1",
+      "R2",
+      "R3",
+      "R4",
+      "R5",
+      "R6",
+      "R7",
+      "R8",
+      "R9",
+      "R10",
+      "R11",
+      "R12"
+    ],
+    "status": "resolved_in_pre_stable_line",
+    "verification": "tests/test_release_hardening_grok_audit.py"
+  },
+  "post_wall_rule": "PR #51 must rerun this complete matrix after PR #50 changes the final feature surface and verify all 12 Grok PR49 findings remain closed",
   "authority_effect": "none"
 }
