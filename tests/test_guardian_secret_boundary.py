@@ -10,6 +10,19 @@ from nexus_runtime.guardian import GuardianError, GuardianStore
 SYNTHETIC_SECRET = "sk-ABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890"
 
 
+def latest_substrate_event(api: NexusAPI) -> dict[str, object]:
+    listed = api.handle(
+        {
+            "operation": "guardian.list",
+            "record_type": "substrate_event",
+            "limit": 10,
+        }
+    )
+    if listed.get("status") != "ok" or not listed.get("records"):
+        raise AssertionError(f"Guardian event unavailable: {listed!r}")
+    return listed["records"][-1]
+
+
 class GuardianSecretBoundaryTests(unittest.TestCase):
     def test_store_scrubs_all_string_values_before_persistence(self) -> None:
         store = GuardianStore()
@@ -53,7 +66,8 @@ class GuardianSecretBoundaryTests(unittest.TestCase):
             }
         )
         self.assertEqual(failed["status"], "error")
-        observation_ref = failed["anarchy_guardian"]["record_ref"]
+        self.assertTrue(failed["anarchy_guardian"]["accepted"])
+        observation_ref = latest_substrate_event(api)["record_ref"]
         candidate = api.handle(
             {
                 "operation": "guardian.reconcile",
@@ -97,7 +111,8 @@ class GuardianSecretBoundaryTests(unittest.TestCase):
                 "mode": "anarchy",
             }
         )
-        observation_ref = failed["anarchy_guardian"]["record_ref"]
+        self.assertTrue(failed["anarchy_guardian"]["accepted"])
+        observation_ref = latest_substrate_event(api)["record_ref"]
         reconciled = api.handle(
             {
                 "operation": "guardian.reconcile",
