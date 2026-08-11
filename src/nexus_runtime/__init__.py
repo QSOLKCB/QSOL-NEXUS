@@ -6,6 +6,7 @@ from . import api as _api
 from . import epoch_api as _epoch_api
 from . import provider_api as _provider_api
 from . import guardian_api as _guardian_api
+from . import civic_due_process_api as _civic_due_process_api
 from .civilization_api import CivilizationNexusAPI
 from .civilization_gauntlet import (
     CivilizationGauntlet,
@@ -43,40 +44,53 @@ from .civic_due_process import (
     CivicDueProcessService,
     civic_due_process_policy_snapshot,
 )
-from .civic_due_process_api import CivicDueProcessNexusAPI
+from .civic_due_process_api import CivicDueProcessNexusAPI as _BaseCivicDueProcessNexusAPI
 from .scrub import SecretScrubber
 from .stenographer import CourtroomStenographer, StenographerRecord, StenographerStore
 from .types import Ballot, CouncilMember, CouncilPolicy, Phase
 from .trap import DecoyAdmissionRequest, DecoyGate, TrapController, TrapStore
 from .world import WorldStore
+from .world_continuity import (
+    ARK_SCHEMA_VERSION,
+    CONTINUITY_POLICY_ID,
+    CONTINUITY_SCHEMA_VERSION,
+    ContinuityWorldStore,
+    WorldContinuityError,
+    continuity_policy_snapshot,
+)
+from .world_continuity_api import WorldContinuityNexusAPI
 
-# PR #44 is the final public runtime overlay. It preserves the PR #43 Guardian
-# and Anarchy contracts while separating constitutional citizenship identity
-# from current operational standing. Non-citizen repeat parole may trigger a
-# deterministic bounded XML re-entry exam; citizens retain citizenship through
-# ordinary Failsafe offences and receive restorative rather than admission
-# treatment. No due-process state creates extra votes or epistemic authority.
-HardenedNexusAPI = CivicDueProcessNexusAPI
-ProviderNexusAPI = CivicDueProcessNexusAPI
-EpochNexusAPI = CivicDueProcessNexusAPI
-GuardianNexusAPI = CivicDueProcessNexusAPI
-NexusAPI = CivicDueProcessNexusAPI
+# PR #46 is the final pre-beta public runtime overlay. It preserves every
+# constitutional/runtime contract through PR #45 while layering majority-quorum
+# WorldStore continuity, deterministic scrub/repair, self-describing cold Arks,
+# and non-destructive recovery around the existing content-addressed object
+# format. Storage redundancy never creates votes, evidence, or civic authority.
+HardenedNexusAPI = WorldContinuityNexusAPI
+ProviderNexusAPI = WorldContinuityNexusAPI
+EpochNexusAPI = WorldContinuityNexusAPI
+GuardianNexusAPI = WorldContinuityNexusAPI
+CivicDueProcessNexusAPI = WorldContinuityNexusAPI
+NexusAPI = WorldContinuityNexusAPI
 
 # Preserve established public import and CLI paths through every historical
-# overlay module. __main__.py imports EpochNexusAPI directly.
-_api.NexusAPI = CivicDueProcessNexusAPI
-_epoch_api.EpochNexusAPI = CivicDueProcessNexusAPI
-_provider_api.ProviderNexusAPI = CivicDueProcessNexusAPI
-_guardian_api.GuardianNexusAPI = CivicDueProcessNexusAPI
+# overlay module. __main__.py imports EpochNexusAPI directly after package init.
+_api.NexusAPI = WorldContinuityNexusAPI
+_epoch_api.EpochNexusAPI = WorldContinuityNexusAPI
+_provider_api.ProviderNexusAPI = WorldContinuityNexusAPI
+_guardian_api.GuardianNexusAPI = WorldContinuityNexusAPI
+_civic_due_process_api.CivicDueProcessNexusAPI = WorldContinuityNexusAPI
 
 __all__ = [
     "ANARCHY_MODE_ID",
     "ANARCHY_REGION_ID",
+    "ARK_SCHEMA_VERSION",
     "AnarchyCourtroomStenographer",
     "Ballot",
     "CIVIC_DUE_PROCESS_POLICY",
     "CIVIC_DUE_PROCESS_SCHEMA",
     "COMPUTE_EPOCH_POLICY_ID",
+    "CONTINUITY_POLICY_ID",
+    "CONTINUITY_SCHEMA_VERSION",
     "CURSED_XML_EXAM_ID",
     "CivicDueProcessError",
     "CivicDueProcessFailsafe",
@@ -86,6 +100,7 @@ __all__ = [
     "CivilizationGauntlet",
     "CivilizationGauntletError",
     "CivilizationNexusAPI",
+    "ContinuityWorldStore",
     "CouncilCoordinator",
     "CouncilMember",
     "CouncilPolicy",
@@ -112,10 +127,13 @@ __all__ = [
     "StenographerStore",
     "TrapController",
     "TrapStore",
+    "WorldContinuityError",
+    "WorldContinuityNexusAPI",
     "WorldStore",
     "civic_due_process_policy_snapshot",
     "civilization_gauntlet_policy_snapshot",
     "compute_epoch_policy_snapshot",
+    "continuity_policy_snapshot",
     "current_compute_epoch",
     "guardian_policy_snapshot",
 ]
