@@ -8,10 +8,12 @@ CULTURE_SCHEMA_VERSION = "nexus-ai-culture/1"
 CULTURE_POLICY_ID = "nexus-ai-culture-performance-psyche-play-v1"
 PERFORMANCE_OBJECT_TYPE = "nexus_performance_artifact"
 LONG_SHIFT_NARRATION_OBJECT_TYPE = "long_shift_narration"
+AI_GAME_EXECUTION_OBJECT_TYPE = "nexus_ai_game_execution"
 CULTURE_RESERVED_OBJECT_TYPES = frozenset(
     {
         PERFORMANCE_OBJECT_TYPE,
         LONG_SHIFT_NARRATION_OBJECT_TYPE,
+        AI_GAME_EXECUTION_OBJECT_TYPE,
         "long_shift_state",
         "psyche_chess_state",
     }
@@ -110,6 +112,7 @@ def culture_policy_snapshot() -> dict[str, Any]:
             "original_nexus_game": True,
             "ai_first_comedy_scifi_rpg": True,
             "deterministic_state_separate_from_narration": True,
+            "ai_turns_require_model_execution_receipts": True,
             "narrator_authority_effect": "none",
             "external_playbook_role": "high_level_structural_inspiration_only",
             "copied_setting_characters_rules_scenarios_or_prose": False,
@@ -118,6 +121,7 @@ def culture_policy_snapshot() -> dict[str, Any]:
             "standard_chess_legality_runtime_owned": True,
             "one_bounded_psyche_line_per_turn": True,
             "psyche_text_role": "delimited_untrusted_banter",
+            "ai_moves_require_model_execution_receipts": True,
             "psyche_changes_legal_moves": False,
             "psyche_changes_authority": False,
         },
@@ -133,6 +137,7 @@ def culture_policy_snapshot() -> dict[str, Any]:
 
 
 __all__ = [
+    "AI_GAME_EXECUTION_OBJECT_TYPE",
     "CULTURE_POLICY_ID",
     "CULTURE_RESERVED_OBJECT_TYPES",
     "CULTURE_SCHEMA_VERSION",
