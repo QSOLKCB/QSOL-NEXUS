@@ -29,9 +29,7 @@ _PATHISH_ERROR = re.compile(
 _CIVIC_OBSERVATION_OPERATIONS = frozenset(
     {"council.proceedings.policy", "council.proceedings.view"}
 )
-_RUNTIME_RESERVED_WORLD_TYPES = frozenset(
-    {"council_session", "evidence_snapshot", "receipt", "world_presence"}
-)
+_RUNTIME_RESERVED_WORLD_TYPES = frozenset({"council_session"})
 
 
 def _scrub_summary(scrubber: SecretScrubber, text: str) -> tuple[str, dict[str, Any]]:
@@ -162,13 +160,7 @@ class HardenedNexusAPI(_ProviderNexusAPI):
         operation = request.get("operation")
         if operation == "world.create":
             object_type = request.get("object_type")
-            provenance = request.get("provenance", {"actor": "human_operator"})
-            reserved = (
-                isinstance(object_type, str) and object_type in _RUNTIME_RESERVED_WORLD_TYPES
-            ) or (
-                isinstance(provenance, dict) and provenance.get("actor") == "nexus"
-            )
-            if reserved:
+            if isinstance(object_type, str) and object_type in _RUNTIME_RESERVED_WORLD_TYPES:
                 # Preserve Trap Base precedence for a mutation that would
                 # otherwise be rejected by this hardened public boundary.
                 try:
@@ -178,7 +170,7 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                 return self._error(
                     safe_request_id,
                     "invalid_request",
-                    "reserved runtime Council objects and nexus provenance require validated runtime operations",
+                    "council_session is runtime-owned and requires a validated Council run",
                 )
 
         # Keep malformed/unhashable operation values inside the established
