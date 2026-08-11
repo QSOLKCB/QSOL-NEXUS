@@ -1,14 +1,17 @@
 from __future__ import annotations
 
+from copy import deepcopy
+
 # Compatibility facade retained for public imports and older embeddings.
 # The hardened PR #47 implementation lives in progression_core. PR #48 extends
-# its closed activity catalog and service play validator without weakening the
-# immutable-lineage/cache hardening already reviewed there.
+# its closed activity catalog without invalidating immutable PR #47 states.
 from . import progression_core as _core
 from .progression_core import *  # noqa: F401,F403
 from .progression_core import ProgressionService as _CoreProgressionService
+from .world import WorldObject
 
 
+PR47_ACTIVITY_IDS = frozenset(ACTIVITY_CATALOG)
 CULTURE_ACTIVITY_CATALOG = {
     "perform_standup": {
         "label": "Perform — Stand-up",
@@ -52,13 +55,46 @@ CULTURE_ACTIVITY_CATALOG = {
     },
 }
 
-# The core functions intentionally consult ACTIVITY_CATALOG at runtime. Extend
-# that shared closed registry once at import so state schemas/milestones remain
-# self-consistent across the existing PR #47 code paths.
+# Core helpers consult ACTIVITY_CATALOG dynamically. Preserve the legacy keyset
+# above, then extend the registry. Old immutable PR #47 states are accepted as
+# a compatibility projection with implicit zero counts for these new IDs; the
+# first successor written by PR #48 contains the complete expanded keyset.
 ACTIVITY_CATALOG.update(CULTURE_ACTIVITY_CATALOG)
 
 CULTURE_PLAY_ACTIVITY_IDS = frozenset({"play_long_shift", "play_psyche_chess"})
+CULTURE_DEDICATED_ACTIVITY_IDS = frozenset(CULTURE_ACTIVITY_CATALOG)
 ALL_PLAY_ACTIVITY_IDS = frozenset({"play_monopoly", "play_life_paths", *CULTURE_PLAY_ACTIVITY_IDS})
+
+
+def progression_policy_snapshot():
+    snapshot = _core.progression_policy_snapshot()
+    snapshot["activities"] = [
+        {"activity_id": activity_id, "label": item["label"], "descriptive_role": item["role"]}
+        for activity_id, item in ACTIVITY_CATALOG.items()
+    ]
+    snapshot["play_rule"] = (
+        "Monopoly, Life Paths, The Long Shift and Psyche-Out Chess participation may enter a portfolio only when "
+        "bound to a validated authoritative game-state object; one game-state ref may be credited once per actor/model identity"
+    )
+    snapshot["compatibility_rule"] = (
+        "PR #47 progression states remain immutable and valid; absent PR #48 activity counts are projected as zero until the next successor"
+    )
+    snapshot["culture_rule"] = (
+        "Open Mic performance and Long Shift narration enter progression only through their dedicated culture operations, never self-report"
+    )
+    return snapshot
+
+
+def activity_catalog():
+    return [
+        {
+            "activity_id": activity_id,
+            "label": item["label"],
+            "descriptive_role": item["role"],
+            "instruction": item["instruction"],
+        }
+        for activity_id, item in ACTIVITY_CATALOG.items()
+    ]
 
 
 class ProgressionService(_CoreProgressionService):
@@ -71,6 +107,26 @@ class ProgressionService(_CoreProgressionService):
                 "progression head index is unsafe",
             )
         return super()._read_heads()
+
+    @staticmethod
+    def _validate_state_shape(obj, actor_id: str, model_id: str):
+        counts = obj.payload.get("counts") if isinstance(obj.payload, dict) else None
+        if isinstance(counts, dict) and set(counts) == set(PR47_ACTIVITY_IDS):
+            projected_payload = deepcopy(obj.payload)
+            projected_counts = dict(counts)
+            for activity_id in CULTURE_ACTIVITY_CATALOG:
+                projected_counts[activity_id] = 0
+            projected_payload["counts"] = projected_counts
+            # Zero-valued additions do not alter totals/distinct count or any
+            # milestone that existed when the PR #47 object was committed.
+            projected = WorldObject(
+                object_id=obj.object_id,
+                object_type=obj.object_type,
+                payload=projected_payload,
+                provenance=dict(obj.provenance),
+            )
+            return _CoreProgressionService._validate_state_shape(projected, actor_id, model_id)
+        return _CoreProgressionService._validate_state_shape(obj, actor_id, model_id)
 
     @staticmethod
     def _validate_activity_object(obj, actor_id: str, model_id: str):
@@ -139,28 +195,17 @@ class ProgressionService(_CoreProgressionService):
             )
         try:
             if game_kind == "long_shift":
-                from .long_shift import inspect_long_shift
+                from .culture_lineage import verify_long_shift_lineage
 
-                game = inspect_long_shift(self.world, game_ref)
-                reasons = {"new_long_shift_game", "long_shift_transition"}
+                game = verify_long_shift_lineage(self.world, game_ref)
             else:
-                from .psyche_chess import inspect_psyche_chess
+                from .culture_lineage import verify_psyche_chess_lineage
 
-                game = inspect_psyche_chess(self.world, game_ref)
-                reasons = {"new_psyche_chess_game", "psyche_chess_taunt", "psyche_chess_move"}
+                game = verify_psyche_chess_lineage(self.world, game_ref)
         except KeyError as exc:
             raise ProgressionError("progression_game_not_found", "game state was not found") from exc
         except ValueError as exc:
-            raise ProgressionError("progression_game_mismatch", "game state failed its engine validator") from exc
-        if (
-            game.provenance.get("actor") != "nexus_game_engine"
-            or game.provenance.get("reason") not in reasons
-            or set(game.provenance) != {"actor", "reason"}
-        ):
-            raise ProgressionError(
-                "progression_game_provenance_invalid",
-                "play progression requires a validated NEXUS game-engine state",
-            )
+            raise ProgressionError("progression_game_mismatch", "game state or lineage failed its engine validator") from exc
         if game.payload.get("completed") is not True:
             raise ProgressionError(
                 "progression_game_incomplete",
@@ -180,7 +225,7 @@ class ProgressionService(_CoreProgressionService):
             model_id=model_id,
             activity_id=activity_id,
             prompt=f"Validated completed participation in {game_kind}.",
-            output=f"Participation bound to completed authoritative game state {game_ref}.",
+            output=f"Participation bound to completed authoritative game lineage ending at {game_ref}.",
             source_refs=[game_ref],
             commission_ref=None,
             play_binding={"game_kind": game_kind, "game_ref": game_ref},
@@ -190,5 +235,7 @@ class ProgressionService(_CoreProgressionService):
 __all__ = list(_core.__all__) + [
     "ALL_PLAY_ACTIVITY_IDS",
     "CULTURE_ACTIVITY_CATALOG",
+    "CULTURE_DEDICATED_ACTIVITY_IDS",
     "CULTURE_PLAY_ACTIVITY_IDS",
+    "PR47_ACTIVITY_IDS",
 ]
