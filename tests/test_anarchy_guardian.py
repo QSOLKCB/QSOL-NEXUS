@@ -139,9 +139,14 @@ class AnarchyModeTests(unittest.TestCase):
         self.assertEqual(failsafe["status"], "ok")
         self.assertEqual(failsafe["states"], [])
         session = api.world.inspect(result["session_ref"])
-        riot_events = session.payload["guard_events"].get("Riot", [])
+        riot_events = [
+            event["event"]
+            for event in session.payload["guard_events"]
+            if event.get("member_id") == "Riot"
+        ]
         self.assertIn("repeated_identity_based_authority_claim", riot_events)
-        self.assertEqual(session.payload["failsafe_events"], [])
+        self.assertEqual(session.payload["failsafe"]["outcomes"], [])
+        self.assertEqual(session.payload["failsafe"]["contained_at_ballot"], [])
 
     def test_ordinary_modes_do_not_feed_the_anarchy_ledger(self) -> None:
         api = NexusAPI()
