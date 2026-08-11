@@ -23,13 +23,38 @@ import sys
 import tarfile
 import tempfile
 import time
-from typing import Any
+from typing import Any, Mapping
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX_PATH = ROOT / "release" / "hardening_matrix.json"
 REPORT_SCHEMA = "nexus-release-hardening-report/1"
 DEFAULT_SEED = "0x4E45585553"
+REQUIRED_GATE_IDS = frozenset(
+    {
+        "adapter_and_credentials",
+        "council_and_authority",
+        "operator_bootstrap",
+        "worldstore_and_ark",
+        "progression_and_civic_life",
+        "culture_rpg_and_psyche_chess",
+        "trap_and_civic_durability",
+        "release_composition",
+    }
+)
+REQUIRED_CHECK_NAMES = frozenset(
+    {
+        "candidate-tree-clean",
+        "matrix-audit",
+        "full-python-regression",
+        "adversarial-probes",
+        "rust-tests",
+        "rust-check",
+        "rust-format",
+        "fresh-archive-operator-rehearsal",
+        "candidate-tree-unchanged",
+    }
+)
 
 
 @dataclass
@@ -92,49 +117,104 @@ def _strict_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=pairs)
 
 
+def _audit_matrix_data(matrix: Any, tests_root: Path) -> str:
+    if not isinstance(matrix, dict):
+        raise ValueError("hardening matrix must be an object")
+    if matrix.get("schema") != "nexus-release-hardening-matrix/1":
+        raise ValueError("unexpected hardening matrix schema")
+    if matrix.get("stable_release") is not False:
+        raise ValueError("PR #49 matrix must not declare stable release")
+    if matrix.get("authority_effect") != "none":
+        raise ValueError("hardening matrix cannot create authority")
+    gates = matrix.get("gates")
+    if not isinstance(gates, list) or not gates:
+        raise ValueError("hardening matrix requires gates")
+
+    seen: set[str] = set()
+    matched: set[Path] = set()
+    for gate in gates:
+        if not isinstance(gate, dict) or gate.get("required") is not True:
+            raise ValueError("every PR #49 gate must be a required object")
+        gate_id = gate.get("id")
+        if not isinstance(gate_id, str) or not gate_id or gate_id in seen:
+            raise ValueError("hardening gate ids must be unique non-empty strings")
+        seen.add(gate_id)
+        patterns = gate.get("patterns")
+        if not isinstance(patterns, list) or not patterns:
+            raise ValueError(f"hardening gate {gate_id} has no test patterns")
+        gate_matches: set[Path] = set()
+        for pattern in patterns:
+            if not isinstance(pattern, str) or "/" in pattern or "\\" in pattern:
+                raise ValueError(f"unsafe test pattern in gate {gate_id}")
+            pattern_matches = {path for path in tests_root.glob(pattern) if path.is_file()}
+            if not pattern_matches:
+                raise ValueError(
+                    f"hardening gate {gate_id} pattern {pattern!r} matches no tests"
+                )
+            gate_matches.update(pattern_matches)
+        matched.update(gate_matches)
+
+    if seen != REQUIRED_GATE_IDS:
+        missing = sorted(REQUIRED_GATE_IDS - seen)
+        extra = sorted(seen - REQUIRED_GATE_IDS)
+        raise ValueError(
+            "hardening gate inventory mismatch; "
+            f"missing={missing or 'none'} extra={extra or 'none'}"
+        )
+    release_test = tests_root / "test_release_hardening.py"
+    if release_test not in matched:
+        raise ValueError("release composition test is not covered by the hardening matrix")
+    return f"{len(seen)} required gates cover {len(matched)} test files"
+
+
 def _matrix_audit() -> CheckResult:
     started = time.monotonic()
     try:
-        matrix = _strict_json(MATRIX_PATH)
-        if not isinstance(matrix, dict):
-            raise ValueError("hardening matrix must be an object")
-        if matrix.get("schema") != "nexus-release-hardening-matrix/1":
-            raise ValueError("unexpected hardening matrix schema")
-        if matrix.get("stable_release") is not False:
-            raise ValueError("PR #49 matrix must not declare stable release")
-        if matrix.get("authority_effect") != "none":
-            raise ValueError("hardening matrix cannot create authority")
-        gates = matrix.get("gates")
-        if not isinstance(gates, list) or not gates:
-            raise ValueError("hardening matrix requires gates")
-        seen: set[str] = set()
-        matched: set[Path] = set()
-        tests_root = ROOT / "tests"
-        for gate in gates:
-            if not isinstance(gate, dict) or gate.get("required") is not True:
-                raise ValueError("every PR #49 gate must be a required object")
-            gate_id = gate.get("id")
-            if not isinstance(gate_id, str) or not gate_id or gate_id in seen:
-                raise ValueError("hardening gate ids must be unique non-empty strings")
-            seen.add(gate_id)
-            patterns = gate.get("patterns")
-            if not isinstance(patterns, list) or not patterns:
-                raise ValueError(f"hardening gate {gate_id} has no test patterns")
-            gate_matches: set[Path] = set()
-            for pattern in patterns:
-                if not isinstance(pattern, str) or "/" in pattern or "\\" in pattern:
-                    raise ValueError(f"unsafe test pattern in gate {gate_id}")
-                gate_matches.update(path for path in tests_root.glob(pattern) if path.is_file())
-            if not gate_matches:
-                raise ValueError(f"hardening gate {gate_id} matches no tests")
-            matched.update(gate_matches)
-        release_test = tests_root / "test_release_hardening.py"
-        if release_test not in matched:
-            raise ValueError("release composition test is not covered by the hardening matrix")
-        detail = f"{len(seen)} required gates cover {len(matched)} test files"
+        detail = _audit_matrix_data(_strict_json(MATRIX_PATH), ROOT / "tests")
         return CheckResult("matrix-audit", "pass", time.monotonic() - started, detail)
     except Exception as exc:
         return CheckResult("matrix-audit", "fail", time.monotonic() - started, f"{type(exc).__name__}: {exc}")
+
+
+def _worktree_audit(name: str) -> CheckResult:
+    started = time.monotonic()
+    try:
+        proc = subprocess.run(
+            ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+            cwd=ROOT,
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=120,
+            check=False,
+        )
+        if proc.returncode != 0:
+            raise RuntimeError(f"git status failed: {proc.stdout}")
+        dirty = [line for line in proc.stdout.splitlines() if line.strip()]
+        if dirty:
+            preview = "\n".join(dirty[:20])
+            if len(dirty) > 20:
+                preview += f"\n... {len(dirty) - 20} additional entries"
+            raise RuntimeError(
+                "release hardening requires a clean candidate worktree so all checks and git archive test the same HEAD:\n"
+                + preview
+            )
+        return CheckResult(
+            name,
+            "pass",
+            time.monotonic() - started,
+            "candidate worktree matches HEAD with no tracked or unignored untracked changes",
+        )
+    except Exception as exc:
+        return CheckResult(name, "fail", time.monotonic() - started, f"{type(exc).__name__}: {exc}")
+
+
+def _clean_rehearsal_env(source: Mapping[str, str] | None = None) -> dict[str, str]:
+    original = os.environ if source is None else source
+    env = {key: value for key, value in original.items() if not key.startswith("NEXUS_")}
+    for key in ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV"):
+        env.pop(key, None)
+    return env
 
 
 def _operator_rehearsal() -> CheckResult:
@@ -164,9 +244,7 @@ def _operator_rehearsal() -> CheckResult:
                         raise RuntimeError("candidate archive contains escaping path")
                 archive.extractall(candidate)
 
-            env = os.environ.copy()
-            env.pop("PYTHONPATH", None)
-            env.pop("PYTHONHOME", None)
+            env = _clean_rehearsal_env()
             commands = [
                 ["./nexus", "setup", "--nick", "ReleaseProbe"],
                 ["./nexus", "doctor"],
@@ -191,7 +269,7 @@ def _operator_rehearsal() -> CheckResult:
                 "fresh-archive-operator-rehearsal",
                 "pass",
                 time.monotonic() - started,
-                "clean candidate archive completed setup, doctor and deterministic demo",
+                "clean candidate archive completed setup, doctor and deterministic demo with inherited NEXUS/Python environment overrides removed",
             )
     except Exception as exc:
         return CheckResult(
@@ -200,6 +278,40 @@ def _operator_rehearsal() -> CheckResult:
             time.monotonic() - started,
             f"{type(exc).__name__}: {exc}",
         )
+
+
+def _skipped(name: str, reason: str) -> CheckResult:
+    return CheckResult(name, "skip", 0.0, reason)
+
+
+def _build_report(checks: list[CheckResult]) -> dict[str, Any]:
+    names = {check.name for check in checks}
+    skipped_required = sorted(
+        check.name for check in checks if check.name in REQUIRED_CHECK_NAMES and check.status == "skip"
+    )
+    missing_required = sorted(REQUIRED_CHECK_NAMES - names)
+    complete = not skipped_required and not missing_required
+    passed = complete and all(check.passed for check in checks)
+    if passed:
+        status = "passed"
+    elif not complete:
+        status = "incomplete"
+    else:
+        status = "failed"
+    return {
+        "schema": REPORT_SCHEMA,
+        "profile": "pre_wall",
+        "matrix": str(MATRIX_PATH.relative_to(ROOT)),
+        "stable_release": False,
+        "authority_effect": "none",
+        "status": status,
+        "complete": complete,
+        "passed": passed,
+        "skipped_required_checks": skipped_required,
+        "missing_required_checks": missing_required,
+        "checks": [asdict(check) for check in checks],
+        "post_wall_rule": "PR #51 must rerun the complete release-candidate matrix after PR #50",
+    }
 
 
 def main() -> int:
@@ -212,8 +324,10 @@ def main() -> int:
     if args.iterations < 1 or args.iterations > 4096:
         parser.error("--iterations must be between 1 and 4096")
 
-    checks: list[CheckResult] = [_matrix_audit()]
+    checks: list[CheckResult] = [_worktree_audit("candidate-tree-clean")]
     if checks[-1].passed:
+        checks.append(_matrix_audit())
+    if checks[-1].name == "matrix-audit" and checks[-1].passed:
         checks.append(
             _run(
                 "full-python-regression",
@@ -239,7 +353,16 @@ def main() -> int:
                 env={"PYTHONPATH": str(ROOT / "src")},
             )
         )
-        if not args.skip_rust:
+        if args.skip_rust:
+            reason = "required Rust hardening check skipped by explicit local diagnostic flag"
+            checks.extend(
+                [
+                    _skipped("rust-tests", reason),
+                    _skipped("rust-check", reason),
+                    _skipped("rust-format", reason),
+                ]
+            )
+        else:
             checks.extend(
                 [
                     _run("rust-tests", ["cargo", "test", "--manifest-path", "tui/Cargo.toml", "--all-targets"]),
@@ -247,26 +370,24 @@ def main() -> int:
                     _run("rust-format", ["cargo", "fmt", "--manifest-path", "tui/Cargo.toml", "--", "--check"]),
                 ]
             )
-        if not args.skip_operator:
+        if args.skip_operator:
+            checks.append(
+                _skipped(
+                    "fresh-archive-operator-rehearsal",
+                    "required operator rehearsal skipped by explicit local diagnostic flag",
+                )
+            )
+        else:
             checks.append(_operator_rehearsal())
+        checks.append(_worktree_audit("candidate-tree-unchanged"))
 
-    passed = all(check.passed for check in checks)
-    report = {
-        "schema": REPORT_SCHEMA,
-        "profile": "pre_wall",
-        "matrix": str(MATRIX_PATH.relative_to(ROOT)),
-        "stable_release": False,
-        "authority_effect": "none",
-        "passed": passed,
-        "checks": [asdict(check) for check in checks],
-        "post_wall_rule": "PR #51 must rerun the complete release-candidate matrix after PR #50",
-    }
+    report = _build_report(checks)
     rendered = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.json_out is not None:
         args.json_out.parent.mkdir(parents=True, exist_ok=True)
         args.json_out.write_text(rendered, encoding="utf-8")
     print(rendered, end="")
-    return 0 if passed else 1
+    return 0 if report["passed"] else 1
 
 
 if __name__ == "__main__":
