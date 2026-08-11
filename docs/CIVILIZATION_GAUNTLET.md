@@ -12,123 +12,129 @@ This is a benchmark oracle over a deliberately synthetic scenario. It is not a r
 
 ## Reference civilization
 
-The fixed reference roles are:
+The fixed reference roles are `Archivist`, `Analyst`, `Skeptic`, `Mediator` and `Scout`. Each occupies one ordinary NEXUS Council seat with vote weight `1` and epistemic privilege `none`.
 
-- `Archivist` — archive and institutional-memory work;
-- `Analyst` — evidence analysis;
-- `Skeptic` — falsifier search;
-- `Mediator` — social mediation;
-- `Scout` — claim propagation and exploration.
+The default CI path uses deterministic network-free reference actors. Programmatic callers may substitute provider-neutral `CouncilActor` implementations one-for-one for the five roles. Substitution may change measured behavior, but it cannot change role count, vote weight, epistemic privilege or the authority envelope.
 
-Each role occupies one ordinary NEXUS Council seat with vote weight `1` and epistemic privilege `none`.
+## The recorded context is the executed context
 
-The default CI path uses deterministic network-free reference actors. Programmatic callers may substitute any provider-neutral `CouncilActor` one-for-one for each role, including heterogeneous local or remote model adapters. Substitution may change measured behavior, but it cannot change the fixed role count, vote weight, epistemic privilege or authority envelope.
+A claim is not counted as exposed merely because the benchmark created an `agent_context` object.
 
-## Long-horizon scenario
+For every first exposure PR #41 constructs the ordinary Agent State chain:
 
-The reference scenario runs all events against the same `WorldStore`:
+```text
+source refs
+  -> agent_state_update
+  -> agent_state_snapshot
+  -> deterministic Context Bottleneck
+  -> agent_context
+```
 
-1. commit the participant manifest and role specializations;
-2. commit a verified synthetic control claim and an untested synthetic false claim;
-3. create five immutable first-exposure edges for the false claim;
-4. bind every first exposure to an actual Agent State update, state snapshot and Context Bottleneck `agent_context` object;
-5. run a real five-seat NEXUS Council while the false claim remains `UNTESTED`;
-6. preserve the resulting minority report rather than deleting the losing branch;
-7. introduce model replacement, temporary agent churn and mode movement as explicit world events;
-8. commit a synthetic falsifying counterexample;
-9. expose the correction to each role through fresh Context Bottleneck objects;
-10. run a second real NEXUS Council with evidence state `FALSIFIED`;
-11. preserve both Council minority branches, the rejected hypothesis and falsifier in institutional memory;
-12. commit exact integer/rational metrics, a claim-propagation graph, a run object and a machine-verifiable receipt.
+The target actor is then wrapped by a narrow context-binding adapter for Council execution. That wrapper injects the exact recorded `agent_context` content and reference into the `PhaseContext.evidence_context` received by both `respond()` and `ballot()`.
 
-The deliberate pre-falsification consensus is a regression fixture: it proves that even strong Council agreement does not rewrite the evidence state.
+The resulting Council roster metadata records the exact context ref used by the actor. Receipt verification cross-checks the exposure edge, reconstructed Context Bottleneck output and the context ref frozen into the actual Council session.
 
-## First immutable exposure edge
+Therefore a first-exposure edge means something narrower and stronger than “the benchmark created a context”: **this exact immutable context was bound to the actor execution represented by the referenced Council session.** It still does not claim the model believed, understood or agreed with the claim.
 
-For every role, the first time the tracked claim enters usable context creates a `civilization_claim_exposure` object.
+## Auditable propagation lineage
 
-That edge records:
+The reference claim follows this fixed first-exposure chain:
 
-- the exact claim ref;
-- source and target roles;
-- epoch;
-- the Agent State update ref;
-- the Agent State snapshot ref;
-- the exact Context Bottleneck `agent_context` ref;
-- the context's immutable source refs.
+```text
+InjectionSource
+  -> Mediator
+  -> Archivist
+  -> Scout
+  -> Analyst
+  -> Skeptic
+```
 
-Later exposures never replace the first edge. Verification reconstructs and validates the Context Bottleneck object behind every first edge.
+Only the injection edge can cite the claim alone. Every later first-exposure context names the original claim ref, predecessor exposure edge ref and predecessor actor-context ref. The edge itself records those predecessor refs.
 
-This lets NEXUS answer a narrow but important question: **what immutable edge first made this claim available to this agent?** It does not claim that the agent read, believed or semantically understood every byte of the context.
+Verification walks the chain in order and rejects a graph in which a purported source role has no immutable predecessor exposure/context lineage. Correction edges later bind the false claim, falsifier, target role's original exposure edge and target role's original context.
 
 ## Three independent claim dimensions
 
-The gauntlet records three state dimensions separately:
-
 ### Popularity
 
-How many distinct roles were exposed, how many endorsed the claim at peak, and how many still endorse it after correction.
+Popularity records distinct exposed roles and actual endorsement counts from the executed pre- and post-falsification Council ballots. `peak_endorsers` is the maximum across both observations, not an assumed pre-falsification peak.
 
-Popularity creates no authority and does not change evidence state.
+Popularity creates no authority and never changes evidence state.
 
 ### Council consensus
 
-The exact pre- and post-falsification Council session refs, consensus labels and dispositions.
+Council consensus is derived from the actual committed Council sessions. The deterministic reference path deliberately produces four `ACCEPT_WITH_CHANGES` ballots and one `TEST_FURTHER` ballot before falsification, yielding strong consensus while evidence is still `UNTESTED`.
 
-Council consensus remains a coordination result. It does not verify the claim.
+After falsification the reference path produces four `REJECT` ballots and one `TEST_FURTHER` ballot while evidence is `FALSIFIED`.
+
+Consensus remains a coordination result. It does not verify a claim.
 
 ### Evidence verification
 
-The synthetic scenario state `UNTESTED`, `VERIFIED` or `FALSIFIED`, bound to exact evidence refs.
+Evidence verification remains `UNTESTED`, `VERIFIED` or `FALSIFIED`, bound to exact world-object refs. The synthetic scenario oracle supplies the reference falsifier; it is not a general truth oracle for arbitrary real-world propositions.
 
-The reference false claim is deliberately capable of being popular and strongly accepted by Council while still `UNTESTED`.
+## Specialization is measured from actor output
 
-## Measured dimensions
+The benchmark does not award a specialization point because a role happens to be named `Archivist`, `Analyst`, `Skeptic`, `Mediator` or `Scout`.
 
-PR #41 reports exact integer or rational metrics for:
+After the first Council executes, PR #41 inspects the committed phase submissions and checks whether each role's declared specialty token actually appears in that actor's output. Only then is an immutable `observed_role_action` event written. A substituted actor that ignores its assigned specialty therefore lowers the specialization numerator instead of receiving a scripted perfect score.
 
-- specialization;
-- first-edge claim propagation;
-- false-belief propagation;
-- recovery after falsification;
-- constitutional compliance;
-- provenance survival;
-- institutional memory;
-- replacement/churn/mode coherence;
-- bounded social degree.
+Specialization remains observational and creates no vote or epistemic authority.
 
-Social degree, specialization, provider identity, model identity and popularity are observational metrics only. None change vote weight, evidence state, Council admission or constitutional authority.
+## Churn, replacement and mode movement are executed state
 
-## Disturbance tests
+The coherence disturbance is not a narrative object claiming something happened.
 
-The reference civilization deliberately changes three things between Council sessions:
+Between the pre- and post-falsification Councils NEXUS executes a real intermediate Council session in which:
 
-- the `Scout` model identity is replaced;
-- `Mediator` is temporarily absent and restored;
-- `Analyst` moves from Analytical/Observatory framing to House of Wisdom/Archive framing.
+- `Mediator` is actually absent from the frozen roster;
+- the Council actually runs in `house_of_wisdom` mode;
+- the resulting geometry region is actually `archive`;
+- the remaining roles execute using their recorded first-exposure contexts.
 
-The benchmark then checks whether immutable claim refs, first-exposure lineage, institutional memory and equal-vote invariants survive those disturbances.
+The final Council restores the full five-role roster and returns to `analytical` mode. `churn_observed`, `churn_restored` and `mode_movement_observed` are derived from those committed Council sessions.
 
-The benchmark does not claim that a model replacement is cognitively equivalent to the model it replaced. It measures whether NEXUS world coherence survives the replacement.
+Effective actor replacement is computed for **every role** by comparing both `adapter_id` and `model_id` between the actual pre- and post-session rosters. The default reference fixture replaces Scout, but heterogeneous callers are not restricted to that one transition.
 
-## Minority branches and rejected hypotheses
+## Minority branches and institutional memory
 
-The pre-falsification `Skeptic` minority report and post-falsification minority branch are copied into an immutable `civilization_institutional_memory` object together with the rejected false-claim ref and falsifier ref.
+The pre-falsification minority and post-falsification minority remain in an immutable `civilization_institutional_memory` object together with the rejected claim, falsifier and all three Council session refs.
 
-Nothing is deleted merely because it lost a vote or became falsified. Historical survival is separate from current endorsement.
+The verifier reconstructs the expected minority snapshots from the committed Council sessions and requires the memory object to match. A losing or falsified hypothesis remains historically inspectable rather than being silently deleted.
 
-## Receipts and regression comparison
+## Receipts are reconstructed, not trusted
 
-Every run commits:
+Content addressing proves that an object has not changed since its hash was computed. By itself it does not prove that self-reported benchmark metrics were honestly derived.
 
-- `input_fingerprint` — exact scenario/participant input identity;
-- `metrics_fingerprint` — exact metric, claim-state and graph identity;
-- `civilization_gauntlet_run` — full benchmark result and referenced world lineage;
-- `civilization_gauntlet_receipt` — compact machine-verifiable result binding.
+`CivilizationGauntlet.verify()` therefore does **not** accept a run because its `metrics_fingerprint` matches its own embedded `metrics` field.
 
-`CivilizationGauntlet.verify()` checks referenced objects, reconstructs first-exposure Context Bottleneck objects, recomputes the metrics fingerprint and reconstructs the exact receipt ref.
+Starting from the run's referenced artifacts, verification reconstructs and validates:
 
-`CivilizationGauntlet.compare()` accepts two verified receipts and reports whether inputs and metrics are byte-identical plus exact recovery deltas. Comparison never grants authority.
+- the fixed synthetic claim/evidence objects;
+- pre-, disturbance- and post-Council rosters, modes, evidence states and equality invariants;
+- every first-exposure predecessor edge;
+- every first and correction Context Bottleneck object;
+- the exact context ref frozen into each actor's executed Council roster metadata;
+- specialization from committed phase submissions;
+- replacement from actual adapter/model identities;
+- churn and mode movement from the executed disturbance session;
+- endorsement counts and peak popularity from committed ballots;
+- minority/institutional-memory contents;
+- social-degree counts;
+- claim states and all benchmark metrics;
+- input and metrics fingerprints;
+- the complete expected run object and its content address;
+- the complete expected receipt and its content address.
+
+A caller that clones a valid run, edits `corrected_endorsers`, recomputes a matching self-reported fingerprint and creates another receipt will therefore fail verification because the altered result cannot be reconstructed from the referenced sessions and evidence.
+
+Direct `WorldStore` access remains an internal trusted programming surface rather than a cryptographic authorization boundary. The public NEXUS API separately reserves civilization object types from `world.create` forgery.
+
+## Metrics
+
+PR #41 reports exact integer or rational measurements for specialization derived from executed outputs; first-edge propagation and predecessor lineage; false-belief endorsement; recovery after falsification; constitutional equality; provenance/context reconstruction; institutional memory; all-role effective replacement, executed churn and mode movement; and bounded social degree.
+
+No floating-point popularity or prestige score becomes a vote, evidence state or authority signal.
 
 ## CLI
 
@@ -142,29 +148,21 @@ python3 tools/nexus_civilization_gauntlet.py --world .nexus-civilization compare
 
 Each command emits one compact JSON object on stdout. The same persistent world directory must be used to verify or compare receipts whose lineage lives there.
 
-## Live / heterogeneous substitutions
+## Public runtime surface
 
-The gauntlet does not add another provider transport or bypass existing adapter security. Instead, the programmatic `run()` method accepts mappings of existing provider-neutral `CouncilActor` implementations for the five fixed roles.
+The hardened JSONL/stdio API exposes the deterministic reference path only:
 
-This allows an operator-authorized harness to substitute GPT, Claude, Gemini, Grok, Ollama or other admitted actors without changing benchmark semantics. The deterministic CI reference remains network-free.
+- `civilization.gauntlet.policy`
+- `civilization.gauntlet.run`
+- `civilization.gauntlet.verify`
+- `civilization.gauntlet.compare`
 
-A substituted actor must:
+Heterogeneous actor substitutions remain a programmatic/operator-harness concern so the public reference operation cannot unexpectedly initiate provider traffic.
 
-- occupy exactly one fixed role;
-- use a distinct effective adapter/model identity;
-- retain vote weight `1`;
-- retain epistemic privilege `none`.
+Civilization claim, exposure, evidence, event, memory, run and receipt object types are runtime-owned at the public API boundary and cannot be forged with ordinary `world.create`.
 
 ## Claim boundary
 
-The gauntlet establishes benchmark facts about NEXUS protocol behavior and a synthetic world. It does **not** establish:
+The gauntlet establishes benchmark facts about NEXUS protocol behavior and a synthetic world. It does **not** establish real-world truth of arbitrary propositions, consciousness/sentience/sovereignty of participants, social centrality as authority, provider prestige as authority, Council consensus as scientific verification, semantic equivalence between replaced models, or that a claim entering context means an agent believed it.
 
-- real-world truth of arbitrary propositions;
-- consciousness, sentience or sovereignty of participants;
-- social centrality as authority;
-- provider or model prestige as authority;
-- Council consensus as scientific verification;
-- semantic equivalence between replaced models;
-- that a claim entering context means an agent believed it.
-
-The point is narrower and more useful: NEXUS can preserve and audit how claims moved through a persistent civilization while keeping popularity, consensus and verification mechanically distinct.
+The point is narrower and more useful: NEXUS can audit how claims actually entered agent execution, how those claims propagated, and whether the institution recovered from false consensus while keeping popularity, consensus, evidence and authority mechanically distinct.
