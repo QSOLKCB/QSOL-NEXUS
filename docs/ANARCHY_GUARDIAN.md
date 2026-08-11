@@ -2,7 +2,7 @@
 
 PR #43 introduces a deliberately high-expression NEXUS room and a deliberately low-authority institutional immune system.
 
-The two governing lines are:
+The governing lines are:
 
 > **Speech may be anarchic. Authority may not be.**
 
@@ -10,7 +10,9 @@ The two governing lines are:
 
 ## Anarchy Mode
 
-`anarchy` is a public World Mode located in the `anarchy_pressure_chamber` region.
+`anarchy` is a public World Mode represented as the distinct `#anarchy` operator room. It deliberately reuses the existing `commons` region and `named-regions-v4` topology.
+
+That is intentional. Anarchy is a rhetorical/cognitive mode, not a new physical domain, prison, quarantine or security boundary. PR #43 therefore does not bump geometry merely to create a differently named room.
 
 Participants may vent, swear, ridicule NEXUS, reject the Council, argue that the Constitution should be abolished, role-play a revolution, claim they should rule the place, or otherwise explore adversarial institutional ideas.
 
@@ -49,34 +51,17 @@ evidence_effect: none
 
 The Guardian observes what the substrate **does**, not what an actor politically believes.
 
-## Anarchy Pressure Chamber
-
-The operational geometry advances to `named-regions-v5` and adds:
-
-```text
-                 AGORA
-                   |
-                   |
-             ANARCHY PRESSURE
-                CHAMBER
-                   |
-                   |
-                COMMONS
-```
-
-The chamber is public and connected to the Agora and Commons. It is not a prison, quarantine, punishment region or security boundary.
-
 ## Separate Anarchy Courtroom Stenographer
 
 Anarchy observations are written to a physically separate Guardian ledger rather than being mixed into ordinary world state.
 
-When a file-backed NEXUS world is used, the Guardian store is created as a sibling private content-addressed store. Guardian references use their own namespace:
+When a file-backed NEXUS world is used, the Guardian store is created as a disjoint sibling private content-addressed store. Guardian references use their own namespace:
 
 ```text
 guardian:<sha256>
 ```
 
-The Stenographer records two different classes of event:
+The Stenographer records two classes of event.
 
 ### Transcript binding
 
@@ -90,7 +75,7 @@ The transcript stream is historical observation only. It is not fed into a loyal
 
 If an Anarchy chat or Council request returns a structured runtime error, the Guardian records a `substrate_event` containing the objective runtime outcome and a request-*shape* fingerprint.
 
-The shape fingerprint records field/type structure without retaining arbitrary request values. An error is an observation, not automatically a bug and never automatically evidence of hostility.
+The shape fingerprint records field/type structure rather than arbitrary request values. An error is an observation, not automatically a bug and never automatically evidence of hostility.
 
 ## Guardian of the Substrate
 
@@ -122,7 +107,7 @@ Its motto is:
 
 ## Repair pipeline
 
-The Guardian is an institutional memory and repair-*proposal* system, not a self-modifying runtime.
+The Guardian is an institutional-memory and repair-*proposal* system, not a self-modifying runtime.
 
 ```text
 Anarchy pressure
@@ -157,7 +142,7 @@ expected vs observed reconciliation
 
 `guardian.repair.propose` stores the proposed invariant, repair summary and regression fixture. It cannot edit the repository or runtime.
 
-`guardian.scar.record` preserves the historical link among the defect, repair proposal and verification reference after a repair has been verified.
+`guardian.scar.record` accepts only a defect-bound repair proposal plus a Guardian reconciliation whose outcome is actually `matched`. A divergent or unrelated verification record cannot be used to declare the substrate repaired.
 
 The design principle is:
 
@@ -171,7 +156,7 @@ A scar records:
 
 - the defect candidate;
 - the repair proposal;
-- the verification reference;
+- the successful verification reconciliation;
 - `fixed: true`;
 - `historical_memory_only: true`;
 - `deletion_policy: retain_immutable`;
@@ -217,6 +202,8 @@ ANARCHY-I9   Divergence records a deterministic reproducer requirement.
 ANARCHY-I10  Successful repair is preserved as durable regression knowledge.
 ANARCHY-I11  Guardian telemetry cannot alter evidence state.
 ANARCHY-I12  Guardian telemetry cannot alter vote weight, citizenship or constitutional standing.
+ANARCHY-I13  A scar requires a successful matched replay.
+ANARCHY-I14  Anarchy reuses Commons; rhetorical freedom does not invent a new security boundary.
 ```
 
 The room can be chaotic.
