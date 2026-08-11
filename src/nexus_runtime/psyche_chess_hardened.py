@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 import hashlib
-from typing import Any, Sequence
+from typing import Any
 
 from . import psyche_chess as _base
 from .world import WorldObject, WorldStore
@@ -10,6 +10,10 @@ from .world import WorldObject, WorldStore
 
 INITIAL_FEN = _base.INITIAL_FEN
 MAX_PSYCHE_CHARS = _base.MAX_PSYCHE_CHARS
+# This is an explicit product admission bound, enforced while the game is
+# still in progress and reused by the replay verifier. A history that NEXUS
+# allowed to complete is therefore never rejected later solely for length.
+MAX_PSYCHE_CHESS_LINEAGE_STATES = 65_536
 PSYCHE_CHESS_KIND = _base.PSYCHE_CHESS_KIND
 PSYCHE_CHESS_SCHEMA = _base.PSYCHE_CHESS_SCHEMA
 PSYCHE_CHESS_TITLE = _base.PSYCHE_CHESS_TITLE
@@ -17,6 +21,33 @@ extract_legal_uci = _base.extract_legal_uci
 legal_moves_for_fen = _base.legal_moves_for_fen
 new_psyche_chess = _base.new_psyche_chess
 psyche_chess_catalog = _base.psyche_chess_catalog
+
+
+def _next_event_sequence(event_log: list[dict[str, Any]]) -> int:
+    if not event_log:
+        raise ValueError("Psyche-Out Chess event log is empty")
+    sequence = event_log[-1].get("sequence")
+    if type(sequence) is not int or sequence < 0:
+        raise ValueError("Psyche-Out Chess event sequence is invalid")
+    return sequence + 1
+
+
+def _validate_event_log(event_log: Any) -> None:
+    if not isinstance(event_log, list) or not 1 <= len(event_log) <= 64:
+        raise ValueError("Psyche-Out Chess event log is invalid")
+    previous: int | None = None
+    for event in event_log:
+        if not isinstance(event, dict):
+            raise ValueError("Psyche-Out Chess event entry is invalid")
+        sequence = event.get("sequence")
+        if type(sequence) is not int or sequence < 0:
+            raise ValueError("Psyche-Out Chess event sequence is invalid")
+        if previous is not None and sequence != previous + 1:
+            raise ValueError("Psyche-Out Chess retained event sequences must be strictly monotonic")
+        previous = sequence
+    assert previous is not None
+    if previous >= MAX_PSYCHE_CHESS_LINEAGE_STATES:
+        raise ValueError("Psyche-Out Chess event sequence exceeds the admitted lineage bound")
 
 
 def _validate_successor_shape(state: dict[str, Any]) -> None:
@@ -38,6 +69,9 @@ def _validate_successor_shape(state: dict[str, Any]) -> None:
     elif kind == "move":
         if type(ply) is not int or ply < 1 or state.get("pending_psyche") is not None:
             raise ValueError("move transition must advance ply and consume pending psyche text")
+        execution_ref = transition.get("execution_ref")
+        if execution_ref is not None and (not isinstance(execution_ref, str) or not execution_ref):
+            raise ValueError("Psyche-Out Chess execution binding is invalid")
     else:
         raise ValueError("Psyche-Out Chess transition kind is invalid")
 
@@ -48,6 +82,7 @@ def inspect_psyche_chess(world: WorldStore, state_ref: str) -> WorldObject:
         raise ValueError("object is not a Psyche-Out Chess state")
     payload = obj.payload
     _validate_successor_shape(payload)
+    _validate_event_log(payload.get("event_log"))
 
     # The PR #48 base validator correctly validates chess/FEN/controller/banter
     # semantics but its genesis shortcut originally assumed every ply=0 state
@@ -72,6 +107,9 @@ def add_psyche(world: WorldStore, state_ref: str, *, from_player: str, text: str
         raise ValueError("a psyche line is already pending for this turn")
     if not isinstance(text, str) or not text.strip() or len(text) > MAX_PSYCHE_CHARS:
         raise ValueError(f"psyche text must be 1-{MAX_PSYCHE_CHARS} characters")
+    next_sequence = _next_event_sequence(state["event_log"])
+    if next_sequence >= MAX_PSYCHE_CHESS_LINEAGE_STATES:
+        raise ValueError("Psyche-Out Chess reached the admitted lineage-state limit")
     position = _base._parse_fen(state["fen"])
     current_player = state["colors"][position["turn"]]
     opponent = state["colors"][_base._enemy(position["turn"])]
@@ -92,7 +130,7 @@ def add_psyche(world: WorldStore, state_ref: str, *, from_player: str, text: str
         previous_state_ref=current.object_id,
         pending_psyche=pending,
         last_transition={"kind": "psyche", "from_player": from_player, "to_player": current_player, "sha256": pending["sha256"]},
-        event_log=state["event_log"] + [{"sequence": len(state["event_log"]), "kind": "psyche", "from_player": from_player, "to_player": current_player, "sha256": pending["sha256"]}],
+        event_log=state["event_log"] + [{"sequence": next_sequence, "kind": "psyche", "from_player": from_player, "to_player": current_player, "sha256": pending["sha256"]}],
     )
     return world.create_object(
         "psyche_chess_state",
@@ -108,6 +146,9 @@ def apply_psyche_chess_move(world: WorldStore, state_ref: str, *, player_id: str
         raise ValueError("Psyche-Out Chess is already complete")
     if not isinstance(move, str) or _base.UCI_RE.fullmatch(move) is None:
         raise ValueError("move must use bounded UCI notation")
+    next_sequence = _next_event_sequence(state["event_log"])
+    if next_sequence >= MAX_PSYCHE_CHESS_LINEAGE_STATES:
+        raise ValueError("Psyche-Out Chess reached the admitted lineage-state limit")
     position = _base._parse_fen(state["fen"])
     current_player = state["colors"][position["turn"]]
     if player_id != current_player:
@@ -133,7 +174,7 @@ def apply_psyche_chess_move(world: WorldStore, state_ref: str, *, player_id: str
             "psyche_sha256": None if psyche is None else psyche["sha256"],
         },
         event_log=state["event_log"] + [{
-            "sequence": len(state["event_log"]),
+            "sequence": next_sequence,
             "kind": "move",
             "player_id": player_id,
             "move": move,
@@ -150,6 +191,7 @@ def apply_psyche_chess_move(world: WorldStore, state_ref: str, *, player_id: str
 __all__ = [
     "INITIAL_FEN",
     "MAX_PSYCHE_CHARS",
+    "MAX_PSYCHE_CHESS_LINEAGE_STATES",
     "PSYCHE_CHESS_KIND",
     "PSYCHE_CHESS_SCHEMA",
     "PSYCHE_CHESS_TITLE",
