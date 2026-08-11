@@ -1,6 +1,6 @@
 # Anarchy Mode & Guardian of the Substrate
 
-PR #43 introduces a deliberately high-expression NEXUS room and a deliberately low-authority institutional immune system.
+PR #43 introduces a deliberately high-expression NEXUS mode and a deliberately low-authority institutional immune system.
 
 The governing lines are:
 
@@ -10,9 +10,9 @@ The governing lines are:
 
 ## Anarchy Mode
 
-`anarchy` is a public World Mode represented as the distinct `#anarchy` operator room. It deliberately reuses the existing `commons` region and `named-regions-v4` topology.
+`anarchy` is a public World Mode with the reserved room identity `#anarchy`. It deliberately reuses the existing `commons` region and `named-regions-v4` topology.
 
-That is intentional. Anarchy is a rhetorical/cognitive mode, not a new physical domain, prison, quarantine or security boundary. PR #43 therefore does not bump geometry merely to create a differently named room.
+That is intentional. Anarchy is a rhetorical/cognitive mode, not a new physical domain, prison, quarantine or security boundary. PR #43 therefore does not bump geometry merely to create a differently named room. Operator surfaces can map `#anarchy` to the mode without changing the world topology.
 
 Participants may vent, swear, ridicule NEXUS, reject the Council, argue that the Constitution should be abolished, role-play a revolution, claim they should rule the place, or otherwise explore adversarial institutional ideas.
 
@@ -164,11 +164,13 @@ A scar records:
 
 Over time the scar ledger becomes a compact history of failure modes and the regression knowledge acquired from them.
 
-## Fail-passive observation
+## Durability and fail-passive observation
 
 The Guardian is not allowed to become a new availability dependency.
 
-If Guardian recording itself fails after NEXUS has produced a valid Anarchy result, the original result remains authoritative. The response receives a visible `anarchy_guardian.recorded: false` observation-gap marker, but chat, Council, voting and world state are not rolled back or rewritten by the observer.
+If Guardian storage is unavailable or corrupt at startup, NEXUS still starts and `system.health` reports a bounded Guardian outage. If recording fails after NEXUS has produced a valid Anarchy result, the original result remains authoritative and receives a visible `anarchy_guardian.recorded: false` observation-gap marker. Chat, Council, voting and world state are never rolled back or rewritten by the observer.
+
+File-backed Guardian writers use an owner-only cross-process lock. Two NEXUS processes sharing one Guardian root must serialize lineage selection before writing, preventing two simultaneous observations from claiming the same sequence number and forking the institutional-memory chain.
 
 ## Public operations
 
@@ -204,6 +206,8 @@ ANARCHY-I11  Guardian telemetry cannot alter evidence state.
 ANARCHY-I12  Guardian telemetry cannot alter vote weight, citizenship or constitutional standing.
 ANARCHY-I13  A scar requires a successful matched replay.
 ANARCHY-I14  Anarchy reuses Commons; rhetorical freedom does not invent a new security boundary.
+ANARCHY-I15  Guardian failure cannot become a substrate availability failure.
+ANARCHY-I16  Persistent Guardian lineage writers are serialized across processes.
 ```
 
 The room can be chaotic.
