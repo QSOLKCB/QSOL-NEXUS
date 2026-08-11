@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections import Counter
 from contextlib import contextmanager
 import json
 import os
@@ -412,14 +411,9 @@ class ProgressionService:
         return head_ref
 
     def _head_state(self, actor_id: str, model_id: str, heads: dict[str, str]) -> WorldObject | None:
+        """Derive the one immutable head; mutable index state is never authority."""
+
         key = self._identity_key(actor_id, model_id)
-        ref = heads.get(key)
-        if ref is not None:
-            try:
-                return self._validated_state(ref, actor_id=actor_id, model_id=model_id)
-            except ProgressionError:
-                # The mutable cache cannot outrank immutable history. Rebuild it.
-                pass
         rebuilt = self._rebuild_head(actor_id, model_id)
         if rebuilt is None:
             heads.pop(key, None)
@@ -495,7 +489,6 @@ class ProgressionService:
         if _SCRUBBER.scrub(prompt).changed or _SCRUBBER.scrub(output).changed:
             raise ProgressionError("progression_secret_rejected", "activity record must not contain credential-shaped material")
         sources = _validate_source_refs(self.world, source_refs)
-        commission = None
         if commission_ref is not None:
             commission = self.inspect_commission(commission_ref)
             if commission.payload["activity_id"] != activity_id:
@@ -653,7 +646,7 @@ class ProgressionService:
             key = self._identity_key(actor_id, model_id)
             if heads.get(key) != state.object_id:
                 heads[key] = state.object_id
-                self._write_heads(heads)
+            self._write_heads(heads)
             return {
                 "status": "ok",
                 "schema_version": PROGRESSION_SCHEMA_VERSION,
