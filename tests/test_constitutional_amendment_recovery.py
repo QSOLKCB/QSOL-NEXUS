@@ -180,19 +180,34 @@ class ConstitutionalAmendmentRecoveryTests(unittest.TestCase):
             self.assertIn("agora", policy["non_citizen"]["allowed_region_ids"])
 
             recovered = cast(api, models, proposal_ref, deliberation_ref, "Gamma")
-            self.assertEqual(recovered["status"], "ok")
-            self.assertTrue(recovered["enacted"])
-            self.assertIsNotNone(recovered["receipt_ref"])
+            self.assertEqual(recovered["status"], "ok", f"Recovery failed: {recovered}")
+            self.assertTrue(recovered["enacted"], "Amendment should be enacted after recovery")
+            self.assertIsNotNone(recovered["receipt_ref"], "Receipt ref should exist after recovery")
             verified = api.handle(
                 {
                     "operation": "constitution.amendment.verify",
                     "version_ref": recovered["new_version_ref"],
                 }
             )
-            self.assertTrue(verified["action_awareness_verified"])
-            self.assertEqual(verified["reconciliation_outcome"], "matched")
-            self.assertTrue((root / "world" / "constitutional-amendment-index.json").exists())
-            self.assertTrue(api.stenographer.shutdown(2.0))
+            self.assertTrue(
+                verified["action_awareness_verified"],
+                f"Action awareness verification failed: {verified}",
+            )
+            self.assertEqual(
+                verified["reconciliation_outcome"],
+                "matched",
+                f"Reconciliation outcome mismatch: {verified}",
+            )
+            index_file = root / "world" / "constitutional-amendment-index.json"
+            self.assertTrue(index_file.exists(), f"Amendment index file not found at {index_file}")
+            # This assertion is teardown hygiene for a passive asynchronous
+            # observer, not part of the amendment-recovery invariant. The
+            # previous 2s bound was flaky on a loaded CI runner even though all
+            # constitutional assertions had already passed.
+            self.assertTrue(
+                api.stenographer.shutdown(10.0),
+                f"Stenographer failed to drain; pending={api.stenographer.pending_observations}",
+            )
 
     def test_final_roster_capture_serializes_citizen_transition(self) -> None:
         api = NexusAPI()
