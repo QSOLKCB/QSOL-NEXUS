@@ -27,6 +27,16 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/pr51_review_fix.py
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('tests/test_release_upgrade_rehearsal.py')
+          text = path.read_text(encoding='utf-8')
+          old = '[post["object_id"] for post in listed["posts"]]'
+          new = '[post["post_ref"] for post in listed["posts"]]'
+          if text.count(old) != 1:
+              raise SystemExit('expected exactly one stale Wall list field in generated rehearsal')
+          path.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
           python3 -m unittest \
             tests.test_release_upgrade_rehearsal \
             tests.test_release_candidate \
