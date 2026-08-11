@@ -20,6 +20,13 @@ MAX_PERFORMANCE_PROMPT_CHARS = 4_096
 MAX_PERFORMANCE_OUTPUT_CHARS = 24_000
 MAX_NARRATION_OUTPUT_CHARS = 16_000
 
+
+class CultureError(ValueError):
+    def __init__(self, code: str, message: str) -> None:
+        super().__init__(message)
+        self.code = code
+
+
 PERFORMANCE_KINDS: dict[str, dict[str, Any]] = {
     "standup": {
         "label": "Stand-up Comedy",
@@ -129,6 +136,7 @@ __all__ = [
     "CULTURE_POLICY_ID",
     "CULTURE_RESERVED_OBJECT_TYPES",
     "CULTURE_SCHEMA_VERSION",
+    "CultureError",
     "LONG_SHIFT_NARRATION_OBJECT_TYPE",
     "MAX_NARRATION_OUTPUT_CHARS",
     "MAX_PERFORMANCE_OUTPUT_CHARS",
