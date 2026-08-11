@@ -1,0 +1,56 @@
+name: NEXUS 2.0 release hardening
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'nexus'
+      - 'pyproject.toml'
+      - 'release/**'
+      - 'src/nexus_runtime/**'
+      - 'tests/**'
+      - 'tools/**'
+      - 'tui/**'
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  pre-wall-hardening:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+
+      - name: Toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          cargo --version
+          rustc --version
+
+      - name: Run PR49 hardening matrix
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python3 tools/nexus_release_hardening.py \
+            --iterations 128 \
+            --json-out /tmp/nexus-release-hardening.json
+
+      - name: Show machine-readable report
+        if: always()
+        shell: bash
+        run: |
+          if test -f /tmp/nexus-release-hardening.json; then
+            cat /tmp/nexus-release-hardening.json
+          else
+            echo 'release hardening report was not produced'
+          fi
