@@ -172,6 +172,20 @@ If Guardian storage is unavailable or corrupt at startup, NEXUS still starts and
 
 File-backed Guardian writers use an owner-only cross-process lock. Two NEXUS processes sharing one Guardian root must serialize lineage selection before writing, preventing two simultaneous observations from claiming the same sequence number and forking the institutional-memory chain.
 
+## Durable secret boundary
+
+The Guardian is institutional memory, not credential storage.
+
+Every string in every Guardian record body is passed through the deterministic Secret Scrubber again at the **ledger persistence boundary**, even when an upstream path has already scrubbed its text. This includes repair summaries, proposed invariants, regression-fixture text, reconciliation metadata and future record types that reuse the same store.
+
+Credential-shaped values are replaced with ordinary NEXUS redaction placeholders before the content hash is calculated. Credential-shaped object keys are rejected rather than rewritten, because rewriting a key could silently collide with another key and change record semantics.
+
+This defense is deliberately below the public API so a future internal or programmatic caller cannot bypass it by calling the Guardian store directly.
+
+The rule is:
+
+> **The Guardian may remember injuries. It may not remember credentials.**
+
 ## Public operations
 
 PR #43 adds:
@@ -208,6 +222,7 @@ ANARCHY-I13  A scar requires a successful matched replay.
 ANARCHY-I14  Anarchy reuses Commons; rhetorical freedom does not invent a new security boundary.
 ANARCHY-I15  Guardian failure cannot become a substrate availability failure.
 ANARCHY-I16  Persistent Guardian lineage writers are serialized across processes.
+ANARCHY-I17  Raw credential material cannot enter the durable Guardian ledger.
 ```
 
 The room can be chaotic.
