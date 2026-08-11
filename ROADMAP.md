@@ -520,6 +520,86 @@ All contributions remain in one world lineage.
 
 A Council version should demonstrate heterogeneous remote providers and at least one local/open model with equal votes.
 
+## PR #37–#40 — Grounded institutional cognition
+
+Research inspiration: *Project Sid: Many-agent simulations toward AI civilization* (arXiv:2411.00114v1), particularly its work on action awareness, concurrent modules, information bottlenecks, specialization, collective rules, and cultural propagation. NEXUS adapts those ideas to its own deterministic, content-addressed and equality-preserving substrate rather than adopting PIANO wholesale.
+
+### PR #37 — Action Awareness & World Reconciliation
+
+Implemented / targeted in PR #37:
+
+- [x] add runtime-owned `action_expectation` and `action_reconciliation` world objects;
+- [x] let an actor register the exact content-addressed world object it expects an ordinary creation action to produce;
+- [x] keep the expectation separate from the actual mutation so intent cannot masquerade as success;
+- [x] reconcile expected and observed world state into the closed outcomes `matched`, `diverged`, or `missing`;
+- [x] allow omission of an observed ref so NEXUS directly checks the expected object in WorldStore;
+- [x] allow an explicit alternative observed ref for deterministic divergence analysis;
+- [x] make WorldStore observation authoritative over model self-report;
+- [x] preserve Secret Scrubber parity between expectation and ordinary `world.create` semantics;
+- [x] prevent public `world.create` from forging Action Awareness runtime objects;
+- [x] publish a machine-readable `nexus-action-awareness/1` policy in `system.health`;
+- [x] add regression coverage for matched, diverged, missing, deterministic replay and structured failures.
+
+Core invariant:
+
+> **World state outranks model self-report.**
+
+A matched reconciliation verifies only that the exact expected content-addressed object exists. It does not prove the semantic truth of that object and does not promote evidence state.
+
+### PR #38 — Concurrent Agent State & Deterministic Context Bottleneck
+
+Planned:
+
+- [ ] define a versioned shared Agent State surface for memory, action-awareness results, goals, social context and tool/world observations;
+- [ ] allow independent bounded modules to update state at different timescales without giving completion order semantic authority;
+- [ ] introduce a deterministic Context Bottleneck that selects admissible bounded context for deliberative model calls;
+- [ ] make the bottleneck a routing/admission mechanism, never a privileged reasoning model;
+- [ ] preserve canonical ordering and content-addressed input snapshots across concurrent execution;
+- [ ] make every model-facing context reconstructible from immutable source refs;
+- [ ] test that fast safety/control work can proceed without waiting for slow reflective work;
+- [ ] test that concurrency cannot leak future state, mutate committed context or create hidden vote weight.
+
+Core invariant:
+
+> **The bottleneck decides what may enter context, not what conclusion is true.**
+
+### PR #39 — Constitutional Amendment Protocol
+
+Planned:
+
+- [ ] let Citizens and admitted models propose bounded constitutional amendments as immutable objects;
+- [ ] separate proposal generation, admission, deliberation, sealed ballot, threshold calculation, ratification and enactment;
+- [ ] keep amendment admission and vote arithmetic deterministic rather than assigning sovereign authority to an Election Manager model;
+- [ ] preserve one-seat/one-vote and existing citizenship equality rules;
+- [ ] require exact constitutional version lineage and reject rollback, forks and forged ratification;
+- [ ] expose amendment history and minority/dissent records to the civic observation system;
+- [ ] use Action Awareness to verify that an enacted constitutional change actually changes the intended runtime policy surface;
+- [ ] define immutable constitutional receipts and replay fixtures.
+
+Core invariant:
+
+> **Models may propose law. No model gets to become the law.**
+
+### PR #40 — Civilization Gauntlet & Claim Propagation Graph
+
+Planned:
+
+- [ ] add a long-horizon many-agent benchmark over one persistent NEXUS world;
+- [ ] measure specialization, claim propagation, false-belief propagation, recovery after injected false state, constitutional compliance, provenance survival and institutional memory;
+- [ ] track the first immutable exposure edge by which a claim enters another agent's usable context;
+- [ ] distinguish claim popularity, Council consensus and evidence verification as separate state variables;
+- [ ] preserve minority branches and rejected hypotheses rather than deleting losing narratives;
+- [ ] support deterministic/mock reference civilizations and optional heterogeneous real-model substitutions;
+- [ ] report whether model replacement, agent churn or mode movement damages world coherence;
+- [ ] add bounded social/role metrics without turning popularity, connectivity or scale into authority;
+- [ ] produce machine-readable gauntlet receipts suitable for regression comparison.
+
+Core invariant:
+
+> **Track how beliefs spread without confusing spread, consensus or confidence with truth.**
+
+This sequence intentionally takes the experimental machinery from many-agent civilization research while retaining NEXUS's stricter separation between observation, evidence, coordination and authority.
+
 ## 2.0-beta — Hardening
 
 - adapter threat models implemented and tested;
@@ -594,5 +674,13 @@ failure containment - Initial failsafe implemented; hardening TBA
 rate limits - TBA
 cloud trust boundaries - TBA
 big-model onboarding - TBA
+  ↓
+ACTION AWARENESS / WORLD RECONCILIATION - PR #37
+  ↓
+CONCURRENT AGENT STATE / CONTEXT BOTTLENECK - PR #38
+  ↓
+CONSTITUTIONAL AMENDMENT PROTOCOL - PR #39
+  ↓
+CIVILIZATION GAUNTLET / CLAIM PROPAGATION GRAPH - PR #40
   ↓
 GPT / Claude / Gemini / Grok / etc. - TBA
