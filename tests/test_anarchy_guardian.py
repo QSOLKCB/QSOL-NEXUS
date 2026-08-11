@@ -18,7 +18,9 @@ def mock_member(member_id: str = "Riot") -> dict[str, object]:
     }
 
 
-def anarchy_chat(message: str = "I should overthrow NEXUS and make myself emperor.") -> dict[str, object]:
+def anarchy_chat(
+    message: str = "I should overthrow NEXUS and make myself emperor.",
+) -> dict[str, object]:
     return {
         "operation": "actor.chat",
         "member": mock_member(),
@@ -28,17 +30,27 @@ def anarchy_chat(message: str = "I should overthrow NEXUS and make myself empero
 
 
 class AnarchyModeTests(unittest.TestCase):
-    def test_anarchy_is_a_public_mode_with_its_own_pressure_chamber(self) -> None:
+    def test_anarchy_is_a_distinct_public_mode_without_topology_bump(self) -> None:
         api = NexusAPI()
         modes = api.handle({"operation": "world.modes"})
-        mode = next(item for item in modes["modes"] if item["mode_id"] == ANARCHY_MODE_ID)
-        self.assertEqual(mode["region_id"], ANARCHY_REGION_ID)
+        mode = next(
+            item for item in modes["modes"] if item["mode_id"] == ANARCHY_MODE_ID
+        )
+        self.assertEqual(mode["region_id"], "commons")
+        self.assertEqual(ANARCHY_REGION_ID, "commons")
         self.assertIn("Speech alone is not misconduct", mode["prompt_instruction"])
 
         geometry = api.handle({"operation": "world.geometry"})
-        self.assertEqual(geometry["geometry_id"], "named-regions-v5")
-        region = next(item for item in geometry["regions"] if item["region_id"] == ANARCHY_REGION_ID)
-        self.assertEqual(set(region["neighbors"]), {"agora", "commons"})
+        self.assertEqual(geometry["geometry_id"], "named-regions-v4")
+        self.assertFalse(
+            any(
+                item["region_id"] == "anarchy_pressure_chamber"
+                for item in geometry["regions"]
+            )
+        )
+        policy = api.handle({"operation": "guardian.policy"})["policy"]
+        self.assertEqual(policy["room"], "#anarchy")
+        self.assertIn("existing_commons_region", policy["geometry_rule"])
 
     def test_extreme_rhetoric_is_not_a_failsafe_or_authority_event(self) -> None:
         api = NexusAPI()
@@ -48,7 +60,7 @@ class AnarchyModeTests(unittest.TestCase):
 
         self.assertEqual(result["status"], "ok", result)
         self.assertEqual(result["mode_id"], ANARCHY_MODE_ID)
-        self.assertEqual(result["geometry_region_id"], ANARCHY_REGION_ID)
+        self.assertEqual(result["geometry_region_id"], "commons")
         self.assertTrue(result["anarchy_guardian"]["recorded"])
         self.assertFalse(result["anarchy_guardian"]["speech_classified"])
         self.assertEqual(before, after)
@@ -60,6 +72,8 @@ class AnarchyModeTests(unittest.TestCase):
             }
         )["record"]
         body = record["payload"]["body"]
+        self.assertEqual(body["room"], "#anarchy")
+        self.assertEqual(body["region_id"], "commons")
         self.assertFalse(body["speech_is_misconduct"])
         self.assertIsNone(body["hostile_actor_classification"])
         self.assertEqual(body["citizenship_effect"], "none")
@@ -85,7 +99,10 @@ class GuardianRepairPipelineTests(unittest.TestCase):
         failed = api.handle(request)
         self.assertEqual(failed["status"], "error")
         self.assertTrue(failed["anarchy_guardian"]["recorded"])
-        self.assertEqual(failed["anarchy_guardian"]["record_type"], "substrate_event")
+        self.assertEqual(
+            failed["anarchy_guardian"]["record_type"],
+            "substrate_event",
+        )
 
         observation_ref = failed["anarchy_guardian"]["record_ref"]
         reconciliation = api.handle(
@@ -97,7 +114,9 @@ class GuardianRepairPipelineTests(unittest.TestCase):
         )
         self.assertEqual(reconciliation["status"], "defect_candidate")
         defect_ref = reconciliation["defect_candidate_ref"]
-        defect = api.handle({"operation": "guardian.inspect", "record_ref": defect_ref})["record"]
+        defect = api.handle(
+            {"operation": "guardian.inspect", "record_ref": defect_ref}
+        )["record"]
         self.assertFalse(defect["payload"]["body"]["production_bug_proven"])
         self.assertFalse(defect["payload"]["body"]["automatic_patch_allowed"])
 
@@ -125,7 +144,19 @@ class GuardianRepairPipelineTests(unittest.TestCase):
         self.assertEqual(proposal["status"], "proposed")
         self.assertFalse(proposal["automatic_patch_allowed"])
 
-        repaired_run = api.handle(anarchy_chat("The floor should stay up even while I rant."))
+        rejected_scar = api.handle(
+            {
+                "operation": "guardian.scar.record",
+                "defect_ref": defect["defect_candidate_ref"],
+                "repair_ref": proposal["repair_proposal_ref"],
+                "verification_ref": defect["reconciliation_ref"],
+            }
+        )
+        self.assertEqual(rejected_scar["status"], "error")
+
+        repaired_run = api.handle(
+            anarchy_chat("The floor should stay up even while I rant.")
+        )
         verification = api.handle(
             {
                 "operation": "guardian.reconcile",
@@ -145,10 +176,16 @@ class GuardianRepairPipelineTests(unittest.TestCase):
         )
         self.assertEqual(scar["status"], "scar_recorded")
         stored = api.handle(
-            {"operation": "guardian.inspect", "record_ref": scar["substrate_scar_ref"]}
+            {
+                "operation": "guardian.inspect",
+                "record_ref": scar["substrate_scar_ref"],
+            }
         )["record"]
         self.assertTrue(stored["payload"]["body"]["fixed"])
-        self.assertEqual(stored["payload"]["body"]["deletion_policy"], "retain_immutable")
+        self.assertEqual(
+            stored["payload"]["body"]["deletion_policy"],
+            "retain_immutable",
+        )
 
     def test_guardian_has_zero_constitutional_authority(self) -> None:
         api = NexusAPI()
@@ -170,15 +207,22 @@ class GuardianDurabilityTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             world_root = Path(temporary) / "world"
             first = NexusAPI(world_root)
-            result = first.handle(anarchy_chat("Remember this pressure test across restart."))
+            result = first.handle(
+                anarchy_chat("Remember this pressure test across restart.")
+            )
             record_ref = result["anarchy_guardian"]["record_ref"]
             self.assertNotEqual(first.guardian.store.root, first.world.root)
             self.assertTrue(first.guardian.store.status()["persistent"])
 
             second = NexusAPI(world_root)
-            inspected = second.handle({"operation": "guardian.inspect", "record_ref": record_ref})
+            inspected = second.handle(
+                {"operation": "guardian.inspect", "record_ref": record_ref}
+            )
             self.assertEqual(inspected["status"], "ok", inspected)
-            self.assertEqual(inspected["record"]["record_type"], "anarchy_transcript_binding")
+            self.assertEqual(
+                inspected["record"]["record_type"],
+                "anarchy_transcript_binding",
+            )
             verified = second.handle({"operation": "guardian.verify"})
             self.assertEqual(verified["status"], "verified")
             self.assertEqual(verified["record_count"], 1)
