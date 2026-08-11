@@ -1,5 +1,7 @@
 __pycache__/
 *.py[cod]
+.venv/
+.nexus/
 tui/target/
 .nexus-world/
 .nexus-trap/
