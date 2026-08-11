@@ -1,0 +1,76 @@
+name: PR51 release-candidate builder
+
+on:
+  push:
+    branches:
+      - agent/pr51-release-candidate
+    paths:
+      - 'tools/pr51_release_candidate_build.py'
+      - '.github/workflows/pr51-builder.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  reconcile-release-candidate:
+    if: github.repository == 'QSOLKCB/QSOL-NEXUS'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout exact PR51 branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          ref: agent/pr51-release-candidate
+          fetch-depth: 1
+
+      - name: Apply documentation and release reconciliation
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/pr51_release_candidate_build.py
+          git diff --check
+
+      - name: Validate release-candidate contracts
+        shell: bash
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests -p 'test_release_candidate.py' -v
+          python3 -m unittest discover -s tests -p 'test_release_wiring.py' -v
+          python3 -m unittest discover -s tests -p 'test_readme_contract.py' -v
+          python3 -m unittest discover -s tests -p 'test_release_hardening.py' -v
+          python3 -m unittest discover -s tests -p 'test_release_hardening_grok_audit.py' -v
+
+      - name: Validate Rust release identity and compile surface
+        shell: bash
+        run: |
+          set -euo pipefail
+          cargo check --manifest-path tui/Cargo.toml --all-targets
+          cargo fmt --manifest-path tui/Cargo.toml -- --check
+
+      - name: Commit permanent PR51 candidate tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          git rm --ignore-unmatch tools/pr51_release_candidate_build.py .github/workflows/pr51-builder.yml
+          git config user.name 'QSOL PR51 Release Candidate Builder'
+          git config user.email '73952179+EmergentMonk@users.noreply.github.com'
+          git add \
+            .github/workflows/release-hardening.yml \
+            ARCHITECTURE.md CHANGELOG.md CITATION.cff CLAIMS.md COUNCIL.md HOWTO.md \
+            README.md README4AI.md ROADMAP.md SECURITY.md THREAT_MODEL.md \
+            pyproject.toml \
+            docs/API.md docs/AI_CULTURE.md docs/AI_PROGRESSION.md docs/ARK_PROTOCOL.md \
+            docs/BBS_WALL.md docs/COMPATIBILITY.md docs/DOCUMENTATION_AUDIT_2.0.md \
+            docs/IRC_TUI.md docs/NEXUS_2_HARDENING.md docs/OPERATOR_TOOLING.md \
+            docs/RELEASE_CHECKLIST.md docs/RELEASE_NOTES_2.0.0.md docs/RELEASE_SEQUENCE.md \
+            docs/WORLD_PROTOCOL.md \
+            release/hardening_matrix.json release/release_candidate.json \
+            src/nexus_runtime/version.py \
+            tests/test_release_candidate.py tests/test_release_hardening.py tests/test_release_wiring.py \
+            tools/nexus_release_hardening.py \
+            tui/Cargo.toml tui/Cargo.lock
+          git diff --cached --check
+          git commit -m 'release: prepare NEXUS 2.0 final candidate'
+          git push origin HEAD:agent/pr51-release-candidate
