@@ -72,6 +72,7 @@ def guardian_policy_snapshot() -> dict[str, Any]:
         "scar_rule": "verified_repairs_may_leave_immutable_substrate_scars",
         "geometry_rule": "anarchy_is_a_distinct_room_and_mode_in_existing_commons_region",
         "writer_rule": "cross_process_lineage_writers_are_serialized_by_owner_only_lock",
+        "secret_rule": "all_guardian_record_strings_are_scrubbed_before_durable_persistence",
         "authority": _authority_envelope(),
         "motto": "I do not care what you believe. I care whether the floor collapses beneath you.",
         "anarchy_motto": "Say whatever you like. The substrate still has to survive it.",
@@ -98,6 +99,36 @@ class GuardianRecord:
         }
 
 
+def _scrub_guardian_value(value: Any, scrubber: SecretScrubber) -> Any:
+    """Recursively remove credential-shaped strings before ledger persistence.
+
+    Guardian bodies are canonical JSON. Values are redacted deterministically;
+    secret-bearing object keys are rejected instead of rewritten so a redaction
+    cannot create duplicate/colliding keys and silently change record meaning.
+    """
+
+    if isinstance(value, str):
+        return scrubber.scrub(value).text
+    if isinstance(value, list):
+        return [_scrub_guardian_value(item, scrubber) for item in value]
+    if isinstance(value, dict):
+        scrubbed: dict[str, Any] = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                raise GuardianError(
+                    "guardian_invalid_record",
+                    "Guardian record object keys must be strings",
+                )
+            if scrubber.scrub(key).changed:
+                raise GuardianError(
+                    "guardian_secret_material",
+                    "Guardian record object keys must not contain credential material",
+                )
+            scrubbed[key] = _scrub_guardian_value(item, scrubber)
+        return scrubbed
+    return value
+
+
 class GuardianStore:
     """Separate append-only content-addressed ledger for substrate observations."""
 
@@ -111,6 +142,7 @@ class GuardianStore:
                 "Guardian storage path is unavailable or unsafe",
             ) from exc
         self._thread_lock = threading.RLock()
+        self._scrubber = SecretScrubber()
         self._ordered_refs: list[str] = []
         self._head_ref: str | None = None
         self._refresh()
@@ -298,6 +330,14 @@ class GuardianStore:
                 "guardian_invalid_record",
                 "Guardian record body is not canonical JSON",
             ) from exc
+        scrubbed_body = _scrub_guardian_value(copy.deepcopy(body), self._scrubber)
+        try:
+            canonical_json(scrubbed_body)
+        except (TypeError, ValueError, OverflowError, RecursionError) as exc:
+            raise GuardianError(
+                "guardian_invalid_record",
+                "Secret-scrubbed Guardian record body is not canonical JSON",
+            ) from exc
         with self._locked_ledger():
             if self.root is not None:
                 self._refresh_unlocked()
@@ -307,7 +347,7 @@ class GuardianStore:
                 "previous_record_ref": self._head_ref,
                 "record_type": record_type,
                 "authority": _authority_envelope(),
-                "body": copy.deepcopy(body),
+                "body": scrubbed_body,
             }
             try:
                 obj = self._store.create_object(
