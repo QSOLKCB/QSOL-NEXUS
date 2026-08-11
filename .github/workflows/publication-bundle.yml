@@ -40,13 +40,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          source publication/nexus-2.0-formalization/IDENTITY.env
           git fetch --force --tags origin
+
+          identity_file="${RUNNER_TEMP}/publication-identity.env"
+          git show "${NEXUS_PUBLICATION_COMMIT}:publication/nexus-2.0-formalization/IDENTITY.env" > "$identity_file"
+          # shellcheck disable=SC1090
+          source "$identity_file"
 
           test "$LEAN_VERSION" = "4.33.0"
           test "$LEAN_LINUX_SHA256" = "4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c"
+          git cat-file -e "${PR52_REVIEWED_HEAD}^{commit}"
+          git cat-file -e "${PR53_REVIEWED_HEAD}^{commit}"
           test "$(git rev-list -n 1 "$NEXUS_STABLE_TAG")" = "$NEXUS_STABLE_COMMIT"
-          test "$(git merge-base "$NEXUS_STABLE_COMMIT" "$PR53_REVIEWED_HEAD")" = "$NEXUS_STABLE_COMMIT"
+
+          stable_parents=" $(git show -s --format=%P "$NEXUS_STABLE_COMMIT") "
+          [[ "$stable_parents" == *" ${PR52_REVIEWED_HEAD} "* ]]
+
+          pr53_parents=" $(git show -s --format=%P "$PR53_MERGE_COMMIT") "
+          [[ "$pr53_parents" == *" ${NEXUS_STABLE_COMMIT} "* ]]
+          [[ "$pr53_parents" == *" ${PR53_REVIEWED_HEAD} "* ]]
           git diff --quiet "$PR53_REVIEWED_HEAD" "$NEXUS_PUBLICATION_COMMIT" -- formal/lean
 
           if [[ "$ZENODO_DOI" != "PENDING" && "$ZENODO_DOI" != 10.*/* ]]; then
@@ -71,6 +83,7 @@ jobs:
 
           {
             echo "stable software: ${NEXUS_STABLE_TAG} -> ${NEXUS_STABLE_COMMIT}"
+            echo "PR #52 reviewed head: ${PR52_REVIEWED_HEAD} (direct stable-merge parent)"
             echo "PR #53 reviewed head: ${PR53_REVIEWED_HEAD}"
             echo "PR #53 merged commit: ${PR53_MERGE_COMMIT}"
             echo "publication commit: ${NEXUS_PUBLICATION_COMMIT}"
@@ -98,10 +111,29 @@ jobs:
           set -euo pipefail
           lean --version
           lake --version
-          bash tools/build_nexus_2_formalization_bundle.sh "${RUNNER_TEMP}/nexus-publication"
-          cd "${RUNNER_TEMP}/nexus-publication"
+
+          out_022="${RUNNER_TEMP}/nexus-publication-022"
+          out_077="${RUNNER_TEMP}/nexus-publication-077"
+          final_out="${RUNNER_TEMP}/nexus-publication"
+
+          (umask 022; bash tools/build_nexus_2_formalization_bundle.sh "$out_022")
+          (umask 077; bash tools/build_nexus_2_formalization_bundle.sh "$out_077")
+
+          cmp "$out_022/NEXUS-2.0-FORMALIZATION.tar.gz" \
+              "$out_077/NEXUS-2.0-FORMALIZATION.tar.gz"
+          cmp "$out_022/NEXUS-2.0-FORMALIZATION.tar.gz.sha256" \
+              "$out_077/NEXUS-2.0-FORMALIZATION.tar.gz.sha256"
+
+          mkdir -p "$final_out"
+          cp "$out_022/NEXUS-2.0-FORMALIZATION.tar.gz" "$final_out/"
+          cp "$out_022/NEXUS-2.0-FORMALIZATION.tar.gz.sha256" "$final_out/"
+
+          cd "$final_out"
           sha256sum -c NEXUS-2.0-FORMALIZATION.tar.gz.sha256
-          cat NEXUS-2.0-FORMALIZATION.tar.gz.sha256 >> "$GITHUB_STEP_SUMMARY"
+          {
+            echo "umask 022/077 deterministic reproduction: PASS"
+            cat NEXUS-2.0-FORMALIZATION.tar.gz.sha256
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload Zenodo-ready publication candidate
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
