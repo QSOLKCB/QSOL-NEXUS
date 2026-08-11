@@ -6,10 +6,11 @@ from pathlib import Path
 import sys
 from typing import Sequence
 
-from .provider_api import ProviderNexusAPI as NexusAPI
+from .hardening import HardenedNexusAPI as NexusAPI
 from .auth import AuthBroker, AuthError, ensure_disjoint_auth_world_roots
 from .auth.storage import default_auth_root
 from .auth_cli import configure_auth_parser, emit_auth_error, run_auth_command
+from .control_plane import iter_bounded_jsonl_lines
 from .model_cli import configure_models_parser, run_models_command
 from .stenographer import StenographerError, default_stenographer_root
 from .stenographer_cli import configure_stenographer_parser, run_stenographer_command
@@ -225,8 +226,14 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(json.dumps(api.handle(_demo_request()), indent=2, sort_keys=True))
         return 0
 
-    for line in sys.stdin:
-        line = line.strip()
+    for bounded in iter_bounded_jsonl_lines(sys.stdin):
+        if bounded.error is not None:
+            code = "request_too_large" if "byte limit" in bounded.error else "invalid_json"
+            response = {"status": "error", "error": {"code": code, "message": bounded.error}}
+            print(json.dumps(response, sort_keys=True, separators=(",", ":")), flush=True)
+            continue
+        assert bounded.text is not None
+        line = bounded.text.strip()
         if not line:
             continue
         try:
@@ -234,7 +241,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             if not isinstance(request, dict):
                 raise ValueError("request must be a JSON object")
             response = api.handle(request)
-        except (json.JSONDecodeError, ValueError) as exc:
+        except (json.JSONDecodeError, ValueError, RecursionError) as exc:
             response = {"status": "error", "error": {"code": "invalid_json", "message": str(exc)}}
         print(json.dumps(response, sort_keys=True, separators=(",", ":")), flush=True)
     return 0
