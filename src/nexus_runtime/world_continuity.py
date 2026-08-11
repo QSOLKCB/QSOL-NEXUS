@@ -7,7 +7,7 @@ from dataclasses import dataclass
 import hashlib
 import json
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 import re
 import shutil
 import stat
@@ -29,9 +29,10 @@ CONTINUITY_RESERVED_OBJECT_TYPES = frozenset({MIGRATION_OBJECT_TYPE})
 _MANIFEST_REF = re.compile(r"^world-manifest:[0-9a-f]{64}$")
 _OBJECT_REF = re.compile(r"^object:[0-9a-f]{64}$")
 _ARK_REF = re.compile(r"^world-ark:[0-9a-f]{64}$")
+_HEX64 = re.compile(r"^[0-9a-f]{64}$")
 
 
-class WorldContinuityError(ValueError):
+class WorldContinuityError(RuntimeError):
     def __init__(self, code: str, message: str) -> None:
         super().__init__(message)
         self.code = code
@@ -64,18 +65,19 @@ def continuity_policy_snapshot() -> dict[str, Any]:
         "object_identity": "existing object:<sha256> references remain unchanged",
         "recognized_history_rule": "verified majority quorum selects the continuity head; recency alone has no authority",
         "repair_rule": "repair only from a content-address-verified source already bound by recognized history",
-        "ambiguity_rule": "zero-known-good or no-head-quorum conditions fail closed",
+        "ambiguity_rule": "existing continuity metadata without one recognized HEAD quorum fails closed and is never re-baselined",
         "index_rule": "mutable HEAD files are reconstructible pointers, never historical authority by themselves",
-        "ark_rule": "Arks are cold self-describing snapshots and restore only into a new target",
+        "ark_rule": "Arks are cold self-describing snapshots, path-confined, chain-inventory exact, and restore only into a new target",
         "migration_rule": "source bytes and object refs remain preserved; alternate digests are additive receipts",
         "guardian_rule": "continuity may emit verified repair receipts for Guardian scars; Guardian has no storage authority",
         "degraded_rule": "a degraded store may become read-only rather than invent history",
+        "publication_rule": "failed HEAD publication rolls back to the previously recognized quorum",
         "authority_effect": "none",
     }
 
 
 class ContinuityWorldStore(WorldStore):
-    """WorldStore with optional quorum replication and append-only manifests."""
+    """Content-addressed WorldStore with quorum continuity and cold Arks."""
 
     def __init__(
         self,
@@ -88,8 +90,6 @@ class ContinuityWorldStore(WorldStore):
         self._history_cache_head: str | None = None
         self._history_cache_objects: frozenset[str] = frozenset()
         self._history_cache_manifests: tuple[str, ...] = ()
-        super().__init__(root)
-        self._replicas: list[_Replica] = []
 
         if root is None:
             if replica_roots:
@@ -97,29 +97,36 @@ class ContinuityWorldStore(WorldStore):
                     "world_continuity_requires_primary",
                     "replicas require a persistent primary WorldStore root",
                 )
+            super().__init__(None)
+            self._replicas: list[_Replica] = []
             self.write_quorum = 1
             return
 
-        roots = [self.root, *(Path(item).absolute() for item in replica_roots)]
-        assert roots[0] is not None
-        self._validate_replica_roots([Path(item) for item in roots])
+        primary = Path(root).absolute()
+        replica_paths = [Path(item).absolute() for item in replica_roots]
+        roots = [primary, *replica_paths]
+        self._validate_replica_roots(roots)
 
+        continuity_preexisting = any(
+            (item / "continuity").exists() or (item / "continuity").is_symlink()
+            for item in roots
+        )
+
+        super().__init__(primary)
         stores: list[WorldStore] = [self]
-        for replica_root in roots[1:]:
-            stores.append(WorldStore(replica_root))
-
+        stores.extend(WorldStore(item) for item in replica_paths)
+        self._replicas = []
         for index, (replica_root, store) in enumerate(zip(roots, stores, strict=True)):
-            root_path = Path(replica_root)
             try:
-                domain = f"device:{root_path.stat().st_dev}"
+                domain = f"device:{replica_root.stat().st_dev}"
             except OSError:
-                domain = f"path:{root_path}"
+                domain = f"path:{replica_root}"
             state = ReplicaState(
                 "primary" if index == 0 else f"replica-{index}",
-                root_path,
+                replica_root,
                 domain,
             )
-            self._prepare_continuity_root(root_path)
+            self._prepare_continuity_root(replica_root)
             self._replicas.append(_Replica(state, store))
 
         majority = len(self._replicas) // 2 + 1
@@ -132,8 +139,13 @@ class ContinuityWorldStore(WorldStore):
         self.write_quorum = selected_quorum
 
         with self._locked_continuity():
-            heads = self._head_observations()
-            if not any(value is not None for value in heads.values()):
+            observations = self._head_observations()
+            if not any(value is not None for value in observations.values()):
+                if continuity_preexisting:
+                    raise WorldContinuityError(
+                        "world_continuity_no_quorum",
+                        "continuity metadata already exists but no verified HEAD quorum remains",
+                    )
                 self._bootstrap_legacy_world()
             else:
                 self._resolve_head(require_chain=True)
@@ -147,7 +159,13 @@ class ContinuityWorldStore(WorldStore):
                     "world_continuity_unsafe_replica",
                     "WorldStore replica roots must not be symbolic links",
                 )
-            candidate = root.resolve()
+            try:
+                candidate = root.resolve()
+            except (OSError, RuntimeError) as exc:
+                raise WorldContinuityError(
+                    "world_continuity_unsafe_replica",
+                    "WorldStore replica roots could not be resolved safely",
+                ) from exc
             for previous in resolved:
                 if (
                     candidate == previous
@@ -171,7 +189,7 @@ class ContinuityWorldStore(WorldStore):
                     "world_continuity_unsafe_storage",
                     "continuity storage must be private directories",
                 )
-            path.mkdir(mode=0o700, exist_ok=True)
+            path.mkdir(mode=0o700, parents=True, exist_ok=True)
             if os.name != "nt":
                 path.chmod(0o700)
 
@@ -243,7 +261,10 @@ class ContinuityWorldStore(WorldStore):
                 ) from exc
             finally:
                 if descriptor is not None:
-                    os.close(descriptor)
+                    try:
+                        os.close(descriptor)
+                    except OSError:
+                        pass
 
     @staticmethod
     def _manifest_path(root: Path, manifest_ref: str) -> Path:
@@ -268,7 +289,7 @@ class ContinuityWorldStore(WorldStore):
                 "immutable continuity records must not be symbolic links",
             )
         if path.exists():
-            if path.read_bytes() != encoded:
+            if not path.is_file() or path.read_bytes() != encoded:
                 raise WorldContinuityError(
                     "world_continuity_conflict",
                     "immutable continuity record already exists with different bytes",
@@ -292,15 +313,23 @@ class ContinuityWorldStore(WorldStore):
             try:
                 os.link(temporary, path)
             except FileExistsError:
-                if path.read_bytes() != encoded:
+                if not path.is_file() or path.read_bytes() != encoded:
                     raise WorldContinuityError(
                         "world_continuity_conflict",
                         "immutable continuity record raced with different bytes",
                     )
+            if os.name != "nt" and path.exists():
+                path.chmod(0o600)
         finally:
             if descriptor is not None:
-                os.close(descriptor)
-            temporary.unlink(missing_ok=True)
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
 
     @staticmethod
     def _write_head(root: Path, manifest_ref: str) -> None:
@@ -331,8 +360,30 @@ class ContinuityWorldStore(WorldStore):
                 target.chmod(0o600)
         finally:
             if descriptor is not None:
-                os.close(descriptor)
-            temporary.unlink(missing_ok=True)
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    @staticmethod
+    def _remove_head(root: Path) -> None:
+        target = ContinuityWorldStore._head_path(root)
+        if target.is_symlink():
+            raise WorldContinuityError(
+                "world_continuity_unsafe_storage",
+                "continuity HEAD must not be a symbolic link",
+            )
+        if target.exists():
+            if not target.is_file():
+                raise WorldContinuityError(
+                    "world_continuity_unsafe_storage",
+                    "continuity HEAD must be a regular file",
+                )
+            target.unlink()
 
     @staticmethod
     def _read_canonical(path: Path) -> dict[str, Any]:
@@ -381,7 +432,10 @@ class ContinuityWorldStore(WorldStore):
             ) from exc
         finally:
             if descriptor is not None:
-                os.close(descriptor)
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
 
     @classmethod
     def _validate_manifest(cls, raw: dict[str, Any], expected_ref: str) -> dict[str, Any]:
@@ -435,9 +489,13 @@ class ContinuityWorldStore(WorldStore):
                 "continuity manifest event type is invalid",
             )
         inventory = raw.get("inventory_refs")
-        if not isinstance(inventory, list) or any(
-            not isinstance(item, str) or _OBJECT_REF.fullmatch(item) is None
-            for item in inventory
+        if (
+            not isinstance(inventory, list)
+            or inventory != sorted(set(inventory))
+            or any(
+                not isinstance(item, str) or _OBJECT_REF.fullmatch(item) is None
+                for item in inventory
+            )
         ):
             raise WorldContinuityError(
                 "world_continuity_corrupt",
@@ -451,13 +509,37 @@ class ContinuityWorldStore(WorldStore):
                 "world_continuity_corrupt",
                 "continuity manifest object ref is invalid",
             )
+        replica_ids = raw.get("replica_ids")
+        quorum = raw.get("write_quorum")
+        if (
+            not isinstance(replica_ids, list)
+            or not replica_ids
+            or any(not isinstance(item, str) or not item for item in replica_ids)
+            or len(set(replica_ids)) != len(replica_ids)
+            or type(quorum) is not int
+            or not (len(replica_ids) // 2 + 1) <= quorum <= len(replica_ids)
+        ):
+            raise WorldContinuityError(
+                "world_continuity_corrupt",
+                "continuity manifest quorum metadata is invalid",
+            )
+        if raw.get("authority_effect") != "none":
+            raise WorldContinuityError(
+                "world_continuity_corrupt",
+                "continuity manifest authority envelope is invalid",
+            )
         if event_type == "legacy_baseline":
             if generation != 0 or previous is not None or object_ref is not None:
                 raise WorldContinuityError(
                     "world_continuity_corrupt",
                     "legacy baseline manifest is structurally invalid",
                 )
-        elif inventory or object_ref is None:
+        elif (
+            generation < 1
+            or previous is None
+            or inventory != []
+            or object_ref is None
+        ):
             raise WorldContinuityError(
                 "world_continuity_corrupt",
                 "object commit manifest is structurally invalid",
@@ -485,7 +567,10 @@ class ContinuityWorldStore(WorldStore):
         if not path.exists():
             return None
         raw = cls._read_canonical(path)
-        if set(raw) != {"schema_version", "manifest_ref"} or raw.get("schema_version") != CONTINUITY_HEAD_SCHEMA:
+        if (
+            set(raw) != {"schema_version", "manifest_ref"}
+            or raw.get("schema_version") != CONTINUITY_HEAD_SCHEMA
+        ):
             raise WorldContinuityError(
                 "world_continuity_corrupt",
                 "continuity HEAD schema is invalid",
@@ -518,7 +603,12 @@ class ContinuityWorldStore(WorldStore):
             sources.append(replica)
         return sources
 
-    def _resolve_head(self, *, require_chain: bool) -> tuple[str, dict[str, Any]]:
+    def _resolve_head(
+        self,
+        *,
+        require_chain: bool,
+        require_manifest_quorum: bool = False,
+    ) -> tuple[str, dict[str, Any]]:
         observations = self._head_observations()
         counts = Counter(value for value in observations.values() if value is not None)
         candidates = [ref for ref, count in counts.items() if count >= self.write_quorum]
@@ -536,13 +626,18 @@ class ContinuityWorldStore(WorldStore):
             )
         manifest = self._read_manifest(sources[0].state.root, head_ref)
         if require_chain:
-            self._history(head_ref)
+            self._history(head_ref, require_manifest_quorum=require_manifest_quorum)
         return head_ref, manifest
 
-    def _history(self, head_ref: str) -> tuple[frozenset[str], tuple[str, ...]]:
-        if self._history_cache_head == head_ref:
-            return self._history_cache_objects, self._history_cache_manifests
-
+    def _history(
+        self,
+        head_ref: str,
+        *,
+        require_manifest_quorum: bool = False,
+    ) -> tuple[frozenset[str], tuple[str, ...]]:
+        # Never trust the cached predecessor chain for a new read or mutation.
+        # The cache is only a published snapshot for diagnostics; every call
+        # below revalidates all manifest links from disk.
         newest: list[tuple[str, dict[str, Any]]] = []
         seen: set[str] = set()
         cursor: str | None = head_ref
@@ -559,6 +654,11 @@ class ContinuityWorldStore(WorldStore):
                     "world_continuity_corrupt",
                     "continuity manifest chain has no verified source",
                 )
+            if require_manifest_quorum and len(sources) < self.write_quorum:
+                raise WorldContinuityError(
+                    "world_continuity_degraded_read_only",
+                    "continuity predecessor manifest no longer has a verified quorum",
+                )
             raw = self._read_manifest(sources[0].state.root, cursor)
             newest.append((cursor, raw))
             cursor = raw["previous_manifest_ref"]
@@ -572,7 +672,10 @@ class ContinuityWorldStore(WorldStore):
         objects: set[str] = set(ordered[0][1]["inventory_refs"])
         previous_ref: str | None = None
         for expected_generation, (ref, raw) in enumerate(ordered):
-            if raw["generation"] != expected_generation or raw["previous_manifest_ref"] != previous_ref:
+            if (
+                raw["generation"] != expected_generation
+                or raw["previous_manifest_ref"] != previous_ref
+            ):
                 raise WorldContinuityError(
                     "world_continuity_corrupt",
                     "continuity history contains a gap or fork",
@@ -632,7 +735,7 @@ class ContinuityWorldStore(WorldStore):
             ) from exc
 
     def _bootstrap_legacy_world(self) -> None:
-        inventory = self._scan_primary_objects()
+        inventory = sorted(self._scan_primary_objects())
         for object_ref in inventory:
             source = self._base_disk_inspect(self, object_ref)
             successes = 0
@@ -668,10 +771,50 @@ class ContinuityWorldStore(WorldStore):
             "authority_effect": "none",
         }
         manifest_ref = sha256_ref("world-manifest", body)
-        self._commit_manifest({"manifest_ref": manifest_ref, **body})
+        self._commit_manifest(
+            {"manifest_ref": manifest_ref, **body},
+            previous_head_ref=None,
+        )
         self._history_cache_head = None
 
-    def _commit_manifest(self, raw: dict[str, Any]) -> str:
+    def _rollback_head_publication(
+        self,
+        changed: list[_Replica],
+        previous_head_ref: str | None,
+    ) -> None:
+        rollback_errors = 0
+        for replica in changed:
+            try:
+                if previous_head_ref is None:
+                    self._remove_head(replica.state.root)
+                else:
+                    self._write_head(replica.state.root, previous_head_ref)
+            except (OSError, WorldContinuityError):
+                rollback_errors += 1
+
+        if previous_head_ref is not None:
+            observations = self._head_observations()
+            support = sum(value == previous_head_ref for value in observations.values())
+            if support < self.write_quorum:
+                raise WorldContinuityError(
+                    "world_continuity_head_rollback_failed",
+                    "failed HEAD publication also failed to restore the previously recognized quorum",
+                )
+        elif rollback_errors:
+            observations = self._head_observations()
+            counts = Counter(value for value in observations.values() if value is not None)
+            if any(count >= self.write_quorum for count in counts.values()):
+                raise WorldContinuityError(
+                    "world_continuity_head_rollback_failed",
+                    "failed baseline publication left an unexpected recognized HEAD",
+                )
+
+    def _commit_manifest(
+        self,
+        raw: dict[str, Any],
+        *,
+        previous_head_ref: str | None,
+    ) -> str:
         manifest_ref = raw["manifest_ref"]
         manifest_successes: list[_Replica] = []
         for replica in self._replicas:
@@ -689,20 +832,30 @@ class ContinuityWorldStore(WorldStore):
                 "continuity manifest could not reach the configured quorum",
             )
 
-        head_successes = 0
+        changed: list[_Replica] = []
         for replica in manifest_successes:
             try:
                 self._write_head(replica.state.root, manifest_ref)
-                head_successes += 1
+                changed.append(replica)
             except (OSError, WorldContinuityError):
                 continue
-        if head_successes < self.write_quorum:
+        if len(changed) < self.write_quorum:
+            self._rollback_head_publication(changed, previous_head_ref)
             raise WorldContinuityError(
                 "world_continuity_head_quorum_unavailable",
-                "continuity HEAD could not reach the configured quorum",
+                "continuity HEAD could not reach the configured quorum; previous quorum was restored",
             )
         self._history_cache_head = None
         return manifest_ref
+
+    def _assert_write_ready(self, head_ref: str) -> None:
+        objects, _ = self._history(head_ref, require_manifest_quorum=True)
+        for object_ref in objects:
+            if len(self._valid_object_sources(object_ref)) < self.write_quorum:
+                raise WorldContinuityError(
+                    "world_continuity_degraded_read_only",
+                    "recognized object redundancy is below quorum; repair before writing new history",
+                )
 
     def create_object(
         self,
@@ -715,6 +868,7 @@ class ContinuityWorldStore(WorldStore):
 
         with self._locked_continuity():
             head_ref, head = self._resolve_head(require_chain=True)
+            self._assert_write_ready(head_ref)
             successes: list[tuple[_Replica, WorldObject]] = []
             for replica in self._replicas:
                 try:
@@ -747,7 +901,10 @@ class ContinuityWorldStore(WorldStore):
                 "authority_effect": "none",
             }
             manifest_ref = sha256_ref("world-manifest", body)
-            self._commit_manifest({"manifest_ref": manifest_ref, **body})
+            self._commit_manifest(
+                {"manifest_ref": manifest_ref, **body},
+                previous_head_ref=head_ref,
+            )
             self._objects[obj.object_id] = self._clone(obj)
             return self._clone(obj)
 
@@ -803,14 +960,46 @@ class ContinuityWorldStore(WorldStore):
                     "world_continuity_unsafe_storage",
                     "replica object path must not be a symbolic link",
                 )
+            if target.exists() and not target.is_file():
+                raise WorldContinuityError(
+                    "world_continuity_unsafe_storage",
+                    "replica object path must be a regular file",
+                )
             os.replace(temporary, target)
             if os.name != "nt":
                 target.chmod(0o600)
             WorldStore._read_validated(source.object_id, target)
         finally:
             if descriptor is not None:
-                os.close(descriptor)
-            temporary.unlink(missing_ok=True)
+                try:
+                    os.close(descriptor)
+                except OSError:
+                    pass
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+    def _repair_manifest_file(
+        self,
+        manifest_ref: str,
+        source_raw: dict[str, Any],
+        replica: _Replica,
+    ) -> None:
+        path = self._manifest_path(replica.state.root, manifest_ref)
+        if path.is_symlink():
+            raise WorldContinuityError(
+                "world_continuity_unsafe_storage",
+                "replica manifest path must not be a symbolic link",
+            )
+        if path.exists():
+            if not path.is_file():
+                raise WorldContinuityError(
+                    "world_continuity_unsafe_storage",
+                    "replica manifest path must be a regular file",
+                )
+            path.unlink()
+        self._write_immutable(path, source_raw)
 
     def _persist_repair_receipt(self, body: dict[str, Any]) -> str:
         repair_ref = sha256_ref("world-repair", body)
@@ -835,11 +1024,13 @@ class ContinuityWorldStore(WorldStore):
                 "status": "memory_only",
                 "persistent": False,
                 "repair": False,
+                "defect_count": 0,
                 "authority_effect": "none",
             }
         with self._locked_continuity():
             head_ref, head = self._resolve_head(require_chain=True)
             object_refs, manifest_refs = self._history(head_ref)
+            defects: list[dict[str, str]] = []
             repairs: list[dict[str, str]] = []
             unrecoverable: list[str] = []
 
@@ -849,20 +1040,16 @@ class ContinuityWorldStore(WorldStore):
                     unrecoverable.append(manifest_ref)
                     continue
                 source_raw = self._read_manifest(sources[0].state.root, manifest_ref)
+                valid_ids = {item.state.replica_id for item in sources}
                 for replica in self._replicas:
-                    try:
-                        self._read_manifest(replica.state.root, manifest_ref)
+                    if replica.state.replica_id in valid_ids:
                         continue
-                    except (OSError, WorldContinuityError):
-                        pass
+                    defects.append(
+                        {"kind": "manifest", "ref": manifest_ref, "replica_id": replica.state.replica_id}
+                    )
                     if repair:
-                        path = self._manifest_path(replica.state.root, manifest_ref)
-                        if path.exists() and not path.is_symlink():
-                            path.unlink()
-                        self._write_immutable(path, source_raw)
-                        repairs.append(
-                            {"kind": "manifest", "ref": manifest_ref, "replica_id": replica.state.replica_id}
-                        )
+                        self._repair_manifest_file(manifest_ref, source_raw, replica)
+                        repairs.append(defects[-1])
 
             for object_ref in sorted(object_refs):
                 sources = self._valid_object_sources(object_ref)
@@ -874,21 +1061,23 @@ class ContinuityWorldStore(WorldStore):
                 for replica in self._replicas:
                     if replica.state.replica_id in valid_ids:
                         continue
+                    defects.append(
+                        {"kind": "object", "ref": object_ref, "replica_id": replica.state.replica_id}
+                    )
                     if repair:
                         self._repair_object_file(source_obj, replica)
-                        repairs.append(
-                            {"kind": "object", "ref": object_ref, "replica_id": replica.state.replica_id}
-                        )
+                        repairs.append(defects[-1])
 
             observations = self._head_observations()
             for replica in self._replicas:
                 if observations.get(replica.state.replica_id) == head_ref:
                     continue
+                defects.append(
+                    {"kind": "head", "ref": head_ref, "replica_id": replica.state.replica_id}
+                )
                 if repair:
                     self._write_head(replica.state.root, head_ref)
-                    repairs.append(
-                        {"kind": "head", "ref": head_ref, "replica_id": replica.state.replica_id}
-                    )
+                    repairs.append(defects[-1])
 
             if unrecoverable:
                 return {
@@ -896,6 +1085,8 @@ class ContinuityWorldStore(WorldStore):
                     "head_ref": head_ref,
                     "generation": head["generation"],
                     "unrecoverable_refs": sorted(unrecoverable),
+                    "defect_count": len(defects),
+                    "defects": defects,
                     "repair_count": len(repairs),
                     "repairs": repairs,
                     "repair_receipt_ref": None,
@@ -903,8 +1094,28 @@ class ContinuityWorldStore(WorldStore):
                     "authority_effect": "none",
                 }
 
+            audit_gap: dict[str, str] | None = None
             repair_ref: str | None = None
             if repair and repairs:
+                for manifest_ref in manifest_refs:
+                    if len(self._manifest_sources(manifest_ref)) < self.write_quorum:
+                        raise WorldContinuityError(
+                            "world_continuity_repair_verification_failed",
+                            "repair did not restore the configured manifest quorum",
+                        )
+                for object_ref in object_refs:
+                    if len(self._valid_object_sources(object_ref)) < self.write_quorum:
+                        raise WorldContinuityError(
+                            "world_continuity_repair_verification_failed",
+                            "repair did not restore the configured object quorum",
+                        )
+                observations = self._head_observations()
+                if sum(value == head_ref for value in observations.values()) < self.write_quorum:
+                    raise WorldContinuityError(
+                        "world_continuity_repair_verification_failed",
+                        "repair did not restore the configured HEAD quorum",
+                    )
+                self._resolve_head(require_chain=True, require_manifest_quorum=True)
                 receipt_body = {
                     "schema_version": CONTINUITY_SCHEMA_VERSION,
                     "head_ref": head_ref,
@@ -914,27 +1125,35 @@ class ContinuityWorldStore(WorldStore):
                     "guardian_scar_eligible": True,
                     "authority_effect": "none",
                 }
-                repair_ref = self._persist_repair_receipt(receipt_body)
+                try:
+                    repair_ref = self._persist_repair_receipt(receipt_body)
+                except WorldContinuityError as exc:
+                    if exc.code != "world_continuity_repair_receipt_unavailable":
+                        raise
+                    audit_gap = {
+                        "code": exc.code,
+                        "message": "replica repair committed but its immutable audit receipt did not reach quorum",
+                    }
 
             if repair and repairs:
-                for object_ref in object_refs:
-                    if len(self._valid_object_sources(object_ref)) < self.write_quorum:
-                        raise WorldContinuityError(
-                            "world_continuity_repair_verification_failed",
-                            "repair did not restore the configured object quorum",
-                        )
-                self._resolve_head(require_chain=True)
-
+                status = "repaired_audit_gap" if audit_gap else "repaired"
+            elif defects:
+                status = "degraded"
+            else:
+                status = "healthy"
             return {
-                "status": "repaired" if repairs else "healthy",
+                "status": status,
                 "head_ref": head_ref,
                 "generation": head["generation"],
                 "object_count": len(object_refs),
                 "manifest_count": len(manifest_refs),
                 "repair": repair,
+                "defect_count": len(defects),
+                "defects": defects,
                 "repair_count": len(repairs),
                 "repairs": repairs,
                 "repair_receipt_ref": repair_ref,
+                "audit_gap": audit_gap,
                 "guardian_scar_eligible": bool(repair_ref),
                 "authority_effect": "none",
             }
@@ -944,6 +1163,7 @@ class ContinuityWorldStore(WorldStore):
             return {
                 "schema_version": CONTINUITY_SCHEMA_VERSION,
                 "policy_id": CONTINUITY_POLICY_ID,
+                "status": "memory_only",
                 "persistent": False,
                 "replica_count": 0,
                 "write_quorum": 1,
@@ -958,9 +1178,29 @@ class ContinuityWorldStore(WorldStore):
             head_support = sum(value == head_ref for value in observations.values())
             domains = [item.state.failure_domain for item in self._replicas]
             writable = sum(os.access(item.state.root, os.W_OK) for item in self._replicas)
+
+            degraded_refs: list[str] = []
+            below_quorum = False
+            for manifest_ref in manifests:
+                count = len(self._manifest_sources(manifest_ref))
+                if count < len(self._replicas):
+                    degraded_refs.append(manifest_ref)
+                if count < self.write_quorum:
+                    below_quorum = True
+            for object_ref in objects:
+                count = len(self._valid_object_sources(object_ref))
+                if count < len(self._replicas):
+                    degraded_refs.append(object_ref)
+                if count < self.write_quorum:
+                    below_quorum = True
+            if head_support < len(self._replicas):
+                degraded_refs.append(head_ref)
+
+            read_only = writable < self.write_quorum or below_quorum
             return {
                 "schema_version": CONTINUITY_SCHEMA_VERSION,
                 "policy_id": CONTINUITY_POLICY_ID,
+                "status": "degraded" if degraded_refs else "healthy",
                 "persistent": True,
                 "replica_count": len(self._replicas),
                 "write_quorum": self.write_quorum,
@@ -971,7 +1211,8 @@ class ContinuityWorldStore(WorldStore):
                 "manifest_count": len(manifests),
                 "head_quorum_support": head_support,
                 "writable_replicas": writable,
-                "read_only": writable < self.write_quorum,
+                "read_only": read_only,
+                "degraded_ref_count": len(set(degraded_refs)),
                 "replicas": [item.state.as_dict() for item in self._replicas],
                 "independent_failure_domains": len(set(domains)),
                 "failure_domain_warning": len(set(domains)) < len(domains),
@@ -987,6 +1228,54 @@ class ContinuityWorldStore(WorldStore):
                 digest.update(chunk)
         return digest.hexdigest()
 
+    def _assert_ark_destination_disjoint(self, target: Path) -> None:
+        try:
+            candidate = target.parent.resolve() / target.name
+        except (OSError, RuntimeError) as exc:
+            raise WorldContinuityError(
+                "world_ark_unsafe_destination",
+                "Ark destination could not be resolved safely",
+            ) from exc
+        for replica in self._replicas:
+            root = replica.state.root.resolve()
+            if (
+                candidate == root
+                or candidate.is_relative_to(root)
+                or root.is_relative_to(candidate)
+            ):
+                raise WorldContinuityError(
+                    "world_ark_storage_overlap",
+                    "Ark destination must be disjoint from every WorldStore replica root",
+                )
+
+    @classmethod
+    def _safe_ark_member(cls, root: Path, name: str) -> Path:
+        if not isinstance(name, str) or not name or "\\" in name:
+            raise WorldContinuityError("world_ark_invalid", "Ark file path is invalid")
+        pure = PurePosixPath(name)
+        if pure.is_absolute() or not pure.parts or any(part in {"", ".", ".."} for part in pure.parts):
+            raise WorldContinuityError("world_ark_invalid", "Ark file path escapes the archive root")
+        candidate = root.joinpath(*pure.parts)
+        cursor = root
+        for index, part in enumerate(pure.parts):
+            cursor = cursor / part
+            try:
+                info = cursor.lstat()
+            except OSError as exc:
+                raise WorldContinuityError("world_ark_invalid", f"Ark file is unavailable: {name}") from exc
+            if stat.S_ISLNK(info.st_mode):
+                raise WorldContinuityError("world_ark_invalid", "Ark paths must not traverse symbolic links")
+            if index < len(pure.parts) - 1 and not stat.S_ISDIR(info.st_mode):
+                raise WorldContinuityError("world_ark_invalid", "Ark path parent is not a directory")
+        try:
+            resolved_root = root.resolve()
+            resolved = candidate.resolve()
+        except (OSError, RuntimeError) as exc:
+            raise WorldContinuityError("world_ark_invalid", "Ark path could not be resolved safely") from exc
+        if resolved == resolved_root or not resolved.is_relative_to(resolved_root):
+            raise WorldContinuityError("world_ark_invalid", "Ark file path escapes the archive root")
+        return candidate
+
     def create_ark(
         self,
         destination: str | Path,
@@ -999,14 +1288,28 @@ class ContinuityWorldStore(WorldStore):
                 "an Ark requires a persistent WorldStore",
             )
         target = Path(destination).absolute()
+        self._assert_ark_destination_disjoint(target)
         if target.exists() or target.is_symlink():
             raise WorldContinuityError(
                 "world_ark_target_exists",
                 "Ark destination must be a new path",
             )
+        staging = target.with_name(f".{target.name}.tmp-{os.getpid()}-{threading.get_ident()}")
+        if staging.exists() or staging.is_symlink():
+            raise WorldContinuityError(
+                "world_ark_target_exists",
+                "Ark staging destination already exists",
+            )
+
         with self._locked_continuity():
-            head_ref, head = self._resolve_head(require_chain=True)
-            object_refs, manifest_refs = self._history(head_ref)
+            head_ref, head = self._resolve_head(
+                require_chain=True,
+                require_manifest_quorum=True,
+            )
+            object_refs, manifest_refs = self._history(
+                head_ref,
+                require_manifest_quorum=True,
+            )
             for object_ref in object_refs:
                 if len(self._valid_object_sources(object_ref)) < self.write_quorum:
                     raise WorldContinuityError(
@@ -1014,87 +1317,106 @@ class ContinuityWorldStore(WorldStore):
                         "Ark creation requires a verified read quorum for every recognized object",
                     )
 
-            target.mkdir(parents=True, mode=0o700)
-            objects_dir = target / "objects"
-            manifests_dir = target / "manifests"
-            objects_dir.mkdir(mode=0o700)
-            manifests_dir.mkdir(mode=0o700)
+            try:
+                staging.mkdir(parents=True, mode=0o700)
+                objects_dir = staging / "objects"
+                manifests_dir = staging / "manifests"
+                objects_dir.mkdir(mode=0o700)
+                manifests_dir.mkdir(mode=0o700)
 
-            (target / "FORMAT.md").write_text(
-                "# NEXUS World Ark Format\n\n"
-                "This Ark stores canonical UTF-8 JSON WorldStore objects named by their SHA-256 "
-                "object references, plus the content-addressed continuity manifest chain that selected "
-                "recognized history. ARK_MANIFEST.json binds every payload file by SHA-256. "
-                "No database, daemon, cloud service or model is required to inspect it.\n",
-                encoding="utf-8",
-            )
-            (target / "RECOVERY.md").write_text(
-                "# Recovery\n\n"
-                "Verify ARK_MANIFEST.json and every listed SHA-256 before recovery. "
-                "Restore only into a new target directory; never overwrite a live WorldStore in place. "
-                "Mutable continuity HEAD state is reconstructed from the Ark's recognized head.\n",
-                encoding="utf-8",
-            )
+                (staging / "FORMAT.md").write_text(
+                    "# NEXUS World Ark Format\n\n"
+                    "This Ark stores canonical UTF-8 JSON WorldStore objects named by their SHA-256 "
+                    "object references, plus the complete content-addressed continuity manifest chain "
+                    "that selected recognized history. ARK_MANIFEST.json binds every payload file by "
+                    "SHA-256 and verification requires exact agreement between the chain-derived object "
+                    "inventory and the archived object list. No database, daemon, cloud service or model "
+                    "is required to inspect it.\n",
+                    encoding="utf-8",
+                )
+                (staging / "RECOVERY.md").write_text(
+                    "# Recovery\n\n"
+                    "Verify ARK_MANIFEST.json and every listed SHA-256 before recovery. "
+                    "Restore only into a new target directory; never overwrite a live WorldStore in place. "
+                    "Mutable continuity HEAD state is reconstructed from the Ark's recognized head.\n",
+                    encoding="utf-8",
+                )
 
-            for object_ref in sorted(object_refs):
-                source = self._valid_object_sources(object_ref)[0][0]
-                digest = object_ref.removeprefix("object:")
-                assert source.store.objects_dir is not None
-                source_path = source.store.objects_dir / f"{digest}.json"
-                destination_path = objects_dir / f"{digest}.json"
-                shutil.copyfile(source_path, destination_path)
+                for object_ref in sorted(object_refs):
+                    source = self._valid_object_sources(object_ref)[0][0]
+                    digest = object_ref.removeprefix("object:")
+                    assert source.store.objects_dir is not None
+                    source_path = source.store.objects_dir / f"{digest}.json"
+                    destination_path = objects_dir / f"{digest}.json"
+                    shutil.copyfile(source_path, destination_path)
+                    if os.name != "nt":
+                        destination_path.chmod(0o600)
+
+                for manifest_ref in manifest_refs:
+                    source = self._manifest_sources(manifest_ref)[0]
+                    source_path = self._manifest_path(source.state.root, manifest_ref)
+                    destination_path = manifests_dir / f"{manifest_ref.removeprefix('world-manifest:')}.json"
+                    shutil.copyfile(source_path, destination_path)
+                    if os.name != "nt":
+                        destination_path.chmod(0o600)
+
+                payload_files = [
+                    path
+                    for path in staging.rglob("*")
+                    if path.is_file() and path.name not in {"ARK_MANIFEST.json", "SHA256SUMS"}
+                ]
+                files = {
+                    path.relative_to(staging).as_posix(): self._sha256_file(path)
+                    for path in sorted(
+                        payload_files,
+                        key=lambda item: item.relative_to(staging).as_posix(),
+                    )
+                }
+                body = {
+                    "schema_version": ARK_SCHEMA_VERSION,
+                    "continuity_schema_version": CONTINUITY_SCHEMA_VERSION,
+                    "recognized_head_ref": head_ref,
+                    "generation": head["generation"],
+                    "compute_epoch": compute_epoch,
+                    "object_refs": sorted(object_refs),
+                    "manifest_refs": list(manifest_refs),
+                    "files": files,
+                    "serialization": "canonical-json-utf8",
+                    "primary_digest_algorithm": "sha256",
+                    "restore_policy": "new_target_only",
+                    "authority_effect": "none",
+                }
+                ark_ref = sha256_ref("world-ark", body)
+                manifest = {"ark_ref": ark_ref, **body}
+                (staging / "ARK_MANIFEST.json").write_text(
+                    canonical_json(manifest) + "\n",
+                    encoding="utf-8",
+                )
+                checksum_lines = [f"{digest}  {name}" for name, digest in sorted(files.items())]
+                (staging / "SHA256SUMS").write_text(
+                    "\n".join(checksum_lines) + "\n",
+                    encoding="utf-8",
+                )
                 if os.name != "nt":
-                    destination_path.chmod(0o600)
+                    for path in (
+                        staging / "FORMAT.md",
+                        staging / "RECOVERY.md",
+                        staging / "ARK_MANIFEST.json",
+                        staging / "SHA256SUMS",
+                    ):
+                        path.chmod(0o600)
+                    staging.chmod(0o700)
+                    objects_dir.chmod(0o700)
+                    manifests_dir.chmod(0o700)
 
-            for manifest_ref in manifest_refs:
-                source = self._manifest_sources(manifest_ref)[0]
-                source_path = self._manifest_path(source.state.root, manifest_ref)
-                destination_path = manifests_dir / f"{manifest_ref.removeprefix('world-manifest:')}.json"
-                shutil.copyfile(source_path, destination_path)
-                if os.name != "nt":
-                    destination_path.chmod(0o600)
+                verified = self.verify_ark(staging)
+                if verified.get("status") != "verified":
+                    raise WorldContinuityError("world_ark_invalid", "new Ark failed verification")
+                os.replace(staging, target)
+            except Exception:
+                shutil.rmtree(staging, ignore_errors=True)
+                raise
 
-            payload_files = [
-                path
-                for path in target.rglob("*")
-                if path.is_file() and path.name not in {"ARK_MANIFEST.json", "SHA256SUMS"}
-            ]
-            files = {
-                path.relative_to(target).as_posix(): self._sha256_file(path)
-                for path in sorted(payload_files, key=lambda item: item.relative_to(target).as_posix())
-            }
-            body = {
-                "schema_version": ARK_SCHEMA_VERSION,
-                "continuity_schema_version": CONTINUITY_SCHEMA_VERSION,
-                "recognized_head_ref": head_ref,
-                "generation": head["generation"],
-                "compute_epoch": compute_epoch,
-                "object_refs": sorted(object_refs),
-                "manifest_refs": list(manifest_refs),
-                "files": files,
-                "serialization": "canonical-json-utf8",
-                "primary_digest_algorithm": "sha256",
-                "restore_policy": "new_target_only",
-                "authority_effect": "none",
-            }
-            ark_ref = sha256_ref("world-ark", body)
-            manifest = {"ark_ref": ark_ref, **body}
-            (target / "ARK_MANIFEST.json").write_text(canonical_json(manifest) + "\n", encoding="utf-8")
-            checksum_lines = [f"{digest}  {name}" for name, digest in sorted(files.items())]
-            (target / "SHA256SUMS").write_text("\n".join(checksum_lines) + "\n", encoding="utf-8")
-            if os.name != "nt":
-                for path in (
-                    target / "FORMAT.md",
-                    target / "RECOVERY.md",
-                    target / "ARK_MANIFEST.json",
-                    target / "SHA256SUMS",
-                ):
-                    path.chmod(0o600)
-                target.chmod(0o700)
-                objects_dir.chmod(0o700)
-                manifests_dir.chmod(0o700)
-
-        verified = self.verify_ark(target)
         return {
             "status": "created",
             "ark_ref": ark_ref,
@@ -1103,7 +1425,7 @@ class ContinuityWorldStore(WorldStore):
             "object_count": len(object_refs),
             "manifest_count": len(manifest_refs),
             "compute_epoch": compute_epoch,
-            "verified": verified["status"] == "verified",
+            "verified": True,
             "authority_effect": "none",
         }
 
@@ -1133,6 +1455,12 @@ class ContinuityWorldStore(WorldStore):
             raise WorldContinuityError("world_ark_invalid", "Ark manifest identity is invalid")
         if raw.get("schema_version") != ARK_SCHEMA_VERSION:
             raise WorldContinuityError("world_ark_invalid", "Ark schema version is invalid")
+        if raw.get("continuity_schema_version") != CONTINUITY_SCHEMA_VERSION:
+            raise WorldContinuityError("world_ark_invalid", "Ark continuity schema version is invalid")
+        if raw.get("serialization") != "canonical-json-utf8" or raw.get("primary_digest_algorithm") != "sha256":
+            raise WorldContinuityError("world_ark_invalid", "Ark serialization policy is invalid")
+        if raw.get("restore_policy") != "new_target_only" or raw.get("authority_effect") != "none":
+            raise WorldContinuityError("world_ark_invalid", "Ark recovery or authority policy is invalid")
         return raw
 
     @classmethod
@@ -1140,42 +1468,102 @@ class ContinuityWorldStore(WorldStore):
         root = Path(ark_root).absolute()
         if root.is_symlink() or not root.is_dir():
             raise WorldContinuityError("world_ark_invalid", "Ark root must be a regular directory")
+        try:
+            if root.resolve() != root:
+                raise WorldContinuityError("world_ark_invalid", "Ark root must not traverse symbolic links")
+        except (OSError, RuntimeError) as exc:
+            raise WorldContinuityError("world_ark_invalid", "Ark root could not be resolved safely") from exc
+
         raw = cls._load_ark_manifest(root)
         files = raw.get("files")
         if not isinstance(files, dict) or any(
             not isinstance(name, str)
             or not isinstance(digest, str)
-            or re.fullmatch(r"[0-9a-f]{64}", digest) is None
+            or _HEX64.fullmatch(digest) is None
             for name, digest in files.items()
         ):
             raise WorldContinuityError("world_ark_invalid", "Ark file digest map is invalid")
-        for name, digest in files.items():
-            path = root / name
-            if path.is_symlink() or not path.is_file() or cls._sha256_file(path) != digest:
-                raise WorldContinuityError("world_ark_invalid", f"Ark file failed verification: {name}")
 
         object_refs = raw.get("object_refs")
         manifest_refs = raw.get("manifest_refs")
-        if not isinstance(object_refs, list) or not isinstance(manifest_refs, list):
+        if (
+            not isinstance(object_refs, list)
+            or object_refs != sorted(set(object_refs))
+            or any(not isinstance(item, str) or _OBJECT_REF.fullmatch(item) is None for item in object_refs)
+            or not isinstance(manifest_refs, list)
+            or not manifest_refs
+            or len(set(manifest_refs)) != len(manifest_refs)
+        ):
             raise WorldContinuityError("world_ark_invalid", "Ark history lists are invalid")
+
+        expected_files = {"FORMAT.md", "RECOVERY.md"}
+        expected_files.update(
+            f"objects/{item.removeprefix('object:')}.json" for item in object_refs
+        )
+        expected_files.update(
+            f"manifests/{item.removeprefix('world-manifest:')}.json" for item in manifest_refs
+        )
+        if set(files) != expected_files:
+            raise WorldContinuityError(
+                "world_ark_invalid",
+                "Ark file inventory does not exactly match its declared history",
+            )
+
+        for name, digest in files.items():
+            path = cls._safe_ark_member(root, name)
+            if not path.is_file() or cls._sha256_file(path) != digest:
+                raise WorldContinuityError("world_ark_invalid", f"Ark file failed verification: {name}")
+
+        for item in root.rglob("*"):
+            if item.is_symlink():
+                raise WorldContinuityError("world_ark_invalid", "Ark payload must not contain symbolic links")
+        actual_payload_files = {
+            path.relative_to(root).as_posix()
+            for path in root.rglob("*")
+            if path.is_file() and path.name not in {"ARK_MANIFEST.json", "SHA256SUMS"}
+        }
+        if actual_payload_files != expected_files:
+            raise WorldContinuityError("world_ark_invalid", "Ark contains undeclared or missing payload files")
+
         for object_ref in object_refs:
-            if not isinstance(object_ref, str) or _OBJECT_REF.fullmatch(object_ref) is None:
-                raise WorldContinuityError("world_ark_invalid", "Ark object ref is invalid")
             digest = object_ref.removeprefix("object:")
-            WorldStore._read_validated(object_ref, root / "objects" / f"{digest}.json")
+            path = cls._safe_ark_member(root, f"objects/{digest}.json")
+            WorldStore._read_validated(object_ref, path)
+
         previous: str | None = None
+        expected_objects: set[str] = set()
+        last_generation = -1
         for generation, manifest_ref in enumerate(manifest_refs):
             if not isinstance(manifest_ref, str) or _MANIFEST_REF.fullmatch(manifest_ref) is None:
                 raise WorldContinuityError("world_ark_invalid", "Ark manifest ref is invalid")
-            manifest_path = root / "manifests" / f"{manifest_ref.removeprefix('world-manifest:')}.json"
+            member = f"manifests/{manifest_ref.removeprefix('world-manifest:')}.json"
+            manifest_path = cls._safe_ark_member(root, member)
             manifest = cls._validate_manifest(cls._read_canonical(manifest_path), manifest_ref)
             if manifest["generation"] != generation or manifest["previous_manifest_ref"] != previous:
                 raise WorldContinuityError("world_ark_invalid", "Ark continuity chain is invalid")
+            if generation == 0:
+                if manifest["event_type"] != "legacy_baseline":
+                    raise WorldContinuityError("world_ark_invalid", "Ark continuity chain lacks a baseline")
+                expected_objects.update(manifest["inventory_refs"])
+            elif manifest["event_type"] == "object_commit":
+                expected_objects.add(manifest["object_ref"])
             previous = manifest_ref
+            last_generation = generation
+
         if previous != raw.get("recognized_head_ref"):
             raise WorldContinuityError("world_ark_invalid", "Ark head does not match its manifest chain")
+        if raw.get("generation") != last_generation:
+            raise WorldContinuityError("world_ark_invalid", "Ark generation does not match its manifest chain")
+        if expected_objects != set(object_refs):
+            raise WorldContinuityError(
+                "world_ark_invalid",
+                "Ark object inventory does not exactly match the continuity chain",
+            )
 
-        checksum_text = (root / "SHA256SUMS").read_text(encoding="utf-8")
+        checksum_path = root / "SHA256SUMS"
+        if checksum_path.is_symlink() or not checksum_path.is_file():
+            raise WorldContinuityError("world_ark_invalid", "Ark checksum index is invalid")
+        checksum_text = checksum_path.read_text(encoding="utf-8")
         expected_checksum_text = "\n".join(
             f"{digest}  {name}" for name, digest in sorted(files.items())
         ) + "\n"
@@ -1214,32 +1602,64 @@ class ContinuityWorldStore(WorldStore):
                 "world_recovery_target_exists",
                 "recovery target must be a new path",
             )
-        target.mkdir(parents=True, mode=0o700)
-        (target / "objects").mkdir(mode=0o700)
-        cls._prepare_continuity_root(target)
+        try:
+            source_resolved = source.resolve()
+            target_candidate = target.parent.resolve() / target.name
+        except (OSError, RuntimeError) as exc:
+            raise WorldContinuityError(
+                "world_recovery_unsafe_target",
+                "recovery target could not be resolved safely",
+            ) from exc
+        if (
+            target_candidate == source_resolved
+            or target_candidate.is_relative_to(source_resolved)
+            or source_resolved.is_relative_to(target_candidate)
+        ):
+            raise WorldContinuityError(
+                "world_recovery_unsafe_target",
+                "recovery target must be disjoint from the source Ark",
+            )
 
+        staging = target.with_name(f".{target.name}.tmp-{os.getpid()}-{threading.get_ident()}")
+        if staging.exists() or staging.is_symlink():
+            raise WorldContinuityError(
+                "world_recovery_target_exists",
+                "recovery staging target already exists",
+            )
         raw = cls._load_ark_manifest(source)
-        for object_ref in raw["object_refs"]:
-            digest = object_ref.removeprefix("object:")
-            destination = target / "objects" / f"{digest}.json"
-            shutil.copyfile(source / "objects" / f"{digest}.json", destination)
-            if os.name != "nt":
-                destination.chmod(0o600)
-        for manifest_ref in raw["manifest_refs"]:
-            digest = manifest_ref.removeprefix("world-manifest:")
-            destination = target / "continuity" / "manifests" / f"{digest}.json"
-            shutil.copyfile(source / "manifests" / f"{digest}.json", destination)
-            if os.name != "nt":
-                destination.chmod(0o600)
-        cls._write_head(target, raw["recognized_head_ref"])
-        if os.name != "nt":
-            target.chmod(0o700)
-            (target / "objects").chmod(0o700)
+        try:
+            staging.mkdir(parents=True, mode=0o700)
+            (staging / "objects").mkdir(mode=0o700)
+            cls._prepare_continuity_root(staging)
 
-        restored = cls(target)
-        restored_status = restored.status()
-        for object_ref in raw["object_refs"]:
-            restored.inspect(object_ref)
+            for object_ref in raw["object_refs"]:
+                digest = object_ref.removeprefix("object:")
+                source_path = cls._safe_ark_member(source, f"objects/{digest}.json")
+                destination = staging / "objects" / f"{digest}.json"
+                shutil.copyfile(source_path, destination)
+                if os.name != "nt":
+                    destination.chmod(0o600)
+            for manifest_ref in raw["manifest_refs"]:
+                digest = manifest_ref.removeprefix("world-manifest:")
+                source_path = cls._safe_ark_member(source, f"manifests/{digest}.json")
+                destination = staging / "continuity" / "manifests" / f"{digest}.json"
+                shutil.copyfile(source_path, destination)
+                if os.name != "nt":
+                    destination.chmod(0o600)
+            cls._write_head(staging, raw["recognized_head_ref"])
+            if os.name != "nt":
+                staging.chmod(0o700)
+                (staging / "objects").chmod(0o700)
+
+            restored = cls(staging)
+            restored_status = restored.status()
+            for object_ref in raw["object_refs"]:
+                restored.inspect(object_ref)
+            os.replace(staging, target)
+        except Exception:
+            shutil.rmtree(staging, ignore_errors=True)
+            raise
+
         return {
             "status": "restored",
             "source_ark_ref": verified["ark_ref"],
