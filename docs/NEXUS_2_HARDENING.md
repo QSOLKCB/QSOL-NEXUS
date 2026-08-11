@@ -33,7 +33,9 @@ The matrix is intentionally closed around eight required gates:
 7. Trap Base / civic durability;
 8. release composition.
 
-`tools/nexus_release_hardening.py` refuses a required gate whose test patterns no longer match real test files. This prevents a future refactor from silently deleting a critical regression family while leaving a stale green “hardening” label behind.
+`tools/nexus_release_hardening.py` pins the exact eight gate IDs in code. Deleting or replacing a required gate therefore fails the audit even when the surviving gates still have valid tests.
+
+Every declared test pattern must also match at least one real test file independently. A gate does not remain green merely because some other pattern in that gate still matches. This prevents a future refactor from silently deleting a named critical regression family while leaving a stale green “hardening” label behind.
 
 ## One-command hardening runner
 
@@ -47,13 +49,15 @@ PYTHONPATH=src python3 tools/nexus_release_hardening.py \
 
 The runner performs:
 
+- clean candidate-worktree audit;
 - hardening-matrix integrity/coverage audit;
 - complete Python `unittest` regression suite;
 - deterministic NEXUS adversarial probes;
 - Rust TUI tests;
 - Rust compile/check;
 - `cargo fmt --check`;
-- fresh candidate archive operator rehearsal.
+- fresh candidate archive operator rehearsal;
+- final worktree audit proving the checked candidate remained aligned with `HEAD`.
 
 The machine-readable result uses:
 
@@ -62,6 +66,16 @@ nexus-release-hardening-report/1
 ```
 
 The report records test results only. It is not evidence promotion, constitutional authority, a Council vote, or permission to call an unreleased build stable.
+
+Required checks may be deliberately skipped for local diagnostics with `--skip-rust` or `--skip-operator`, but such a run is explicitly recorded as `status: incomplete`, `complete: false`, and `passed: false`, and exits unsuccessfully. Skip flags therefore cannot manufacture a valid pre-Wall hardening result.
+
+## Candidate identity and clean-worktree rule
+
+PR #49 requires the working tree to match `HEAD` before the release matrix begins.
+
+This prevents one report from running Python/Rust/adversarial checks against local tracked edits or untracked release inputs while `git archive HEAD` rehearses a different committed candidate. The runner checks the worktree again after the matrix to catch test-time mutation of tracked or unignored files.
+
+Ignored build/cache artifacts remain governed by their existing repository rules; they do not redefine the candidate source tree.
 
 ## Fresh candidate operator rehearsal
 
@@ -76,6 +90,8 @@ The hardening runner creates a clean `git archive` of the exact candidate tree i
 ```
 
 This exercises the reviewed PR #45 bootstrap path with no pre-existing `.venv`, operator config, WorldStore, Trap Base or Stenographer state from the development checkout.
+
+Before executing the archived candidate, the rehearsal strips inherited `NEXUS_*` path/bootstrap overrides plus `PYTHONPATH`, `PYTHONHOME` and `VIRTUAL_ENV`. In particular, an external `NEXUS_VENV` cannot cause the candidate to reuse an already-installed runtime from another checkout.
 
 The rehearsal verifies that the candidate can bootstrap its local environment, build the TUI, pass Doctor, and execute a deterministic mock Council demo through the supported one-command operator surface.
 
@@ -108,8 +124,13 @@ PR #49 adds dedicated regressions for:
 - malformed new culture/progression/continuity operations mutating WorldStore before failing;
 - credential-shaped material entering durable culture state;
 - generic `world.create` forging PR #48 runtime-owned culture/game/execution objects;
+- the test independently pinning the complete PR #48 reserved-object literal set rather than trusting the production set it is policing;
 - Ark restore failing to reconstruct a progression portfolio from immutable history;
-- the hardening matrix itself falsely declaring a stable release.
+- the hardening matrix itself falsely declaring a stable release;
+- missing required gate IDs or individual test-pattern families;
+- required skip flags being misreported as a passing complete run;
+- inherited NEXUS/Python environment overrides contaminating the clean operator rehearsal;
+- dirty working trees making ordinary checks and the archived bootstrap target different candidates.
 
 These tests supplement rather than replace the feature-specific tests added in PRs #1–#48.
 
@@ -143,6 +164,9 @@ A PR #49 hardening failure means the candidate is not ready to establish the pre
 Failures must not be hidden by:
 
 - deleting a matrix gate;
+- deleting one declared critical test pattern while leaving sibling patterns green;
+- skipping required Rust/operator checks and reporting a complete pass;
+- running different release checks against different candidate trees;
 - weakening a constitutional invariant;
 - turning an integrity failure into a warning merely to make CI green;
 - inventing WorldStore history to remain writable;
