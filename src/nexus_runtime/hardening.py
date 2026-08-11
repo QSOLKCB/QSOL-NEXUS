@@ -28,6 +28,12 @@ from .civic_observation import (
     civic_observation_policy_snapshot,
     view_council_proceeding,
 )
+from .constitutional_amendment import (
+    CONSTITUTIONAL_AMENDMENT_RESERVED_OBJECT_TYPES,
+    ConstitutionalAmendmentError,
+    ConstitutionalAmendmentService,
+    constitutional_amendment_policy_snapshot,
+)
 from .control_plane import (
     RequestBudgetError,
     control_plane_policy_snapshot,
@@ -61,10 +67,23 @@ _AGENT_STATE_OPERATIONS = frozenset(
         "agent.state.snapshot",
     }
 )
+_CONSTITUTIONAL_AMENDMENT_OPERATIONS = frozenset(
+    {
+        "constitution.amendment.admit",
+        "constitution.amendment.ballot",
+        "constitution.amendment.current",
+        "constitution.amendment.deliberation.bind",
+        "constitution.amendment.history",
+        "constitution.amendment.policy",
+        "constitution.amendment.propose",
+        "constitution.amendment.verify",
+    }
+)
 _RUNTIME_RESERVED_WORLD_TYPES = (
     frozenset({"council_session"})
     | ACTION_AWARENESS_RESERVED_OBJECT_TYPES
     | AGENT_STATE_RESERVED_OBJECT_TYPES
+    | CONSTITUTIONAL_AMENDMENT_RESERVED_OBJECT_TYPES
 )
 
 
@@ -179,6 +198,14 @@ def _public_gallery_result(result: Any) -> dict[str, Any]:
 class HardenedNexusAPI(_ProviderNexusAPI):
     """Provider-aware API with alpha-exit control-plane hardening."""
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.constitutional_amendments = ConstitutionalAmendmentService(
+            self.world,
+            self.citizenship,
+            self.geometry,
+        )
+
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         request_id = request.get("request_id") if isinstance(request, dict) else None
         safe_request_id = request_id if self._request_id_is_preflight_safe(request_id) else None
@@ -218,20 +245,42 @@ class HardenedNexusAPI(_ProviderNexusAPI):
             return self._handle_action_awareness(request, safe_request_id)
         if isinstance(operation, str) and operation in _AGENT_STATE_OPERATIONS:
             return self._handle_agent_state(request, safe_request_id)
+        if isinstance(operation, str) and operation in _CONSTITUTIONAL_AMENDMENT_OPERATIONS:
+            return self._handle_constitutional_amendment(request, safe_request_id)
 
         response = super().handle(request)
         if operation == "system.health" and response.get("status") == "ok":
+            try:
+                amendment_current = self.constitutional_amendments.current()
+                region_policy = self.constitutional_amendments.observation_region_policy()
+            except ConstitutionalAmendmentError as exc:
+                return self._error(safe_request_id, exc.code, str(exc))
+            except OSError:
+                return self._error(
+                    safe_request_id,
+                    "adapter_unavailable",
+                    "adapter or local storage operation is unavailable",
+                )
             response = dict(response)
             response["control_plane_limits"] = control_plane_policy_snapshot()
-            response["civic_observation"] = civic_observation_policy_snapshot(self.geometry)
+            response["civic_observation"] = civic_observation_policy_snapshot(
+                self.geometry,
+                citizen_region_ids=region_policy["citizen_region_ids"],
+                public_gallery_region_ids=region_policy["public_gallery_region_ids"],
+            )
             response["action_awareness"] = action_awareness_policy_snapshot()
             response["agent_state"] = agent_state_policy_snapshot()
+            response["constitutional_amendments"] = {
+                "policy": constitutional_amendment_policy_snapshot(),
+                "current": amendment_current,
+            }
         elif operation == "system.operations" and response.get("status") == "ok":
             response = dict(response)
             operations = list(response.get("operations", []))
             operations.extend(sorted(_CIVIC_OBSERVATION_OPERATIONS))
             operations.extend(sorted(_ACTION_AWARENESS_OPERATIONS))
             operations.extend(sorted(_AGENT_STATE_OPERATIONS))
+            operations.extend(sorted(_CONSTITUTIONAL_AMENDMENT_OPERATIONS))
             response["operations"] = sorted(set(operations))
 
         if operation == "actor.chat" and response.get("status") == "ok":
@@ -242,6 +291,146 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                 response["response"] = scrubbed_text
                 response["response_secret_scrub"] = summary
 
+        return sanitize_public_response(response)
+
+    def _handle_constitutional_amendment(
+        self,
+        request: dict[str, Any],
+        request_id: str | None,
+    ) -> dict[str, Any]:
+        operation = request.get("operation")
+        try:
+            if operation == "constitution.amendment.policy":
+                self._require_exact_fields(request, operation, set())
+                response: dict[str, Any] = {
+                    "status": "ok",
+                    "policy": constitutional_amendment_policy_snapshot(),
+                }
+            elif operation == "constitution.amendment.current":
+                self._require_exact_fields(request, operation, set())
+                response = self.constitutional_amendments.current()
+            elif operation == "constitution.amendment.history":
+                self._require_exact_fields(request, operation, set())
+                response = self.constitutional_amendments.history()
+            elif operation == "constitution.amendment.verify":
+                self._require_exact_fields(request, operation, {"version_ref"})
+                response = self.constitutional_amendments.verify(
+                    self._require_str(request, "version_ref")
+                )
+            elif operation == "constitution.amendment.propose":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {
+                        "proposer_kind",
+                        "proposer_id",
+                        "proposer_model_id",
+                        "admission_ref",
+                        "title",
+                        "rationale",
+                        "changes",
+                    },
+                )
+                proposer_kind = self._require_str(request, "proposer_kind")
+                proposer_id = self._require_str(request, "proposer_id")
+                proposer_model_id = self._require_str(request, "proposer_model_id")
+                for label, value in (
+                    ("proposer_kind", proposer_kind),
+                    ("proposer_id", proposer_id),
+                    ("proposer_model_id", proposer_model_id),
+                ):
+                    if self.scrubber.scrub(value).changed:
+                        raise ValueError(f"{label} must not contain credential-shaped text")
+                admission_ref = request.get("admission_ref")
+                if admission_ref is not None and (
+                    not isinstance(admission_ref, str) or not admission_ref
+                ):
+                    raise ValueError("admission_ref must be a non-empty string when supplied")
+                title_result = self.scrubber.scrub(self._require_str(request, "title"))
+                rationale_result = self.scrubber.scrub(self._require_str(request, "rationale"))
+                raw_changes = request.get("changes")
+                if not isinstance(raw_changes, list):
+                    raise ValueError("changes must be a list")
+                clean_changes, change_events = self._scrub_semantic_value(raw_changes)
+                response = self._run_real_mutation(
+                    lambda: self.constitutional_amendments.propose(
+                        proposer_kind=proposer_kind,
+                        proposer_id=proposer_id,
+                        proposer_model_id=proposer_model_id,
+                        admission_ref=admission_ref,
+                        title=title_result.text,
+                        rationale=rationale_result.text,
+                        changes=clean_changes,
+                    )
+                )
+                events = list(title_result.events) + list(rationale_result.events) + change_events
+                response = dict(response)
+                response["secret_scrub"] = {
+                    "changed": bool(events),
+                    "event_count": len(events),
+                    "secret_types": sorted({event.secret_type for event in events}),
+                }
+            elif operation == "constitution.amendment.admit":
+                self._require_exact_fields(request, operation, {"proposal_ref"})
+                proposal_ref = self._require_str(request, "proposal_ref")
+                response = self._run_real_mutation(
+                    lambda: self.constitutional_amendments.admit(proposal_ref)
+                )
+            elif operation == "constitution.amendment.deliberation.bind":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"proposal_ref", "admission_ref", "council_session_ref"},
+                )
+                proposal_ref = self._require_str(request, "proposal_ref")
+                admission_ref = self._require_str(request, "admission_ref")
+                council_session_ref = self._require_str(request, "council_session_ref")
+                response = self._run_real_mutation(
+                    lambda: self.constitutional_amendments.bind_deliberation(
+                        proposal_ref=proposal_ref,
+                        admission_ref=admission_ref,
+                        council_session_ref=council_session_ref,
+                    )
+                )
+            elif operation == "constitution.amendment.ballot":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"proposal_ref", "deliberation_ref", "citizen_id", "model_id", "choice"},
+                )
+                proposal_ref = self._require_str(request, "proposal_ref")
+                deliberation_ref = self._require_str(request, "deliberation_ref")
+                citizen_id = self._require_str(request, "citizen_id")
+                model_id = self._require_str(request, "model_id")
+                choice = self._require_str(request, "choice")
+                for label, value in (("citizen_id", citizen_id), ("model_id", model_id)):
+                    if self.scrubber.scrub(value).changed:
+                        raise ValueError(f"{label} must not contain credential-shaped text")
+                response = self._run_real_mutation(
+                    lambda: self.constitutional_amendments.ballot(
+                        proposal_ref=proposal_ref,
+                        deliberation_ref=deliberation_ref,
+                        citizen_id=citizen_id,
+                        model_id=model_id,
+                        choice=choice,
+                    )
+                )
+            else:  # pragma: no cover - dispatch set is closed above
+                return self._error(request_id, "unknown_operation", "operation is not supported")
+        except ConstitutionalAmendmentError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except TrapError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except (KeyError, TypeError, ValueError) as exc:
+            return self._error(request_id, "invalid_request", str(exc))
+        except OSError:
+            return self._error(
+                request_id,
+                "adapter_unavailable",
+                "adapter or local storage operation is unavailable",
+            )
+        if request_id is not None:
+            response = {"request_id": request_id, **response}
         return sanitize_public_response(response)
 
     def _handle_agent_state(
@@ -449,11 +638,16 @@ class HardenedNexusAPI(_ProviderNexusAPI):
     ) -> dict[str, Any]:
         operation = request.get("operation")
         try:
+            region_policy = self.constitutional_amendments.observation_region_policy()
             if operation == "council.proceedings.policy":
                 self._require_exact_fields(request, operation, set())
                 response: dict[str, Any] = {
                     "status": "ok",
-                    "policy": civic_observation_policy_snapshot(self.geometry),
+                    "policy": civic_observation_policy_snapshot(
+                        self.geometry,
+                        citizen_region_ids=region_policy["citizen_region_ids"],
+                        public_gallery_region_ids=region_policy["public_gallery_region_ids"],
+                    ),
                 }
             elif operation == "council.proceedings.view":
                 self._require_exact_fields(
@@ -483,7 +677,16 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                     source_mode_id=source_mode_id,
                     viewer_id=viewer_id,
                     viewer_model_id=viewer_model_id,
+                    citizen_region_ids=region_policy["citizen_region_ids"],
+                    public_gallery_region_ids=region_policy["public_gallery_region_ids"],
                 )
+                amendment_records = self.constitutional_amendments.observation_for_session(
+                    session_ref,
+                    full=response.get("access_tier") == "citizen_full",
+                )
+                if amendment_records:
+                    response = dict(response)
+                    response["constitutional_amendments"] = amendment_records
                 if response.get("access_tier") == "public_gallery":
                     council = response.get("council")
                     if not isinstance(council, dict):
@@ -496,6 +699,8 @@ class HardenedNexusAPI(_ProviderNexusAPI):
                     response["council"]["result"] = _public_gallery_result(council.get("result"))
             else:  # pragma: no cover - dispatch set is closed above
                 return self._error(request_id, "unknown_operation", "operation is not supported")
+        except ConstitutionalAmendmentError as exc:
+            return self._error(request_id, exc.code, str(exc))
         except CivicObservationError as exc:
             return self._error(request_id, exc.code, str(exc))
         except (KeyError, TypeError, ValueError) as exc:
