@@ -17,13 +17,19 @@ from nexus_runtime.control_plane import (
     MAX_EVIDENCE_REFS,
     MAX_JSONL_LINE_BYTES,
     MAX_REQUEST_DEPTH,
+    MAX_REQUEST_KEY_CHARS,
     MAX_REQUEST_LIST_ITEMS,
+    MAX_REQUEST_STRING_CHARS,
+    MAX_REQUEST_TEXT_BYTES,
     RequestBudgetError,
     iter_bounded_jsonl_lines,
     validate_control_request,
 )
 from nexus_runtime.hardening import guard_model_text, sanitize_public_response
+from nexus_runtime.local_roles import LocalRoleActor, LocalRoleRegistry
+from nexus_runtime.mock import DeterministicMockActor
 from nexus_runtime.scrub import SecretScrubber
+from nexus_runtime.types import CouncilMember
 
 
 class _Response:
@@ -64,6 +70,19 @@ class ControlPlaneBudgetTests(unittest.TestCase):
                 {"operation": "world.create", "payload": {"items": [0] * (MAX_REQUEST_LIST_ITEMS + 1)}}
             )
 
+    def test_direct_api_request_has_aggregate_text_byte_budget(self) -> None:
+        chunk = "x" * MAX_REQUEST_STRING_CHARS
+        result = NexusAPI().handle(
+            {
+                "operation": "world.create",
+                "object_type": "note",
+                "payload": {"left": chunk, "right": chunk},
+            }
+        )
+        self.assertEqual(result["status"], "error")
+        self.assertEqual(result["error"]["code"], "invalid_request")
+        self.assertIn("aggregate text byte limit", result["error"]["message"])
+
     def test_council_evidence_refs_are_capped_before_execution(self) -> None:
         result = NexusAPI().handle(
             {
@@ -82,6 +101,19 @@ class ControlPlaneBudgetTests(unittest.TestCase):
 
     def test_evidence_state_is_closed_to_machine_epistemic_vocabulary(self) -> None:
         self.assertIn("UNTESTED", ALLOWED_EVIDENCE_STATES)
+        self.assertIn("verified", ALLOWED_EVIDENCE_STATES)
+        validate_control_request(
+            {
+                "operation": "council.run",
+                "question": "q",
+                "members": [
+                    {"member_id": "A", "model_id": "a"},
+                    {"member_id": "B", "model_id": "b"},
+                    {"member_id": "C", "model_id": "c"},
+                ],
+                "evidence_state": "verified",
+            }
+        )
         result = NexusAPI().handle(
             {
                 "operation": "council.run",
@@ -99,9 +131,12 @@ class ControlPlaneBudgetTests(unittest.TestCase):
 
     def test_health_advertises_control_plane_limits(self) -> None:
         result = NexusAPI().handle({"operation": "system.health"})
-        self.assertEqual(result["control_plane_limits"]["schema"], "nexus-control-plane-limits/1")
-        self.assertEqual(result["control_plane_limits"]["max_jsonl_line_bytes"], MAX_JSONL_LINE_BYTES)
-        self.assertEqual(result["control_plane_limits"]["max_evidence_refs"], MAX_EVIDENCE_REFS)
+        limits = result["control_plane_limits"]
+        self.assertEqual(limits["schema"], "nexus-control-plane-limits/1")
+        self.assertEqual(limits["max_jsonl_line_bytes"], MAX_JSONL_LINE_BYTES)
+        self.assertEqual(limits["max_request_text_bytes"], MAX_REQUEST_TEXT_BYTES)
+        self.assertEqual(limits["max_request_key_chars"], MAX_REQUEST_KEY_CHARS)
+        self.assertEqual(limits["max_evidence_refs"], MAX_EVIDENCE_REFS)
 
 
 class OutputBoundaryTests(unittest.TestCase):
@@ -143,6 +178,39 @@ class OutputBoundaryTests(unittest.TestCase):
             )
         with self.assertRaisesRegex(AdapterProtocolError, "credential-shaped"):
             guard_model_text("echo " + "hf_" + "A" * 32, scrubber=scrubber, label="local")
+
+    def test_post_admission_local_role_rejects_exact_credential_reflection(self) -> None:
+        secret = "opaque-local-role-secret"
+        registry = LocalRoleRegistry({"NEXUS_ROLE_SECRET": secret})
+        registry.configure(
+            "failsafe_relief",
+            {
+                "adapter_id": "openai_local",
+                "endpoint": "http://127.0.0.1:8000",
+                "model": "fixture",
+                "credential_env": "NEXUS_ROLE_SECRET",
+            },
+        )
+        wrapped = registry.wrap(
+            "failsafe_relief",
+            DeterministicMockActor(CouncilMember("A", "mock-a")),
+        )
+        self.assertIsInstance(wrapped, LocalRoleActor)
+        assert isinstance(wrapped, LocalRoleActor)
+        with mock.patch.object(
+            wrapped.transport,
+            "generate",
+            return_value=f"accidental echo {secret}",
+        ):
+            response = wrapped.direct_message(
+                "hello",
+                mode_id="analytical",
+                mode_instruction="keep claim boundaries explicit",
+                geometry_region_id="observatory",
+            )
+        self.assertNotIn(secret, response)
+        self.assertIn("received", response)
+        self.assertEqual(wrapped.fallback_count, 1)
 
     def test_pathish_adapter_error_is_sanitized(self) -> None:
         result = sanitize_public_response(
