@@ -93,6 +93,25 @@ ACTIVITY_CATALOG: dict[str, dict[str, str]] = {
 }
 
 _SCRUBBER = SecretScrubber()
+_STATE_FIELDS = {
+    "schema_version",
+    "actor_id",
+    "model_id",
+    "sequence",
+    "previous_state_ref",
+    "latest_activity_ref",
+    "latest_commission_ref",
+    "counts",
+    "total_activities",
+    "distinct_activity_types",
+    "milestones",
+    "recent_activity_refs",
+    "vote_weight_created",
+    "council_seats_created",
+    "citizenship_effect",
+    "evidence_effect",
+    "tool_authority_effect",
+}
 
 
 class ProgressionError(ValueError):
@@ -333,6 +352,26 @@ class ProgressionService:
                 pass
 
     def _iter_objects(self) -> Iterator[WorldObject]:
+        """Enumerate recognized objects, using continuity history when available."""
+
+        resolve_head = getattr(self.world, "_resolve_head", None)
+        history = getattr(self.world, "_history", None)
+        if self.world.root is not None and callable(resolve_head) and callable(history):
+            try:
+                head_ref, _ = resolve_head(require_chain=True)
+                refs, _ = history(head_ref, require_manifest_quorum=False)
+            except TypeError:
+                refs = None
+            if refs is not None:
+                if len(refs) > MAX_REBUILD_OBJECTS:
+                    raise ProgressionError(
+                        "progression_rebuild_too_large",
+                        "progression rebuild object budget exceeded",
+                    )
+                for ref in sorted(refs):
+                    yield self.world.inspect(ref)
+                return
+
         objects_dir = self.world.objects_dir
         if objects_dir is None:
             objects = getattr(self.world, "_objects", {})
@@ -358,14 +397,42 @@ class ProgressionService:
         except KeyError as exc:
             raise ProgressionError("progression_state_not_found", "progression state was not found") from exc
         payload = state.payload
+        counts = payload.get("counts")
+        sequence = payload.get("sequence")
+        previous = payload.get("previous_state_ref")
+        latest_activity = payload.get("latest_activity_ref")
+        latest_commission = payload.get("latest_commission_ref")
+        recent_refs = payload.get("recent_activity_refs")
         if (
             state.object_type != PROGRESSION_STATE_OBJECT_TYPE
             or state.provenance != {"actor": "nexus", "subsystem": "ai_progression"}
+            or set(payload) != _STATE_FIELDS
             or payload.get("schema_version") != PROGRESSION_SCHEMA_VERSION
             or payload.get("actor_id") != actor_id
             or payload.get("model_id") != model_id
-            or not isinstance(payload.get("counts"), dict)
-            or not isinstance(payload.get("sequence"), int)
+            or type(sequence) is not int
+            or sequence < 0
+            or (sequence == 0) != (previous is None)
+            or (previous is not None and (not isinstance(previous, str) or not previous))
+            or not isinstance(latest_activity, str)
+            or not latest_activity
+            or (latest_commission is not None and (not isinstance(latest_commission, str) or not latest_commission))
+            or not isinstance(counts, dict)
+            or set(counts) != set(ACTIVITY_CATALOG)
+            or any(type(value) is not int or value < 0 for value in counts.values())
+            or not isinstance(recent_refs, list)
+            or not recent_refs
+            or len(recent_refs) > MAX_PORTFOLIO_ACTIVITY_REFS
+            or any(not isinstance(item, str) or not item for item in recent_refs)
+            or recent_refs[-1] != latest_activity
+            or payload.get("total_activities") != sum(counts.values())
+            or payload.get("distinct_activity_types") != sum(1 for value in counts.values() if value > 0)
+            or payload.get("milestones") != _milestones(counts)
+            or payload.get("vote_weight_created") != 0
+            or payload.get("council_seats_created") != 0
+            or payload.get("citizenship_effect") != "none"
+            or payload.get("evidence_effect") != "none"
+            or payload.get("tool_authority_effect") != "none"
         ):
             raise ProgressionError("progression_state_invalid", "progression state is invalid")
         return state
@@ -381,8 +448,9 @@ class ProgressionService:
                 continue
             if obj.provenance != {"actor": "nexus", "subsystem": "ai_progression"}:
                 continue
-            candidates[obj.object_id] = obj
-            previous = payload.get("previous_state_ref")
+            validated = self._validated_state(obj.object_id, actor_id=actor_id, model_id=model_id)
+            candidates[validated.object_id] = validated
+            previous = validated.payload["previous_state_ref"]
             if isinstance(previous, str):
                 referenced.add(previous)
         if not candidates:
@@ -393,19 +461,16 @@ class ProgressionService:
         head_ref = heads[0]
         seen: set[str] = set()
         current: str | None = head_ref
-        expected_sequence = candidates[head_ref].payload.get("sequence")
+        expected_sequence = candidates[head_ref].payload["sequence"]
         while current is not None:
             if current in seen or current not in candidates:
                 raise ProgressionError("progression_lineage_invalid", "progression lineage is incomplete or cyclic")
             seen.add(current)
             item = candidates[current]
-            if item.payload.get("sequence") != expected_sequence:
+            if item.payload["sequence"] != expected_sequence:
                 raise ProgressionError("progression_lineage_invalid", "progression lineage sequence is invalid")
             expected_sequence -= 1
-            previous = item.payload.get("previous_state_ref")
-            if previous is not None and not isinstance(previous, str):
-                raise ProgressionError("progression_lineage_invalid", "progression predecessor is invalid")
-            current = previous
+            current = item.payload["previous_state_ref"]
         if expected_sequence != -1 or len(seen) != len(candidates):
             raise ProgressionError("progression_lineage_invalid", "progression lineage contains disconnected state")
         return head_ref
@@ -499,6 +564,11 @@ class ProgressionService:
             for ref in commission.payload["source_refs"]:
                 if ref not in sources:
                     sources.append(ref)
+            if len(sources) > MAX_SOURCE_REFS:
+                raise ProgressionError(
+                    "progression_invalid_sources",
+                    f"combined activity and commission sources exceed {MAX_SOURCE_REFS} references",
+                )
         with self._locked():
             heads = self._read_heads()
             previous = self._head_state(actor_id, model_id, heads)
@@ -508,9 +578,9 @@ class ProgressionService:
             sequence = 0
             if previous_payload is not None:
                 for activity in ACTIVITY_CATALOG:
-                    counts[activity] = int(previous_payload["counts"].get(activity, 0))
-                recent_refs = list(previous_payload.get("recent_activity_refs", []))
-                sequence = int(previous_payload["sequence"]) + 1
+                    counts[activity] = previous_payload["counts"][activity]
+                recent_refs = list(previous_payload["recent_activity_refs"])
+                sequence = previous_payload["sequence"] + 1
             counts[activity_id] += 1
             activity = self.world.create_object(
                 PROGRESSION_ACTIVITY_OBJECT_TYPE,
@@ -610,8 +680,8 @@ class ProgressionService:
         controllers = game.payload.get("controllers", {})
         if not isinstance(players, list) or actor_id not in players:
             raise ProgressionError("progression_game_identity_mismatch", "actor is not a player in this game state")
-        if isinstance(controllers, dict) and controllers.get(actor_id) == "human":
-            raise ProgressionError("progression_game_identity_mismatch", "human-controlled seats do not create AI progression")
+        if not isinstance(controllers, dict) or controllers.get(actor_id) != "ai":
+            raise ProgressionError("progression_game_identity_mismatch", "only an explicitly AI-controlled seat creates AI progression")
         return self._record(
             actor_id=actor_id,
             model_id=model_id,
@@ -661,6 +731,7 @@ class ProgressionService:
 
 __all__ = [
     "ACTIVITY_CATALOG",
+    "MAX_SOURCE_REFS",
     "PROGRESSION_ACTIVITY_OBJECT_TYPE",
     "PROGRESSION_COMMISSION_OBJECT_TYPE",
     "PROGRESSION_POLICY_ID",
