@@ -1,0 +1,45 @@
+NEXUS FORMAL VERIFICATION REPORT
+================================
+formalization_commit: 247a1f97834cfac5221e5045dda21551c28907a8
+verification_checkout_commit: b77b68cd6945a80788b8bcb8670f5db93ad2d23e
+stable_runtime_commit_expected: cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
+stable_runtime_tag_expected: v2.0.0
+toolchain: leanprover/lean4:v4.33.0
+lean: Lean (version 4.33.0, x86_64-unknown-linux-gnu, commit d8b18978322de05a8f3dba51ef03cf5461676c17, Release)
+lake: Lake version 5.0.0-src+d8b1897 (Lean version 4.33.0)
+theorems: 24
+lemmas: 0
+manifest_sync: PASS
+axiom_query_manifest_sync: PASS
+proof_holes: 0
+project_defined_axiom_or_constant_declarations: 0
+lake_build: PASS
+aggregate_module: PASS
+axiom_dependency_audit: PASS
+
+AXIOM DEPENDENCY OUTPUT
+-----------------------
+'Nexus.no_agi_assumption' depends on axioms: [propext]
+'Nexus.consensus_is_not_assumed_truth' depends on axioms: [propext]
+'Nexus.identity_is_not_assumed_authority' depends on axioms: [propext]
+'Nexus.one_member_one_vote' does not depend on any axioms
+'Nexus.provider_independent_vote_weight' does not depend on any axioms
+'Nexus.model_size_independent_vote_weight' does not depend on any axioms
+'Nexus.model_identity_independent_vote_weight' does not depend on any axioms
+'Nexus.identity_creates_no_epistemic_privilege' does not depend on any axioms
+'Nexus.replacing_model_preserves_seat_weight' does not depend on any axioms
+'Nexus.every_seat_weight_one' does not depend on any axioms
+'Nexus.relief_replacement_does_not_create_extra_seat' depends on axioms: [propext]
+'Nexus.six_hats_sequence_closed' does not depend on any axioms
+'Nexus.sealed_phase_payload_immutable' does not depend on any axioms
+'Nexus.sealed_phase_hat_immutable' does not depend on any axioms
+'Nexus.two_thirds_definition_is_exact' does not depend on any axioms
+'Nexus.two_of_three_meets_two_thirds' does not depend on any axioms
+'Nexus.one_of_three_does_not_meet_two_thirds' does not depend on any axioms
+'Nexus.consensus_does_not_promote_evidence' does not depend on any axioms
+'Nexus.citizenship_does_not_change_vote_weight' does not depend on any axioms
+'Nexus.civic_proxy_does_not_create_extra_vote' depends on axioms: [propext]
+'Nexus.progression_creates_no_authority' does not depend on any axioms
+'Nexus.culture_creates_no_authority' does not depend on any axioms
+'Nexus.redundancy_creates_no_authority' does not depend on any axioms
+'Nexus.capability_growth_does_not_change_vote_weight' does not depend on any axioms

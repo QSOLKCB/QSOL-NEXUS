@@ -1,0 +1,55 @@
+NEXUS 2.0 PUBLICATION VALIDATION SUMMARY
+========================================
+
+STABLE SOFTWARE
+---------------
+tag: v2.0.0
+commit: cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
+PR #52 reviewed head: 9c830dea68ef8877823f1aebb4f5f8ef2346cd08
+
+Final release-hardening runs on the reviewed PR #52 head:
+PASS  README dual-surface contract      run 31540058765
+PASS  Python mock runtime tests         run 31540058770
+PASS  Rust IRC TUI tests                run 31540058716
+PASS  NEXUS adversarial gauntlet        run 31540058815
+PASS  NEXUS 2.0 release candidate       run 31540058796
+PASS  NEXUS security regression         run 31540058774
+
+FORMALIZATION
+-------------
+PR #53 reviewed head: 247a1f97834cfac5221e5045dda21551c28907a8
+PR #53 merged commit: faaff21fa926aa10bccc9d6cd66452ba1e2b065d
+Lean: 4.33.0
+Lean Linux release archive SHA-256:
+4b3fb03c29a1e0a253fb1d11f9bae3725f19a0dc6fc09b3ea16d2c9df3349e2c
+
+Final runs on the reviewed PR #53 head:
+PASS  README dual-surface contract      run 31544004910
+PASS  Lean 4 formal verification        run 31544004912
+PASS  Python mock runtime tests         run 31544004916
+PASS  NEXUS security regression         run 31544004917
+PASS  NEXUS 2.0 release candidate       run 31544004924
+
+Formal audit headline:
+PASS  theorems: 24
+PASS  lemmas: 0
+PASS  manifest_sync
+PASS  axiom_query_manifest_sync
+PASS  proof_holes: 0
+PASS  project_defined_axiom_or_constant_declarations: 0
+PASS  lake_build
+PASS  aggregate_module
+PASS  axiom_dependency_audit
+
+Observed imported-axiom profile:
+19 theorems: no axiom dependencies
+5 theorems: propext only
+0: Classical.choice
+0: Quot.sound
+0: NEXUS-defined axioms
+0: sorryAx / sorry / admit proof holes
+
+PUBLICATION BOUNDARY
+--------------------
+PR #54 packages and independently rechecks these frozen artifacts. It does not
+modify the v2.0.0 stable runtime, theorem definitions, or theorem proofs.
