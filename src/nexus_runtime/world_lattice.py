@@ -456,6 +456,11 @@ class WorldLatticeService:
         previous_presence_ref: str | None,
         transition_detail: dict[str, Any],
     ) -> Any:
+        if sequence >= MAX_WORLD_PRESENCE_LINEAGE:
+            raise _fail(
+                "world_lattice_history_limit_reached",
+                f"world-presence lineage limit reached: {MAX_WORLD_PRESENCE_LINEAGE}",
+            )
         payload = {
             "schema_version": WORLD_PRESENCE_SCHEMA_VERSION,
             "transition": transition,
