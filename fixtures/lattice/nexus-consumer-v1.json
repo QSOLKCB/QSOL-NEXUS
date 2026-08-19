@@ -1,0 +1,70 @@
+{
+  "protocol": "qsol-nexus-lattice-consumer-conformance/1",
+  "lattice_profile": {
+    "protocol": "qsol-lattice-profile-descriptor/1",
+    "profile_id": "qsol-3x3x3-sierpinski-derived-memory/1",
+    "profile_fingerprint": "sha256:6e7c4a9a781d552a2b561d334a8435c12efe2908fcd24a0f152935aded555bcf"
+  },
+  "placement": {
+    "region_id": "observatory",
+    "lattice_reference": {
+      "protocol": "qsol-lattice-reference/1",
+      "profile_id": "qsol-3x3x3-sierpinski-derived-memory/1",
+      "address": "L[0,0,0]",
+      "authority": "storage-only",
+      "note": "NEXUS region and LATTICE address are independent explicit identities."
+    }
+  },
+  "move": {
+    "region_id": "archive",
+    "lattice_reference": {
+      "protocol": "qsol-lattice-reference/1",
+      "profile_id": "qsol-3x3x3-sierpinski-derived-memory/1",
+      "address": "L[2,0,2]",
+      "authority": "storage-only"
+    }
+  },
+  "migration": {
+    "protocol": "qsol-lattice-migration/1",
+    "migration_id": "nexus-v1-explicit-address-remap",
+    "source_profile": {
+      "protocol": "qsol-lattice-profile-descriptor/1",
+      "profile_id": "qsol-3x3x3-sierpinski-derived-memory/1",
+      "profile_fingerprint": "sha256:6e7c4a9a781d552a2b561d334a8435c12efe2908fcd24a0f152935aded555bcf"
+    },
+    "target_profile": {
+      "protocol": "qsol-lattice-profile-descriptor/1",
+      "profile_id": "qsol-3x3x3-sierpinski-derived-memory/1",
+      "profile_fingerprint": "sha256:6e7c4a9a781d552a2b561d334a8435c12efe2908fcd24a0f152935aded555bcf",
+      "metadata": {
+        "consumer": "QSOL-NEXUS",
+        "compatibility": "additive-non-semantic"
+      }
+    },
+    "mode": "explicit-map",
+    "preserve_source_identity": true,
+    "mappings": [
+      {
+        "source_address": "L[2,0,2]",
+        "target_address": "L[1,1,1]"
+      }
+    ],
+    "metadata": {
+      "purpose": "language-neutral NEXUS migration conformance"
+    }
+  },
+  "expected": {
+    "authority_effect": "none",
+    "movement_history": "append-only",
+    "migration_preserves_source_identity": true,
+    "region_after_migration": "archive",
+    "source_lattice_identity": {
+      "profile_id": "qsol-3x3x3-sierpinski-derived-memory/1",
+      "address": "L[2,0,2]"
+    },
+    "target_lattice_identity": {
+      "profile_id": "qsol-3x3x3-sierpinski-derived-memory/1",
+      "address": "L[1,1,1]"
+    }
+  }
+}

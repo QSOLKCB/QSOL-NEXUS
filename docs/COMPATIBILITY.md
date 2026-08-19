@@ -29,6 +29,16 @@ NEXUS 2.0 preserves canonical content-addressed `object:<sha256>` identity. Worl
 
 Recovery is deliberately non-destructive: an Ark restores into a new empty target. Do not overwrite a source WorldStore with an Ark restore.
 
+## LATTICE-address compatibility
+
+The LATTICE-backed world-presence layer is additive to existing WorldStore identity. It pins the LATTICE v1 profile `qsol-3x3x3-sierpinski-derived-memory/1` with semantic fingerprint `sha256:6e7c4a9a781d552a2b561d334a8435c12efe2908fcd24a0f152935aded555bcf`.
+
+Unknown profile majors, unknown profiles in the same major, and changed semantic fingerprints fail closed. Additive non-semantic descriptor metadata remains compatible. Historical LATTICE address identity is always the pair `(profile_id, address)` and an address/profile migration is recorded as a new derived presence event retaining both source and target identities.
+
+Existing `object:<sha256>` IDs are never reinterpreted as LATTICE `content_ref` values. The LATTICE binding is a separate digest of canonical `WorldObject.as_dict()` serialization. Named NEXUS regions and LATTICE addresses remain independent explicit identities; neither implies truth, epistemic privilege, cognitive coordinates, or governance authority.
+
+See `docs/LATTICE_WORLD_CONTRACT.md` and `fixtures/lattice/nexus-consumer-v1.json` for the executable consumer contract.
+
 ## Adapter compatibility
 
 Admitted local backends are deterministic/mock, Ollama, LM Studio, AnythingLLM, and generic loopback OpenAI-compatible runtimes. Admitted cloud providers are xAI, OpenAI, Anthropic, Gemini, Groq, and Together through reviewed fixed-host transports.
