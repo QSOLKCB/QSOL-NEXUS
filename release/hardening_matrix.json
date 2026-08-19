@@ -41,6 +41,7 @@
       "required": true,
       "patterns": [
         "test_world_continuity.py",
+        "test_world_lattice.py",
         "test_guardian*.py",
         "test_anarchy_guardian.py",
         "test_stenographer*.py"
@@ -134,7 +135,7 @@
   "target_version": "2.0.0",
   "base_feature_merge": "1bc078ed266e7fac02d6f905f8ddd0c9061c1d8b",
   "release_rule": "Only the exact merged PR #52 head may be tagged v2.0.0 after the complete release-candidate matrix passes with no unresolved release-blocking review findings.",
-  "expected_python_test_files": 81,
+  "expected_python_test_files": 82,
   "post_merge_audit_closure": {
     "source": "Grok hostile post-merge NEXUS 2.0 audit of dae8e418fd126b4d6e1ae3ce5191dd922013b5f9",
     "required_before_stable": true,
