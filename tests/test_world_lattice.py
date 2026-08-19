@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from nexus_runtime import NexusAPI
 from nexus_runtime.wall_api import WallNexusAPI
@@ -220,6 +221,64 @@ class WorldLatticeTests(unittest.TestCase):
             )
             self.assertEqual(response["status"], "error")
             self.assertEqual(response["error"]["code"], "world_lattice_move_invalid")
+
+    def test_move_and_migration_reject_unreconstructable_next_event(self) -> None:
+        fixture = self._fixture()
+        with tempfile.TemporaryDirectory() as temporary:
+            api = self._api(Path(temporary))
+            subject = api.world.create_object("note", {"n": 3}, {"actor": "test"})
+            placed = api.handle(
+                {
+                    "operation": "world.place",
+                    "object_ref": subject.object_id,
+                    "region_id": fixture["placement"]["region_id"],
+                    "lattice_reference": fixture["placement"]["lattice_reference"],
+                }
+            )
+            moved = api.handle(
+                {
+                    "operation": "world.move",
+                    "object_ref": subject.object_id,
+                    "previous_presence_ref": placed["presence_event"]["object_id"],
+                    "region_id": fixture["move"]["region_id"],
+                    "lattice_reference": fixture["move"]["lattice_reference"],
+                }
+            )
+            self.assertEqual(moved["status"], "ok")
+            self.assertEqual(moved["presence_event"]["payload"]["sequence"], 1)
+            head = moved["presence_event"]["object_id"]
+
+            # Use a tiny limit to exercise the exact 4,096-event production
+            # boundary without writing thousands of persistent fixture events.
+            with patch("nexus_runtime.world_lattice.MAX_WORLD_PRESENCE_LINEAGE", 2):
+                rejected_move = api.handle(
+                    {
+                        "operation": "world.move",
+                        "object_ref": subject.object_id,
+                        "previous_presence_ref": head,
+                        "region_id": fixture["placement"]["region_id"],
+                        "lattice_reference": fixture["placement"]["lattice_reference"],
+                    }
+                )
+                self.assertEqual(rejected_move["status"], "error")
+                self.assertEqual(
+                    rejected_move["error"]["code"],
+                    "world_lattice_history_limit_reached",
+                )
+
+                rejected_migration = api.handle(
+                    {
+                        "operation": "world.migrate",
+                        "object_ref": subject.object_id,
+                        "previous_presence_ref": head,
+                        "migration_manifest": fixture["migration"],
+                    }
+                )
+                self.assertEqual(rejected_migration["status"], "error")
+                self.assertEqual(
+                    rejected_migration["error"]["code"],
+                    "world_lattice_history_limit_reached",
+                )
 
     def test_content_ref_cannot_be_relabelled_from_nexus_object_id(self) -> None:
         fixture = self._fixture()
