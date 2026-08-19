@@ -20,6 +20,13 @@ from .wall import (
     wall_policy_snapshot,
 )
 from .world_continuity import WorldContinuityError
+from .world_lattice import (
+    WORLD_LATTICE_RESERVED_OBJECT_TYPES,
+    WorldLatticeError,
+    WorldLatticeService,
+    validate_lattice_migration_manifest,
+    world_lattice_policy_snapshot,
+)
 
 
 _WALL_OPERATIONS = frozenset(
@@ -33,14 +40,26 @@ _WALL_OPERATIONS = frozenset(
     }
 )
 _WALL_MUTATIONS = frozenset({"wall.post", "wall.ai_post", "wall.tombstone"})
+_WORLD_LATTICE_OPERATIONS = frozenset(
+    {
+        "world.lattice.policy",
+        "world.lattice.validate_migration",
+        "world.place",
+        "world.move",
+        "world.migrate",
+        "world.presence",
+    }
+)
+_WORLD_LATTICE_MUTATIONS = frozenset({"world.place", "world.move", "world.migrate"})
 
 
 class WallNexusAPI(CultureNexusAPI):
-    """PR #50 final feature overlay: append-only low-stakes BBS Wall."""
+    """Final additive overlay: BBS Wall plus explicit LATTICE-backed world presence."""
 
     def __init__(self, world_root: str | Path | None = None, **kwargs: Any) -> None:
         super().__init__(world_root, **kwargs)
         self.wall = WallService(self.world)
+        self.world_lattice = WorldLatticeService(self.world)
 
     def _wall_human_post(self, request: dict[str, Any], request_id: str | None) -> dict[str, Any]:
         operation = "wall.post"
@@ -205,6 +224,128 @@ class WallNexusAPI(CultureNexusAPI):
         except (KeyError, TypeError, ValueError, RecursionError) as exc:
             return self._error(request_id, "invalid_request", str(exc))
 
+    def _handle_world_lattice_operation(
+        self,
+        request: dict[str, Any],
+        request_id: str | None,
+    ) -> dict[str, Any]:
+        operation = request.get("operation")
+        try:
+            if operation == "world.lattice.policy":
+                self._require_exact_fields(request, operation, set())
+                response: dict[str, Any] = {
+                    "status": "ok",
+                    "policy": world_lattice_policy_snapshot(),
+                }
+            elif operation == "world.lattice.validate_migration":
+                self._require_exact_fields(request, operation, {"migration_manifest"})
+                response = {
+                    "status": "ok",
+                    "validation": validate_lattice_migration_manifest(request.get("migration_manifest")),
+                    "authority_effect": "none",
+                }
+            elif operation == "world.place":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"object_ref", "region_id", "lattice_reference"},
+                )
+                clean_reference, scrub_events = self._scrub_semantic_value(
+                    request.get("lattice_reference")
+                )
+                event = self._run_real_mutation(
+                    lambda: self.world_lattice.place(
+                        self._require_str(request, "object_ref"),
+                        self._require_str(request, "region_id"),
+                        clean_reference,
+                    )
+                )
+                response = {
+                    "status": "ok",
+                    "presence_event": event.as_dict(),
+                    "authority_effect": "none",
+                    "secret_scrub": {
+                        "changed": bool(scrub_events),
+                        "event_count": len(scrub_events),
+                        "secret_types": sorted({event.secret_type for event in scrub_events}),
+                    },
+                }
+            elif operation == "world.move":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"object_ref", "previous_presence_ref", "region_id", "lattice_reference"},
+                )
+                clean_reference, scrub_events = self._scrub_semantic_value(
+                    request.get("lattice_reference")
+                )
+                event = self._run_real_mutation(
+                    lambda: self.world_lattice.move(
+                        self._require_str(request, "object_ref"),
+                        self._require_str(request, "previous_presence_ref"),
+                        self._require_str(request, "region_id"),
+                        clean_reference,
+                    )
+                )
+                response = {
+                    "status": "ok",
+                    "presence_event": event.as_dict(),
+                    "authority_effect": "none",
+                    "secret_scrub": {
+                        "changed": bool(scrub_events),
+                        "event_count": len(scrub_events),
+                        "secret_types": sorted({event.secret_type for event in scrub_events}),
+                    },
+                }
+            elif operation == "world.migrate":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"object_ref", "previous_presence_ref", "migration_manifest"},
+                )
+                clean_manifest, scrub_events = self._scrub_semantic_value(
+                    request.get("migration_manifest")
+                )
+                event = self._run_real_mutation(
+                    lambda: self.world_lattice.migrate(
+                        self._require_str(request, "object_ref"),
+                        self._require_str(request, "previous_presence_ref"),
+                        clean_manifest,
+                    )
+                )
+                response = {
+                    "status": "ok",
+                    "presence_event": event.as_dict(),
+                    "authority_effect": "none",
+                    "secret_scrub": {
+                        "changed": bool(scrub_events),
+                        "event_count": len(scrub_events),
+                        "secret_types": sorted({event.secret_type for event in scrub_events}),
+                    },
+                }
+            elif operation == "world.presence":
+                self._require_exact_fields(request, operation, {"event_ref"})
+                response = {
+                    "status": "ok",
+                    "presence": self.world_lattice.presence(self._require_str(request, "event_ref")),
+                    "authority_effect": "none",
+                }
+            else:  # pragma: no cover
+                return self._error(request_id, "unknown_operation", "operation is not supported")
+            if request_id is not None:
+                response = {"request_id": request_id, **response}
+            return response
+        except WorldLatticeError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except WorldContinuityError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except TrapError as exc:
+            return self._error(request_id, exc.code, str(exc))
+        except OSError as exc:
+            return self._error(request_id, "adapter_unavailable", str(exc))
+        except (KeyError, TypeError, ValueError, RecursionError) as exc:
+            return self._error(request_id, "invalid_request", str(exc))
+
     def _wall_health_snapshot(self) -> dict[str, Any]:
         policy = wall_policy_snapshot()
         try:
@@ -242,6 +383,21 @@ class WallNexusAPI(CultureNexusAPI):
         operation = request.get("operation") if isinstance(request, dict) else None
         request_id = request.get("request_id") if isinstance(request, dict) else None
         safe_request_id = request_id if self._request_id_is_preflight_safe(request_id) else None
+
+        if isinstance(operation, str) and operation in _WORLD_LATTICE_OPERATIONS:
+            try:
+                validate_control_request(request)
+            except (RequestBudgetError, RecursionError) as exc:
+                return self._error(safe_request_id, "invalid_request", str(exc))
+            if request_id is not None and safe_request_id is None:
+                return self._error(None, "invalid_request", "request_id must be a bounded non-secret identifier")
+            if operation in _WORLD_LATTICE_MUTATIONS:
+                try:
+                    self.trap_mutation_gate.assert_mutation_allowed()
+                except TrapError as exc:
+                    return self._error(safe_request_id, exc.code, str(exc))
+            return self._handle_world_lattice_operation(request, safe_request_id)
+
         if isinstance(operation, str) and operation in _WALL_OPERATIONS:
             try:
                 validate_control_request(request)
@@ -264,16 +420,28 @@ class WallNexusAPI(CultureNexusAPI):
                     "invalid_request",
                     "reserved Wall objects require validated wall operations",
                 )
+            if isinstance(object_type, str) and object_type in WORLD_LATTICE_RESERVED_OBJECT_TYPES:
+                return self._error(
+                    safe_request_id,
+                    "invalid_request",
+                    "reserved world-presence objects require validated world placement/movement operations",
+                )
 
         response = super().handle(request)
         if operation == "system.health" and response.get("status") == "ok":
             return {
                 **response,
                 "bbs_wall": self._wall_health_snapshot(),
+                "world_lattice": {
+                    "status": "ok",
+                    "policy": world_lattice_policy_snapshot(),
+                    "authority_effect": "none",
+                },
             }
         if operation == "system.operations" and response.get("status") == "ok":
             operations = list(response.get("operations", []))
             operations.extend(sorted(_WALL_OPERATIONS))
+            operations.extend(sorted(_WORLD_LATTICE_OPERATIONS))
             return {**response, "operations": sorted(set(operations))}
         return response
 
