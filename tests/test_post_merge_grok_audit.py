@@ -135,7 +135,7 @@ class PostMergeGrokAuditClosureTests(unittest.TestCase):
         self.assertIn("exact merged PR #52", surfaces["SECURITY.md"])
         self.assertIn("exact merged #52", surfaces["HOWTO.md"])
         self.assertIn("exact merged PR #52", surfaces["release notes"])
-        self.assertIn("exact merged PR #52", surfaces["changelog"])
+        self.assertIn("cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a", surfaces["changelog"])
         self.assertIn("PR #53 adds runnable Lean 4", surfaces["release notes"])
         self.assertIn("PR #54 freezes", surfaces["release notes"])
         self.assertIn("post-stable PR #53", surfaces["changelog"])
