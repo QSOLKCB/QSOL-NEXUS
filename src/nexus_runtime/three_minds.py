@@ -946,7 +946,7 @@ def run_three_minds_council_demo(
         {
             "operation": "council.run",
             "question": council_question,
-            "members": roster,
+            "members": [dict(member) for member in roster],
             "evidence_refs": refs,
             "evidence_state": "UNTESTED",
             "mode": mode,
