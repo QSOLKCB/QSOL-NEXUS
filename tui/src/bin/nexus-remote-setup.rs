@@ -5,7 +5,7 @@ use std::io::{self, BufRead, BufReader, BufWriter, Write};
 use std::path::Path;
 use std::process::{Child, ChildStdin, ChildStdout, Command, Stdio};
 
-const MAX_MEMBERS: usize = 32;
+const MAX_OPERATOR_COUNCIL_SEATS: usize = 5;
 const MAX_REMOTE_XAI_SEATS: usize = 4;
 
 #[derive(Debug, Clone)]
@@ -246,6 +246,7 @@ fn help() {
     println!("  ask <question>");
     println!("  quit");
     println!();
+    println!("The public operator Council admits at most {MAX_OPERATOR_COUNCIL_SEATS} seats.");
     println!("Raw provider credentials are intentionally not accepted by this TUI.");
 }
 
@@ -256,8 +257,10 @@ fn ensure_unique(roster: &BTreeMap<String, MemberConfig>, nick: &str) -> Result<
     if roster.contains_key(&nick.to_ascii_lowercase()) {
         return Err("nick is already present in the roster".to_string());
     }
-    if roster.len() >= MAX_MEMBERS {
-        return Err(format!("roster permits at most {MAX_MEMBERS} members"));
+    if roster.len() >= MAX_OPERATOR_COUNCIL_SEATS {
+        return Err(format!(
+            "public operator Council permits at most {MAX_OPERATOR_COUNCIL_SEATS} seats"
+        ));
     }
     Ok(())
 }
@@ -274,7 +277,11 @@ fn render_roster(roster: &BTreeMap<String, MemberConfig>) {
         println!("roster: empty");
         return;
     }
-    println!("roster: {} member(s)", roster.len());
+    println!(
+        "roster: {} member(s), public limit {}",
+        roster.len(),
+        MAX_OPERATOR_COUNCIL_SEATS
+    );
     for member in roster.values() {
         if let Some(profile) = member.profile_name() {
             println!(
@@ -344,6 +351,11 @@ fn run_question(
 ) -> Result<(), String> {
     if roster.len() < 3 {
         return Err("Council requires at least three roster members".to_string());
+    }
+    if roster.len() > MAX_OPERATOR_COUNCIL_SEATS {
+        return Err(format!(
+            "public operator Council permits at most {MAX_OPERATOR_COUNCIL_SEATS} seats"
+        ));
     }
     if question.trim().is_empty() || question.len() > 4096 {
         return Err("question must be non-empty and at most 4096 characters".to_string());
@@ -608,6 +620,20 @@ mod tests {
             );
         }
         assert_eq!(count_xai(&roster), MAX_REMOTE_XAI_SEATS);
+    }
+
+    #[test]
+    fn public_operator_roster_matches_five_seat_chair_limit() {
+        let mut roster = BTreeMap::new();
+        for index in 0..MAX_OPERATOR_COUNCIL_SEATS {
+            let nick = format!("M{index}");
+            roster.insert(
+                nick.to_ascii_lowercase(),
+                MemberConfig::mock(&nick, "balanced"),
+            );
+        }
+        let error = ensure_unique(&roster, "Sixth").expect_err("sixth seat must fail closed");
+        assert!(error.contains("at most 5 seats"));
     }
 
     #[test]
