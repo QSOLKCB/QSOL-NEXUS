@@ -49,12 +49,14 @@ jobs:
         run: |
           set -euo pipefail
           workflow=.github/workflows/alpha9-remote-operator.yml
-          if grep -E 'secrets\.' "$workflow"; then
-            echo "alpha9 hermetic CI must not reference GitHub secret contexts" >&2
-            exit 1
-          fi
+          secret_context='secrets''.'
+          xai_key_name='XAI''_API_KEY'
           live_flag='--authorize''-live-xai'
-          if grep -F -- "$live_flag" "$workflow"; then
-            echo "alpha9 hermetic CI must not authorize a real xAI network run" >&2
-            exit 1
-          fi
+          self_test='live_xai_acceptance.py --self''-test'
+          for forbidden in "$secret_context" "$xai_key_name" "$live_flag"; do
+            if grep -F -- "$forbidden" "$workflow"; then
+              echo "alpha9 hermetic CI contains forbidden live credential or authorization wiring" >&2
+              exit 1
+            fi
+          done
+          test "$(grep -F -c -- "$self_test" "$workflow")" -eq 1
