@@ -1,0 +1,79 @@
+{
+  "schema": "nexus-post-stable-extension-candidate/1",
+  "phase": "2.1-pre-release-extension-hardening",
+  "target_version": "2.1.0",
+  "current_runtime_version": "2.0.0",
+  "version_bump_status": "deferred_until_extension_hardening_green",
+  "stable_release": false,
+  "release_authority": false,
+  "authority_effect": "none",
+  "stable_baseline": {
+    "tag": "v2.0.0",
+    "commit": "cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a",
+    "formalization_pr": 53,
+    "publication_pr": 54,
+    "publication_doi": "10.5281/zenodo.21895577",
+    "immutable": true
+  },
+  "extension_baseline_head": "0b2a3ee467faad89e5a56b51779dc20ba13ad75d",
+  "extension_merge_chain": [
+    {
+      "pr": 55,
+      "merge_commit": "839303ea512631e527073682343341742cead975",
+      "surface": "LATTICE-backed world presence and migration"
+    },
+    {
+      "pr": 56,
+      "merge_commit": "c42414024a25e785dd29f406a829e3e02a8239bc",
+      "surface": "default-deny instrument admission"
+    },
+    {
+      "pr": 57,
+      "merge_commit": "f4c717bcab0e03811856d5061677678b35044ca1",
+      "surface": "alpha8 persistent world"
+    },
+    {
+      "pr": 58,
+      "merge_commit": "3244d439192769908fa74eac69a0c430ce5814ae",
+      "surface": "alpha9 remote operator engineering"
+    },
+    {
+      "pr": 59,
+      "merge_commit": "0b2a3ee467faad89e5a56b51779dc20ba13ad75d",
+      "surface": "alpha11 Three Minds, One World integration"
+    }
+  ],
+  "included_contracts": [
+    "nexus-world-lattice/1",
+    "nexus-instrument-admission-contract/1",
+    "nexus-persistent-world-contract/1",
+    "nexus-alpha9-remote-operator-contract/1",
+    "nexus-three-minds-one-world-contract/2"
+  ],
+  "empirical_gates": {
+    "live_xai_acceptance": "operator-run-required",
+    "live_success_claimed_by_ci": false
+  },
+  "required_workflows": [
+    "README dual-surface contract",
+    "Python mock runtime tests",
+    "Rust IRC TUI tests",
+    "NEXUS security regression",
+    "NEXUS adversarial gauntlet",
+    "NEXUS 2.0 release candidate",
+    "NEXUS 2.1 extension hardening"
+  ],
+  "next_phase_if_green": "2.1 release identity, documentation reconciliation, and exact-commit release candidate",
+  "boundaries": [
+    "V2_0_STABLE != POST_STABLE_EXTENSION_HEAD",
+    "HARDENING_PASS != RELEASE_AUTHORITY",
+    "VERSION_TARGET != VERSION_BUMP_AUTHORITY",
+    "INSTRUMENT_RESULT != TRUTH",
+    "PERSISTENT_LINEAGE != TRUTH",
+    "IMPORT != AUTHORITY",
+    "REMOTE_MODEL != PRIVILEGED_MODEL",
+    "MULTI_MODEL_CONSENSUS != EVIDENCE",
+    "LATTICE_POSITION != COGNITIVE_COORDINATE",
+    "LIVE_ACCEPTANCE != SCIENTIFIC_VALIDATION"
+  ]
+}
