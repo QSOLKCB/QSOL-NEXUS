@@ -7,6 +7,8 @@ on:
       - 'contracts/**'
       - 'docs/POST_STABLE_EXTENSION_HARDENING.md'
       - 'release/post_stable_extension_*.json'
+      - 'release/nexus_2_1_1_*.json'
+      - 'src/nexus_runtime/version.py'
       - 'src/nexus_runtime/instruments.py'
       - 'src/nexus_runtime/persistent_world.py'
       - 'src/nexus_runtime/persistent_world_api.py'
@@ -51,6 +53,22 @@ jobs:
           set -euo pipefail
           printf 'EXTENSION_REPORT=%s\n' "$RUNNER_TEMP/nexus-extension-hardening-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json" >> "$GITHUB_ENV"
 
+      - name: Select extension-hardening subject
+        shell: bash
+        run: |
+          set -euo pipefail
+          if test -f release/nexus_2_1_1_candidate.json; then
+            root="$RUNNER_TEMP/nexus-pr60-hardening-baseline"
+            git worktree add --detach "$root" 80cda46e614f44b47861471cb329e29a348cab43
+            printf 'EXTENSION_ROOT=%s\n' "$root" >> "$GITHUB_ENV"
+            printf 'EXTENSION_EXPECT=%s\n' '80cda46e614f44b47861471cb329e29a348cab43' >> "$GITHUB_ENV"
+            printf 'EXTENSION_SUBJECT=%s\n' 'historical-pr60-merge' >> "$GITHUB_ENV"
+          else
+            printf 'EXTENSION_ROOT=%s\n' "$GITHUB_WORKSPACE" >> "$GITHUB_ENV"
+            printf 'EXTENSION_EXPECT=%s\n' "$GITHUB_SHA" >> "$GITHUB_ENV"
+            printf 'EXTENSION_SUBJECT=%s\n' 'current-extension-candidate' >> "$GITHUB_ENV"
+          fi
+
       - name: Toolchain versions
         shell: bash
         run: |
@@ -62,25 +80,28 @@ jobs:
           test "$(rustc --version | awk '{print $2}')" = "1.97.1"
 
       - name: Static extension identity self-test
-        env:
-          PYTHONPATH: src
+        shell: bash
         run: |
           set -euo pipefail
-          python3 tools/nexus_extension_hardening.py --self-test --expect-commit "$GITHUB_SHA"
+          cd "$EXTENSION_ROOT"
+          PYTHONPATH=src python3 tools/nexus_extension_hardening.py \
+            --self-test \
+            --expect-commit "$EXTENSION_EXPECT"
 
-      - name: Run exact-commit extension hardening matrix
-        env:
-          PYTHONPATH: src
+      - name: Run exact extension hardening matrix
+        shell: bash
         run: |
           set -euo pipefail
-          python3 tools/nexus_extension_hardening.py \
-            --expect-commit "$GITHUB_SHA" \
+          cd "$EXTENSION_ROOT"
+          PYTHONPATH=src python3 tools/nexus_extension_hardening.py \
+            --expect-commit "$EXTENSION_EXPECT" \
             --json-out "$EXTENSION_REPORT"
 
-      - name: Show machine-readable report
+      - name: Show verification subject and report
         if: always()
         shell: bash
         run: |
+          echo "extension subject: ${EXTENSION_SUBJECT:-unknown}"
           if test -f "$EXTENSION_REPORT"; then
             cat "$EXTENSION_REPORT"
           else
