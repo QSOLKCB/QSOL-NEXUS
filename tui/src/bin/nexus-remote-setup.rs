@@ -225,9 +225,9 @@ fn valid_identity(value: &str) -> bool {
 fn valid_model(value: &str) -> bool {
     !value.is_empty()
         && value.len() <= 256
-        && value.chars().all(|character| {
-            character.is_ascii_alphanumeric() || "._:/+-".contains(character)
-        })
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || "._:/+-".contains(character))
 }
 
 fn help() {
@@ -309,10 +309,7 @@ fn render_auth_profiles(response: &Value) {
                     .get("profile_name")
                     .and_then(Value::as_str)
                     .unwrap_or("?");
-                let method = profile
-                    .get("method")
-                    .and_then(Value::as_str)
-                    .unwrap_or("?");
+                let method = profile.get("method").and_then(Value::as_str).unwrap_or("?");
                 println!(
                     "{} profile={} method={}",
                     safe_text(adapter),
@@ -354,7 +351,10 @@ fn run_question(
     if looks_like_secret(question) {
         return Err("credential-shaped text is not accepted as a Council question".to_string());
     }
-    let members: Vec<Value> = roster.values().map(|member| member.config.clone()).collect();
+    let members: Vec<Value> = roster
+        .values()
+        .map(|member| member.config.clone())
+        .collect();
     let response = runtime.request(json!({
         "operation": "council.run",
         "question": question,
@@ -409,7 +409,9 @@ fn handle_line(
         "quit" | "exit" => return Ok(false),
         "roster" => render_roster(roster),
         "remove" => {
-            let nick = words.next().ok_or_else(|| "usage: remove <nick>".to_string())?;
+            let nick = words
+                .next()
+                .ok_or_else(|| "usage: remove <nick>".to_string())?;
             if roster.remove(&nick.to_ascii_lowercase()).is_some() {
                 println!("removed {}", safe_text(nick));
             } else {
@@ -441,7 +443,12 @@ fn handle_line(
                     println!(
                         "xai profile={} status={}",
                         safe_text(profile),
-                        safe_text(response.get("status").and_then(Value::as_str).unwrap_or("ok"))
+                        safe_text(
+                            response
+                                .get("status")
+                                .and_then(Value::as_str)
+                                .unwrap_or("ok")
+                        )
                     );
                 }
                 "add" => {
@@ -449,7 +456,9 @@ fn handle_line(
                     println!("use one of:");
                     println!("  python3 -m nexus_runtime auth add xai --method browser-key");
                     println!("  python3 -m nexus_runtime auth add xai --method api-key");
-                    println!("  python3 -m nexus_runtime auth add xai --method env --env XAI_API_KEY");
+                    println!(
+                        "  python3 -m nexus_runtime auth add xai --method env --env XAI_API_KEY"
+                    );
                     println!("the hidden prompt/environment/helper boundary keeps credential bytes out of TUI history and world state");
                 }
                 _ => return Err("usage: auth adapters|list|test|add".to_string()),
@@ -513,10 +522,7 @@ fn handle_line(
                         return Err("usage: add ollama <nick> <model>".to_string());
                     }
                     ensure_unique(roster, nick)?;
-                    roster.insert(
-                        nick.to_ascii_lowercase(),
-                        MemberConfig::ollama(nick, model),
-                    );
+                    roster.insert(nick.to_ascii_lowercase(), MemberConfig::ollama(nick, model));
                     println!("added {} [ollama/{}]", safe_text(nick), safe_text(model));
                 }
                 "mock" => {
@@ -528,10 +534,7 @@ fn handle_line(
                         return Err("usage: add mock <nick> [profile]".to_string());
                     }
                     ensure_unique(roster, nick)?;
-                    roster.insert(
-                        nick.to_ascii_lowercase(),
-                        MemberConfig::mock(nick, profile),
-                    );
+                    roster.insert(nick.to_ascii_lowercase(), MemberConfig::mock(nick, profile));
                     println!("added {} [mock/{}]", safe_text(nick), safe_text(profile));
                 }
                 _ => return Err("usage: add xai|ollama|mock ...".to_string()),
