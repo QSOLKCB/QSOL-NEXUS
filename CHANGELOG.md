@@ -2,6 +2,24 @@
 
 All notable changes to QSOL NEXUS are documented here.
 
+## 2.1.1 — Release candidate
+
+- preserve the frozen `v2.0.0` software/formalization/publication identity and the historical `v2.1.0 -> 839303ea512631e527073682343341742cead975` tag rather than moving or rewriting either tag;
+- align runtime, Python package, Rust TUI and Cargo-lock local package identity on `2.1.1`;
+- bump the additive control-protocol surface from `nexus/0.14` to `nexus/0.15` for the new post-stable world-presence, instrument, persistent-world and integration operations;
+- include PR #55 LATTICE-backed placement/movement/migration with preserved WorldStore/LATTICE identity separation;
+- include PR #56 default-deny instrument admission with `nexus.integer-primality/1` as the first admitted executable instrument and content-addressed intent/execution/receipt verification;
+- include PR #57 typed persistent-world relations, hypotheses, experiments, derived minority/mode views, bounded exchange and quarantine-preserving imports;
+- include PR #58 Rust remote-operator setup plus the explicitly authorized live-xAI acceptance harness while keeping raw credentials out of TUI/world/semantic state;
+- include PR #59 completed Three Minds, One World integration with task-bound hypotheses, exact admitted-instrument replay, typed experiment lineage, LATTICE handoff, restart-manifest coherence and equal-vote minority preservation;
+- bind the candidate to merged PR #60 post-stable extension hardening commit `80cda46e614f44b47861471cb329e29a348cab43` and reviewed hardening artifact `sha256:16674e62495ed5b66f69269ec2e5fb9cdb300b39bf2b45212f00085daa83ffbb`;
+- add exact-commit PR #61 candidate/matrix/report machinery that verifies historical tags, frozen v2.0 DOI identity, version/protocol alignment, lockfile-strict Rust tests/checks, focused extension/historical regressions and pre/post candidate tree identity;
+- reconcile README, strict README4AI, API, compatibility, release sequence, citation metadata and dedicated 2.1.1 release notes with the post-stable architecture;
+- keep the real xAI acceptance session as an explicit operator-run empirical gate; CI runs only the hermetic self-test and does not claim live provider success;
+- retain the core boundaries that persistence, instruments, LATTICE position, provider identity and Council consensus do not create semantic or governance authority.
+
+**Release rule:** PR #61 is a candidate only. It does not create `v2.1.1`. Only the exact reviewed-and-green merged PR #61 commit may later receive the new `v2.1.1` tag and GitHub Release. Existing `v2.0.0` and `v2.1.0` tags are not moved.
+
 ## 2.0.0 — Final release candidate
 
 - align runtime, Python package, Rust TUI, API documentation, citation metadata, and release contracts on the intended stable `2.0.0` bits while keeping the stable tag as a separate post-merge gate;
@@ -14,7 +32,7 @@ All notable changes to QSOL NEXUS are documented here.
 - close the hostile post-merge Grok F1-F5/RACE1 audit in PR #52, including exact commit/tree report binding, final identity revalidation, full Python test-module inventory coverage, stronger durable secret scrubbing, and synchronized release-tag instructions;
 - reserve post-stable PR #53 for runnable Lean 4 protocol formalization and PR #54 for reproducibility packaging plus Zenodo publication.
 
-**Release rule:** this entry describes the intended stable bits. NEXUS 2.0 is not a tagged stable release until PR #52 is merged with every required commit/tree-bound release and review gate green and that exact merged PR #52 commit is tagged `v2.0.0`.
+**Release rule:** this entry records the historical 2.0 candidate that subsequently became the frozen `v2.0.0` release at `cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a`.
 
 ## 2.0.0-alpha10.3 — Provider federation, local AI roles and release wiring
 
@@ -66,7 +84,6 @@ All notable changes to QSOL NEXUS are documented here.
 - remove ambient proxy and redirect behavior from OAuth and configured Ollama transports;
 - migrate legacy WorldStore `0755`/`0644` permissions to owner-only modes, reject unsafe entries, and require exact closed-schema canonical bytes for immutable objects;
 - secret-scrub Council model output before persistence and stamp receipts from the shared protocol-version source;
-
 - add deterministic UNO, Monopoly: Substrate Edition, four-player Australian 500, and fictional-chip Blackjack tables for mixed human/AI rosters;
 - add player-specific private views while keeping bounded Council evidence public, with narration unable to mutate authoritative game state;
 - add a six-deck Blackjack shoe and authoritative deterministic dealer that stands on soft 17;
@@ -137,7 +154,7 @@ All notable changes to QSOL NEXUS are documented here.
 
 - add bounded containment only for registered procedural guard violations repeated after the ordinary nudge;
 - add an isolated non-Council rehabilitation probe with no Council evidence, other-member output, ballot, or world mutation authority;
-- allow a clean probe to return the actor at the next Council hat;
+- allow a clean probe to return the actor at the next hat;
 - send failed rehabilitation to durable `shadow_realm` state;
 - substitute deterministic `nexus-failsafe-relief-v1` into the same equal-vote Council seat on subsequent runs;
 - force `UNDERDETERMINED` rather than accepting a model ballot while the actor is contained;
@@ -235,53 +252,45 @@ Core invariant:
 - Added local document ingestion for PDF, DOCX, ODT, JSON, JSONL/NDJSON, CSV, TSV, and UTF-8 text/source/document files.
 - Added content-addressed `document_evidence` world objects for imported documents.
 - Added bounded model-readable evidence views derived from durable object refs.
-- Added explicit separation between room-wide Council evidence and targeted DCC evidence.
+- Added explicit separation of room-wide Council evidence from targeted DCC evidence.
 - Added `/ref` / `/unref` evidence controls.
 - Added `actor.chat` as an explicitly non-Council direct actor operation.
 - Exposed the already-hardened loopback Ollama actor through the public local JSONL/stdio control path without adding remote-provider auth.
 - Added mock/Ollama roster commands to the Rust shell.
 - Added mIRC-style aliases with positional arguments/ranges.
-- Added local `%variables` and safe `$identifiers`: `$me`, `$chan`, `$mode`, `$region`, `$topic`, `$1..$9`, `$1-..$9-`.
+- Added local `%variables` and safe `$identifiers`: `$me`, `$chan`, `$mode`, `$region`, `$topic`, positional arguments/ranges.
 - Added local persistence for aliases/variables.
+- Added scrollback search/save, input history and command completion.
 - Added `docs/IRC_TUI.md`.
-- Added dedicated Rust CI for formatting, tests, compile checks, and Python protocol regressions.
+- Added dedicated Rust CI for formatting, tests and compile checks.
 
-### Protocol
+Alpha5 deliberately does **not** implement:
 
-- Bumped the reference protocol to `nexus/0.4`.
-- Bumped the reference runtime to `2.0.0-alpha5`.
-- Secret scrubbing now explicitly covers `actor.chat` input as well as Council/world semantic input.
-- Council evidence refs are validated/read through the world store before a bounded representation is supplied to model actors.
+- IRC networking;
+- an IRC daemon;
+- peer-to-peer DCC sockets;
+- mIRC remote/event scripts;
+- arbitrary shell execution from aliases;
+- provider credentials;
+- OpenAI / Claude / Gemini / Grok cloud adapters;
+- remote Ollama endpoints.
 
-### Security / boundaries
+The Rust layer remains a replaceable operator shell. World, Council, evidence, security and voting rules remain in the Python/runtime protocol.
 
-- The IRC UI is interface vocabulary only: no IRC daemon, IRC network connection, listening socket, or P2P DCC transfer is introduced.
-- The public stdio Ollama path exposes no `allow_remote` override; remote endpoints remain rejected by the loopback transport policy.
-- Targeted DCC material is not silently promoted into a Council evidence snapshot.
-- Aliases cannot replace built-in commands and do not execute shell commands, scripts, sockets, DLLs, timers, or remote events.
-- Direct DCC chat is marked non-Council and confers no vote or procedural authority.
-- Provider authentication and OpenAI/Claude/Gemini/Grok cloud integrations remain deferred.
+## 2.0.0-alpha4 — World Modes and Geometry
 
-### Roadmap
+Completed in PR #4.
 
-- Moved the Rust operator shell into alpha5.
-- Council-response entropy and related information-diversity telemetry move to alpha6.
+Initial modes:
 
-## [2.0.0-alpha4] — World Modes and Geometry
+```text
+analytical  -> Observatory
+historical  -> Archive
+cultural    -> Agora
+meme_casual -> Commons
+```
 
-### Added
-
-- Added deterministic built-in World Modes: `analytical`, `historical`, `cultural`, and `meme_casual`.
-- Added the first named-region geometry: Observatory, Archive, Agora, and Commons.
-- Added deterministic integer coordinates, explicit symmetric adjacency, and shortest-hop distance.
-- Added content-addressed `world_presence` objects binding Council mode, region, members, question, coordinates, and geometry identity.
-- Added mode/region data to frozen Council session identity.
-- Added mode propagation through `PhaseContext` to mock and Ollama actors.
-- Added `world.modes`, `world.geometry`, and `world.geometry.distance` JSONL operations.
-- Added deterministic tests proving that mode changes framing/session identity without changing vote mechanics or consensus policy.
-- Added `docs/MODES_GEOMETRY.md`.
-
-### World map
+Initial geometry:
 
 ```text
                          ARCHIVE
@@ -299,17 +308,33 @@ Core invariant:
                          (2,1)
 ```
 
-### Claim boundaries
+Implemented:
 
-- The geometry is an operational topology, not a claim that cognition, history, culture, or humor literally occupies Euclidean space.
-- World Mode affects framing/context/tone only; it does not change evidence state, verification, vote weight, Council threshold, Equality Guard policy, or Secret Scrubber behavior.
-- Prompt-level mode guidance is treated as guidance rather than a perfect model-control mechanism.
-- Geometry-inspired concepts such as basins, bottlenecks, branching, and recovery remain future telemetry candidates until defined measurements exist.
-- Council-response entropy is documented as a future informational-diversity signal, not truth, quality, or authority.
+- [x] deterministic built-in mode registry;
+- [x] modes carry framing/context but no procedural authority;
+- [x] named-region geometry with integer coordinates;
+- [x] explicit symmetric adjacency;
+- [x] deterministic hop distance;
+- [x] content-addressed Council `world_presence` objects;
+- [x] mode/region included in frozen Council identity;
+- [x] mode propagation through `PhaseContext` to actors;
+- [x] `world.modes` API;
+- [x] `world.geometry` API;
+- [x] `world.geometry.distance` API;
+- [x] deterministic tests proving mode changes framing but not vote mechanics;
+- [x] documentation of operational-vs-physical geometry claim boundary.
 
-### Roadmap
+Still later:
 
-- Provider authentication and remote-provider setup are deliberately deferred until after modes/geometry, Council telemetry, the Rust operator shell, instruments, and persistent-world work mature further.
+- [ ] user-defined modes;
+- [ ] explicit recorded `world.move` transitions;
+- [ ] richer object-to-region placement rules.
+
+Core invariant:
+
+> **The mode can change the vibe. It cannot change the vote.**
+
+High entropy is not automatically good. Low entropy is not automatically truth.
 
 ## [2.0.0-alpha3] — First real-model Council boundary
 
@@ -317,7 +342,7 @@ Core invariant:
 
 - Added provider-neutral `CouncilActor` protocol consumed by the Council coordinator.
 - Made the deterministic mock actor conform to the shared actor interface.
-- Added a minimal stdlib `OllamaActor` and loopback-only-by-default `OllamaTransport`.
+- Added a minimal stdlib Ollama actor and loopback-only-by-default `OllamaTransport`.
 - Added JSON-schema-constrained Ollama ballot output.
 - Added `THREAT_MODEL.md` before admitting the first executable non-mock adapter boundary.
 - Added a separate GitHub Actions live-Ollama integration gate.
