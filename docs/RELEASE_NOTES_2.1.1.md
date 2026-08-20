@@ -6,7 +6,7 @@ This document describes the **2.1.1 release candidate**. PR #61 does not create 
 
 The release gate is exact:
 
-> **Only the reviewed-and-green merged PR #61 commit may receive `v2.1.1`.**
+> **Only the exact reviewed-and-green merged PR #61 commit may receive `v2.1.1`.**
 
 ## Why 2.1.1 instead of 2.1.0
 
