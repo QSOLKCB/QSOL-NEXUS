@@ -10,7 +10,7 @@
   },
   "objects": {
     "world_relation": {
-      "purpose": "explicit typed edge between existing WorldStore objects",
+      "purpose": "explicit typed edge between existing local WorldStore objects",
       "semantic_effect": "none",
       "authority_effect": "none"
     },
@@ -26,9 +26,16 @@
       "claim_boundary": "recorded_world_lineage_not_empirical_truth",
       "authority_effect": "none"
     },
+    "world_imported_object": {
+      "purpose": "preserve an exact foreign source WorldObject without materializing its source type as a live local runtime object",
+      "materialized_as_live_world_object": false,
+      "source_identity_preserved": true,
+      "authority_effect": "none"
+    },
     "world_import_receipt": {
-      "purpose": "bind source-preserving import to exact world export bundle",
+      "purpose": "bind quarantined source-preserving import to exact world export bundle",
       "source_objects_preserved": true,
+      "foreign_objects_materialized_as_live_world_objects": false,
       "authority_effect": "none"
     }
   },
@@ -36,18 +43,21 @@
     "relation_search": "deterministic bounded scan",
     "hypothesis_search": "deterministic bounded scan",
     "experiment_search": "deterministic bounded scan",
-    "minority_report_search": "derived from committed council_session.result.minority_reports",
-    "mode_history": "derived from committed council_session and explicit world-presence transition objects",
+    "minority_report_search": "derived from locally committed council_session.result.minority_reports",
+    "mode_history": "derived from locally committed council_session and explicit world-presence transition objects",
     "search_is_evidence": false
   },
   "portable_exchange": {
     "export_schema": "nexus-persistent-world-export/1",
     "maximum_objects": 256,
-    "object_identity_preserved": true,
+    "maximum_canonical_utf8_bytes": 1048576,
+    "source_object_identity_preserved": true,
     "bundle_identity": "world-export:<sha256>",
     "unknown_major": "reject",
-    "import_rule": "fully validate before append; skip exact recognized objects; create separate immutable import receipt",
-    "partial_storage_failure": "append-only prior successful writes remain historical; retry is identity-safe"
+    "import_rule": "fully validate before append; recognize exact objects already independently local; otherwise create inert source-preserving wrappers; create separate immutable import receipt",
+    "foreign_runtime_type_activation": "forbidden",
+    "partial_storage_failure": "append-only prior successful quarantine writes remain inert historical records; retry is identity-safe",
+    "recovery_boundary": "trusted exact live-history recovery remains the existing World Ark / Continuity responsibility"
   },
   "migration": {
     "major": 1,
@@ -64,6 +74,7 @@
     "MODE_HISTORY != COGNITIVE_GEOMETRY",
     "EXPORT_HASH != SEMANTIC_TRUTH",
     "IMPORT != AUTHORITY",
+    "IMPORTED_OBJECT != LOCAL_COMMITTED_OBJECT",
     "PERSISTENCE != EPISTEMIC_PRIVILEGE"
   ],
   "authority_effect": "none"

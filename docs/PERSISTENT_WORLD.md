@@ -19,14 +19,15 @@ existing content-addressed WorldStore objects
              |
              +-- derived minority-report search
              +-- derived mode history
-             +-- bounded exact-object export/import
+             +-- bounded exact-object export
+             +-- quarantined source-preserving import
 ```
 
 There is no second canonical database and no vector index with authority over WorldStore history.
 
 ## Relations
 
-`world_relation` is an explicit typed edge between two already-existing WorldStore objects.
+`world_relation` is an explicit typed edge between two already-existing local WorldStore objects.
 
 A relation says that NEXUS recorded an edge. It does not prove that the semantic interpretation of the edge is true.
 
@@ -83,7 +84,7 @@ OBSERVED
 CLOSED
 ```
 
-An initial record must be `PLANNED`. Observation/result records bind exact existing WorldStore references. Recording a result reference establishes lineage, not empirical truth.
+An initial record must be `PLANNED`. Observation/result records bind exact existing local WorldStore references. Recording a result reference establishes lineage, not empirical truth.
 
 ```text
 EXPERIMENT_RECORD != EMPIRICAL_VERIFICATION
@@ -100,7 +101,7 @@ world.experiment.search
 
 Alpha8 reuses existing canonical objects instead of copying them into a new format.
 
-Council sessions remain ordinary `council_session` WorldStore objects.
+Council sessions remain ordinary locally committed `council_session` WorldStore objects.
 
 World placement, adjacent movement, and explicit LATTICE migration remain the existing `nexus-world-lattice/1` event objects.
 
@@ -112,7 +113,7 @@ MODE_HISTORY != COGNITIVE_GEOMETRY
 
 ## Searchable minority reports
 
-`world.minority.search` scans committed `council_session` objects and returns the existing `result.minority_reports` records with their session, question, mode, and evidence-state context.
+`world.minority.search` scans locally committed `council_session` objects and returns the existing `result.minority_reports` records with their session, question, mode, and evidence-state context.
 
 The search view does not duplicate or promote the minority report.
 
@@ -121,7 +122,9 @@ MINORITY_REPORT != EVIDENCE_PROMOTION
 SEARCH_MATCH != EVIDENCE
 ```
 
-## Portable export and import
+Foreign objects received through `world.import` are quarantined as `world_imported_object` wrappers, so a hash-valid foreign `council_session` cannot silently enter local Council history or minority-report search.
+
+## Portable export
 
 `world.export` produces a bounded `nexus-persistent-world-export/1` envelope containing exact canonical WorldObject records in deterministic source order.
 
@@ -131,26 +134,38 @@ The bundle is content addressed as:
 world-export:<sha256>
 ```
 
-The maximum alpha8 exchange bundle contains 256 objects. Larger worlds must select an explicit subset.
-
-`world.import`:
-
-1. validates the complete envelope before mutation;
-2. verifies every `object:<sha256>` identity;
-3. rejects duplicate identities and unknown export versions;
-4. rejects credential-shaped material rather than rewriting it;
-5. preserves exact source object type, payload, provenance, and object identity;
-6. reuses exact objects already recognized locally;
-7. appends a separate `world_import_receipt`.
-
-Imported objects are not relabelled or re-authored as NEXUS claims.
+The maximum alpha8 exchange bundle contains 256 objects and is also capped at 1,048,576 canonical UTF-8 bytes. Larger worlds must select an explicit subset.
 
 ```text
-IMPORT != AUTHORITY
 EXPORT_HASH != SEMANTIC_TRUTH
 ```
 
-An infrastructure failure during a multi-object append cannot be rolled back without rewriting append-only history. Any already-committed source object remains a valid exact content-addressed object; retrying the same bundle is identity-safe and reuses it.
+## Quarantined import
+
+`world.import` is for portable exchange, not recovery authority. Exact recovery of a trusted local NEXUS history remains the job of the existing World Ark / Continuity machinery.
+
+Import therefore follows a stricter boundary:
+
+1. validate the complete `nexus-persistent-world-export/1` envelope before mutation;
+2. enforce the object-count and canonical-byte ceilings;
+3. verify every source `object:<sha256>` identity;
+4. reject duplicate identities and unknown export versions;
+5. reject credential-shaped or credential-labelled source material rather than rewriting it;
+6. if an exact source object is already independently present in local history, record it as already local;
+7. otherwise preserve the complete source WorldObject inside an inert `world_imported_object` wrapper in the same WorldStore;
+8. never materialize a foreign source object type directly as a live local Council, governance, security, evidence, or runtime object;
+9. append a separate `world_import_receipt` binding the source bundle, already-local references, and quarantine wrappers.
+
+The wrapper preserves the exact source object reference and exact source object body while making the authority boundary mechanically visible:
+
+```text
+IMPORTED_OBJECT != LOCAL_COMMITTED_OBJECT
+IMPORT != AUTHORITY
+```
+
+Re-importing the same source object reuses the same deterministic quarantine wrapper when its preserved source bytes match.
+
+An infrastructure failure during a multi-object append cannot be rolled back without rewriting append-only history. Any already-created quarantine wrapper remains an inert exact historical record, and retrying the same bundle is identity-safe.
 
 ## Migration/version policy
 
@@ -185,4 +200,4 @@ world.export
 world.import
 ```
 
-All alpha8 object creation routes through the existing real-world mutation gate. Generic `world.create` cannot forge alpha8 runtime-owned relation, hypothesis, experiment, or import-receipt objects.
+All alpha8 object creation routes through the existing real-world mutation gate. Generic `world.create` cannot forge alpha8 runtime-owned relation, hypothesis, experiment, imported-object, or import-receipt objects.

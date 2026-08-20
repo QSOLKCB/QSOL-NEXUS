@@ -18,6 +18,7 @@ PERSISTENT_WORLD_IMPORT_RECEIPT_SCHEMA = "nexus-persistent-world-import-receipt/
 WORLD_RELATION_OBJECT_TYPE = "world_relation"
 WORLD_HYPOTHESIS_OBJECT_TYPE = "world_hypothesis"
 WORLD_EXPERIMENT_OBJECT_TYPE = "world_experiment"
+WORLD_IMPORTED_OBJECT_TYPE = "world_imported_object"
 WORLD_IMPORT_RECEIPT_OBJECT_TYPE = "world_import_receipt"
 
 PERSISTENT_WORLD_RESERVED_OBJECT_TYPES = frozenset(
@@ -25,6 +26,7 @@ PERSISTENT_WORLD_RESERVED_OBJECT_TYPES = frozenset(
         WORLD_RELATION_OBJECT_TYPE,
         WORLD_HYPOTHESIS_OBJECT_TYPE,
         WORLD_EXPERIMENT_OBJECT_TYPE,
+        WORLD_IMPORTED_OBJECT_TYPE,
         WORLD_IMPORT_RECEIPT_OBJECT_TYPE,
     }
 )
@@ -33,6 +35,7 @@ MAX_WORLD_SCAN_OBJECTS = 100_000
 MAX_SEARCH_RESULTS = 50
 MAX_EXPORT_OBJECTS = 256
 MAX_IMPORT_OBJECTS = 256
+MAX_EXCHANGE_BYTES = 1_048_576
 MAX_RELATION_METADATA_BYTES = 8_192
 MAX_TEXT_CHARS = 4_096
 MAX_REF_LIST = 128
@@ -91,10 +94,10 @@ def persistent_world_policy_snapshot() -> dict[str, Any]:
         "experiments": "immutable plan/observation lineage; recorded result refs do not establish empirical truth",
         "council_sessions": "existing council_session objects remain canonical",
         "world_presence": "existing world-presence and LATTICE movement objects remain canonical",
-        "minority_reports": "derived searchable views over committed council_session objects",
+        "minority_reports": "derived searchable views over committed local council_session objects",
         "mode_history": "derived ordered view over committed Council sessions and explicit world-presence transitions",
         "export": "bounded provenance-closed exact-object bundle",
-        "import": "validate complete bundle before append; preserve exact source object identities; append separate import receipt",
+        "import": "validate complete bundle before append; preserve foreign exact objects inside inert same-WorldStore wrappers; append separate import receipt",
         "migration": {
             "current_major": 1,
             "legacy_rule": "pre-alpha8 objects remain valid and are never rewritten merely to gain alpha8 metadata",
@@ -103,6 +106,7 @@ def persistent_world_policy_snapshot() -> dict[str, Any]:
             "rewrite_rule": "in-place reinterpretation of historical objects is forbidden",
         },
         "search_rule": "deterministic derived scan; search rank or text match creates no evidence authority",
+        "import_authority_rule": "foreign source object types are never materialized as live local Council/governance/runtime objects by world.import",
         "boundaries": [
             "RELATION != FACT",
             "HYPOTHESIS_STATE != TRUTH",
@@ -111,6 +115,7 @@ def persistent_world_policy_snapshot() -> dict[str, Any]:
             "MODE_HISTORY != COGNITIVE_GEOMETRY",
             "EXPORT_HASH != SEMANTIC_TRUTH",
             "IMPORT != AUTHORITY",
+            "IMPORTED_OBJECT != LOCAL_COMMITTED_OBJECT",
             "PERSISTENCE != EPISTEMIC_PRIVILEGE",
         ],
         "authority_effect": "none",
@@ -127,9 +132,10 @@ def _bounded_text(value: Any, *, field: str, allow_empty: bool = False) -> str:
     if not isinstance(value, str):
         raise _fail("world_persistence_invalid", f"{field} must be text")
     if (not allow_empty and not value.strip()) or len(value) > MAX_TEXT_CHARS:
+        prefix = "at most" if allow_empty else "non-empty and at most"
         raise _fail(
             "world_persistence_invalid",
-            f"{field} must be {'at most ' if allow_empty else 'non-empty and at most '}{MAX_TEXT_CHARS} characters",
+            f"{field} must be {prefix} {MAX_TEXT_CHARS} characters",
         )
     return value
 
@@ -137,6 +143,13 @@ def _bounded_text(value: Any, *, field: str, allow_empty: bool = False) -> str:
 def _finite_json(value: Any, *, field: str) -> None:
     try:
         canonical_json(value)
+    except (TypeError, ValueError, RecursionError) as exc:
+        raise _fail("world_persistence_invalid", f"{field} must contain finite JSON data") from exc
+
+
+def _canonical_size(value: Any, *, field: str) -> int:
+    try:
+        return len(canonical_json(value).encode("utf-8"))
     except (TypeError, ValueError, RecursionError) as exc:
         raise _fail("world_persistence_invalid", f"{field} must contain finite JSON data") from exc
 
@@ -196,6 +209,11 @@ def _world_object_from_raw(raw: Any) -> WorldObject:
 def validate_world_export_bundle(bundle: Any) -> dict[str, Any]:
     if not isinstance(bundle, Mapping):
         raise _fail("world_export_invalid", "world export bundle must be a JSON object")
+    if _canonical_size(dict(bundle), field="world export bundle") > MAX_EXCHANGE_BYTES:
+        raise _fail(
+            "world_persistence_limit",
+            f"world exchange bundle exceeds {MAX_EXCHANGE_BYTES} canonical UTF-8 bytes",
+        )
     expected_fields = {
         "schema",
         "world_policy",
@@ -736,7 +754,13 @@ class PersistentWorldService:
             "authority_effect": "none",
         }
         bundle_ref = sha256_ref("world-export", body)
-        return {**body, "bundle_ref": bundle_ref}
+        bundle = {**body, "bundle_ref": bundle_ref}
+        if _canonical_size(bundle, field="world export bundle") > MAX_EXCHANGE_BYTES:
+            raise _fail(
+                "world_persistence_limit",
+                f"world exchange bundle exceeds {MAX_EXCHANGE_BYTES} canonical UTF-8 bytes; select a smaller subset",
+            )
+        return bundle
 
     def _reject_secret_material(self, value: Any) -> None:
         if isinstance(value, str):
@@ -762,6 +786,22 @@ class PersistentWorldService:
             for child in value:
                 self._reject_secret_material(child)
 
+    def _existing_import_wrappers(self, refs: Sequence[str]) -> dict[str, tuple[str, dict[str, Any]]]:
+        wrappers: dict[str, tuple[str, dict[str, Any]]] = {}
+        for object_ref in refs:
+            obj = self._inspect(object_ref)
+            if obj.object_type != WORLD_IMPORTED_OBJECT_TYPE:
+                continue
+            source_ref = obj.payload.get("source_object_ref")
+            source_object = obj.payload.get("source_object")
+            if (
+                isinstance(source_ref, str)
+                and _OBJECT_REF_RE.fullmatch(source_ref) is not None
+                and isinstance(source_object, Mapping)
+            ):
+                wrappers[source_ref] = (obj.object_id, copy.deepcopy(dict(source_object)))
+        return wrappers
+
     def import_bundle(self, bundle: Mapping[str, Any]) -> dict[str, Any]:
         verification = validate_world_export_bundle(bundle)
         parsed = [_world_object_from_raw(raw) for raw in bundle["objects"]]
@@ -771,8 +811,10 @@ class PersistentWorldService:
 
         recognized, _, _ = self._ordered_refs()
         recognized_set = set(recognized)
-        imported: list[str] = []
-        reused: list[str] = []
+        existing_wrappers = self._existing_import_wrappers(recognized)
+        already_local_refs: list[str] = []
+        quarantined: list[dict[str, str]] = []
+
         for obj in parsed:
             if obj.object_id in recognized_set:
                 current = self._inspect(obj.object_id)
@@ -781,16 +823,33 @@ class PersistentWorldService:
                         "world_export_invalid",
                         "recognized object identity resolves to different canonical content",
                     )
-                reused.append(obj.object_id)
+                already_local_refs.append(obj.object_id)
                 continue
-            created = self.world.create_object(obj.object_type, obj.payload, obj.provenance)
-            if created.object_id != obj.object_id:
-                raise _fail(
-                    "world_export_invalid",
-                    "imported object identity changed during persistence",
-                )
-            imported.append(obj.object_id)
-            recognized_set.add(obj.object_id)
+
+            existing = existing_wrappers.get(obj.object_id)
+            if existing is not None:
+                wrapper_ref, source_object = existing
+                if source_object != obj.as_dict():
+                    raise _fail(
+                        "world_export_invalid",
+                        "existing import wrapper does not preserve the supplied source object",
+                    )
+                quarantined.append({"source_ref": obj.object_id, "wrapper_ref": wrapper_ref})
+                continue
+
+            wrapper = self.world.create_object(
+                WORLD_IMPORTED_OBJECT_TYPE,
+                {
+                    "schema": PERSISTENT_WORLD_POLICY_ID,
+                    "source_object_ref": obj.object_id,
+                    "source_object": obj.as_dict(),
+                    "materialized_as_live_world_object": False,
+                    "authority_effect": "none",
+                },
+                copy.deepcopy(_EVENT_PROVENANCE),
+            )
+            quarantined.append({"source_ref": obj.object_id, "wrapper_ref": wrapper.object_id})
+            existing_wrappers[obj.object_id] = (wrapper.object_id, obj.as_dict())
 
         receipt = self.world.create_object(
             WORLD_IMPORT_RECEIPT_OBJECT_TYPE,
@@ -798,10 +857,11 @@ class PersistentWorldService:
                 "schema": PERSISTENT_WORLD_IMPORT_RECEIPT_SCHEMA,
                 "bundle_ref": verification["bundle_ref"],
                 "source_head_ref": bundle.get("source_head_ref"),
-                "object_count": verification["object_count"],
-                "imported_refs": imported,
-                "reused_refs": reused,
+                "source_object_count": verification["object_count"],
+                "already_local_refs": sorted(already_local_refs),
+                "quarantined_objects": quarantined,
                 "source_objects_preserved": True,
+                "foreign_objects_materialized_as_live_world_objects": False,
                 "authority_effect": "none",
             },
             copy.deepcopy(_EVENT_PROVENANCE),
@@ -810,13 +870,15 @@ class PersistentWorldService:
             "status": "ok",
             "bundle_ref": verification["bundle_ref"],
             "import_receipt_ref": receipt.object_id,
-            "imported_refs": imported,
-            "reused_refs": reused,
+            "already_local_refs": sorted(already_local_refs),
+            "quarantined_objects": quarantined,
+            "foreign_objects_materialized_as_live_world_objects": False,
             "authority_effect": "none",
         }
 
 
 __all__ = [
+    "MAX_EXCHANGE_BYTES",
     "MAX_EXPORT_OBJECTS",
     "MAX_IMPORT_OBJECTS",
     "MAX_SEARCH_RESULTS",
@@ -828,6 +890,7 @@ __all__ = [
     "PersistentWorldService",
     "WORLD_EXPERIMENT_OBJECT_TYPE",
     "WORLD_HYPOTHESIS_OBJECT_TYPE",
+    "WORLD_IMPORTED_OBJECT_TYPE",
     "WORLD_IMPORT_RECEIPT_OBJECT_TYPE",
     "WORLD_RELATION_OBJECT_TYPE",
     "persistent_world_policy_snapshot",

@@ -15,12 +15,14 @@ from nexus_runtime.instruments import (
     verify_instrument_receipt,
 )
 from nexus_runtime.persistent_world import (
+    MAX_EXCHANGE_BYTES,
     PERSISTENT_WORLD_EXPORT_SCHEMA,
     PERSISTENT_WORLD_POLICY_ID,
     PersistentWorldError,
     PersistentWorldService,
     WORLD_EXPERIMENT_OBJECT_TYPE,
     WORLD_HYPOTHESIS_OBJECT_TYPE,
+    WORLD_IMPORTED_OBJECT_TYPE,
     WORLD_IMPORT_RECEIPT_OBJECT_TYPE,
     WORLD_RELATION_OBJECT_TYPE,
     persistent_world_policy_snapshot,
@@ -107,6 +109,7 @@ class PersistentWorldPolicyTests(unittest.TestCase):
         self.assertIn("RELATION != FACT", policy["boundaries"])
         self.assertIn("HYPOTHESIS_STATE != TRUTH", policy["boundaries"])
         self.assertIn("IMPORT != AUTHORITY", policy["boundaries"])
+        self.assertIn("IMPORTED_OBJECT != LOCAL_COMMITTED_OBJECT", policy["boundaries"])
         self.assertIn("existing content-addressed WorldStore", policy["storage_foundation"])
 
     def test_public_alias_promotes_alpha8_overlay_and_operations(self) -> None:
@@ -133,6 +136,7 @@ class PersistentWorldPolicyTests(unittest.TestCase):
             WORLD_RELATION_OBJECT_TYPE,
             WORLD_HYPOTHESIS_OBJECT_TYPE,
             WORLD_EXPERIMENT_OBJECT_TYPE,
+            WORLD_IMPORTED_OBJECT_TYPE,
             WORLD_IMPORT_RECEIPT_OBJECT_TYPE,
         ):
             response = api.handle(
@@ -289,7 +293,7 @@ class PersistentWorldDerivedViewTests(unittest.TestCase):
 
 
 class PersistentWorldExportImportTests(unittest.TestCase):
-    def test_export_import_preserves_exact_source_objects_and_adds_receipt(self) -> None:
+    def test_export_import_quarantines_foreign_objects_and_adds_receipt(self) -> None:
         source = WorldStore()
         service = PersistentWorldService(source)
         a = source.create_object("note", {"content": "alpha"}, {"actor": "test"})
@@ -306,24 +310,78 @@ class PersistentWorldExportImportTests(unittest.TestCase):
 
         target = WorldStore()
         imported = PersistentWorldService(target).import_bundle(bundle)
-        self.assertEqual(set(imported["imported_refs"]), {a.object_id, b.object_id, relation.object_id})
-        self.assertEqual(target.inspect(a.object_id).as_dict(), a.as_dict())
+        self.assertFalse(imported["foreign_objects_materialized_as_live_world_objects"])
+        self.assertEqual(
+            {item["source_ref"] for item in imported["quarantined_objects"]},
+            {a.object_id, b.object_id, relation.object_id},
+        )
+        with self.assertRaises(KeyError):
+            target.inspect(a.object_id)
+        for item in imported["quarantined_objects"]:
+            wrapper = target.inspect(item["wrapper_ref"])
+            self.assertEqual(wrapper.object_type, WORLD_IMPORTED_OBJECT_TYPE)
+            self.assertEqual(wrapper.payload["source_object_ref"], item["source_ref"])
+            self.assertFalse(wrapper.payload["materialized_as_live_world_object"])
         receipt = target.inspect(imported["import_receipt_ref"])
         self.assertEqual(receipt.object_type, WORLD_IMPORT_RECEIPT_OBJECT_TYPE)
         self.assertTrue(receipt.payload["source_objects_preserved"])
+        self.assertFalse(receipt.payload["foreign_objects_materialized_as_live_world_objects"])
         self.assertEqual(receipt.payload["authority_effect"], "none")
+
+    def test_foreign_council_session_cannot_enter_local_minority_history(self) -> None:
+        source = WorldStore()
+        session = source.create_object(
+            "council_session",
+            {
+                "session_id": "council_session:" + "9" * 64,
+                "question_ref": "object:" + "1" * 64,
+                "world_mode": {"mode_id": "analytical"},
+                "geometry_region": {"region_id": "observatory"},
+                "result": {
+                    "evidence_state": "KNOWN",
+                    "minority_reports": [
+                        {
+                            "member_id": "foreign",
+                            "choice": "ACCEPT",
+                            "rationale": "This must not become local committed Council history.",
+                        }
+                    ],
+                },
+            },
+            {"actor": "nexus"},
+        )
+        bundle = PersistentWorldService(source).export_bundle()
+        target = WorldStore()
+        imported = PersistentWorldService(target).import_bundle(bundle)
+        wrapper = target.inspect(imported["quarantined_objects"][0]["wrapper_ref"])
+        self.assertEqual(wrapper.payload["source_object_ref"], session.object_id)
+        self.assertEqual(wrapper.object_type, WORLD_IMPORTED_OBJECT_TYPE)
+        self.assertEqual(PersistentWorldService(target).search_minority_reports()["returned"], 0)
+
+    def test_reimport_reuses_existing_quarantine_wrapper(self) -> None:
+        source = WorldStore()
+        obj = source.create_object("note", {"content": "alpha"}, {"actor": "test"})
+        bundle = PersistentWorldService(source).export_bundle()
+        target = WorldStore()
+        service = PersistentWorldService(target)
+        first = service.import_bundle(bundle)
+        second = service.import_bundle(bundle)
+        self.assertEqual(
+            first["quarantined_objects"][0]["wrapper_ref"],
+            second["quarantined_objects"][0]["wrapper_ref"],
+        )
+        self.assertEqual(first["quarantined_objects"][0]["source_ref"], obj.object_id)
 
     def test_tampered_bundle_is_rejected_before_import(self) -> None:
         source = WorldStore()
-        obj = source.create_object("note", {"content": "alpha"}, {"actor": "test"})
+        source.create_object("note", {"content": "alpha"}, {"actor": "test"})
         bundle = PersistentWorldService(source).export_bundle()
         tampered = copy.deepcopy(bundle)
         tampered["objects"][0]["payload"]["content"] = "tampered"
         target = WorldStore()
         with self.assertRaises(PersistentWorldError):
             PersistentWorldService(target).import_bundle(tampered)
-        with self.assertRaises(KeyError):
-            target.inspect(obj.object_id)
+        self.assertEqual(len(target._objects), 0)
 
     def test_import_rejects_credential_shaped_source_material_even_when_hash_valid(self) -> None:
         raw = {
@@ -347,6 +405,17 @@ class PersistentWorldExportImportTests(unittest.TestCase):
         with self.assertRaises(PersistentWorldError) as raised:
             PersistentWorldService(target).import_bundle(bundle)
         self.assertEqual(raised.exception.code, "world_import_secret_rejected")
+
+    def test_exchange_bundle_has_canonical_byte_ceiling(self) -> None:
+        source = WorldStore()
+        source.create_object(
+            "note",
+            {"content": "x" * MAX_EXCHANGE_BYTES},
+            {"actor": "test"},
+        )
+        with self.assertRaises(PersistentWorldError) as raised:
+            PersistentWorldService(source).export_bundle()
+        self.assertEqual(raised.exception.code, "world_persistence_limit")
 
 
 if __name__ == "__main__":
