@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class ReleaseWiringTests(unittest.TestCase):
-    def test_all_public_api_imports_resolve_to_provider_aware_runtime(self) -> None:
+    def test_all_public_api_imports_resolve_to_current_persistent_world_runtime(self) -> None:
         self.assertIs(PackageNexusAPI, ProviderNexusAPI)
         self.assertIs(CanonicalNexusAPI, ProviderNexusAPI)
 
@@ -52,18 +52,26 @@ class ReleaseWiringTests(unittest.TestCase):
                 "local.roles.status",
                 "local.roles.configure",
                 "local.roles.clear",
+                "world.persistence.policy",
+                "world.relation.create",
+                "world.hypothesis.create",
+                "world.experiment.create",
+                "world.minority.search",
+                "world.mode.history",
+                "world.export",
+                "world.import",
             }.issubset(operations)
         )
 
-    def test_release_version_triplet_is_aligned(self) -> None:
+    def test_release_version_triplet_and_protocol_are_aligned(self) -> None:
         pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
         cargo = tomllib.loads((ROOT / "tui" / "Cargo.toml").read_text(encoding="utf-8"))
         cargo_lock = tomllib.loads((ROOT / "tui" / "Cargo.lock").read_text(encoding="utf-8"))
         api_reference = (ROOT / "docs" / "API.md").read_text(encoding="utf-8")
 
-        self.assertEqual(PROTOCOL_VERSION, "nexus/0.14")
-        self.assertEqual(RUNTIME_VERSION, "2.0.0")
-        self.assertEqual(pyproject["project"]["version"], "2.0.0")
+        self.assertEqual(PROTOCOL_VERSION, "nexus/0.15")
+        self.assertEqual(RUNTIME_VERSION, "2.1.1")
+        self.assertEqual(pyproject["project"]["version"], "2.1.1")
         self.assertEqual(cargo["package"]["version"], RUNTIME_VERSION)
 
         tui_lock_packages = [
@@ -75,9 +83,14 @@ class ReleaseWiringTests(unittest.TestCase):
         self.assertEqual(tui_lock_packages[0]["version"], RUNTIME_VERSION)
 
         self.assertIn(
+            f"Protocol identifier:\n\n```text\n{PROTOCOL_VERSION}\n```",
+            api_reference,
+        )
+        self.assertIn(
             f"Runtime identifier:\n\n```text\n{RUNTIME_VERSION}\n```",
             api_reference,
         )
+        self.assertIn(f'"protocol": "{PROTOCOL_VERSION}"', api_reference)
         self.assertIn(f'"runtime_version": "{RUNTIME_VERSION}"', api_reference)
         self.assertNotIn("2.0.0-alpha", api_reference)
 
