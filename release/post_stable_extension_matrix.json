@@ -1,0 +1,83 @@
+{
+  "schema": "nexus-post-stable-extension-matrix/1",
+  "phase": "2.1-pre-release-extension-hardening",
+  "milestone": "PR #60",
+  "profile": "post_stable_extension_hardening",
+  "target_version": "2.1.0",
+  "current_runtime_version": "2.0.0",
+  "version_bump_authorized": false,
+  "stable_release": false,
+  "release_authority": false,
+  "authority_effect": "none",
+  "expected_python_test_files": 83,
+  "stable_baseline": {
+    "tag": "v2.0.0",
+    "commit": "cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a",
+    "publication_doi": "10.5281/zenodo.21895577"
+  },
+  "extension_baseline_head": "0b2a3ee467faad89e5a56b51779dc20ba13ad75d",
+  "extension_prs": [55, 56, 57, 58, 59],
+  "gates": [
+    {
+      "id": "lattice_world_presence",
+      "required": true,
+      "python_patterns": ["test_world_lattice.py"],
+      "runner_checks": ["extension_merge_chain", "contract_bundle"]
+    },
+    {
+      "id": "instrument_and_persistent_world",
+      "required": true,
+      "python_patterns": ["test_instruments.py"],
+      "runner_checks": ["contract_bundle"]
+    },
+    {
+      "id": "remote_operator",
+      "required": true,
+      "python_patterns": [],
+      "runner_checks": ["alpha9_self_test", "rust_remote_operator", "rust_format"]
+    },
+    {
+      "id": "three_minds_integration",
+      "required": true,
+      "python_patterns": ["test_three_minds_demo.py"],
+      "runner_checks": ["contract_bundle"]
+    },
+    {
+      "id": "inherited_v2_0_baseline",
+      "required": true,
+      "python_patterns": [
+        "test_release_hardening.py",
+        "test_release_hardening_grok_audit.py",
+        "test_post_merge_grok_audit.py",
+        "test_release_upgrade_rehearsal.py"
+      ],
+      "runner_checks": ["stable_tag_binding", "frozen_2_0_release_metadata"]
+    },
+    {
+      "id": "release_composition",
+      "required": true,
+      "python_patterns": ["test_release_candidate.py"],
+      "runner_checks": ["candidate_contract", "candidate_tree_clean", "candidate_commit_binding"]
+    }
+  ],
+  "contract_schemas": {
+    "contracts/instrument-admission.json": "nexus-instrument-admission-contract/1",
+    "contracts/persistent-world.json": "nexus-persistent-world-contract/1",
+    "contracts/alpha9-remote-operator.json": "nexus-alpha9-remote-operator-contract/1",
+    "contracts/three-minds-one-world.json": "nexus-three-minds-one-world-contract/2"
+  },
+  "required_boundaries": [
+    "V2_0_STABLE != POST_STABLE_EXTENSION_HEAD",
+    "HARDENING_PASS != RELEASE_AUTHORITY",
+    "VERSION_TARGET != VERSION_BUMP_AUTHORITY",
+    "INSTRUMENT_RESULT != TRUTH",
+    "PERSISTENT_LINEAGE != TRUTH",
+    "IMPORT != AUTHORITY",
+    "REMOTE_MODEL != PRIVILEGED_MODEL",
+    "MULTI_MODEL_CONSENSUS != EVIDENCE",
+    "LATTICE_POSITION != COGNITIVE_COORDINATE",
+    "LIVE_ACCEPTANCE != SCIENTIFIC_VALIDATION"
+  ],
+  "failure_rule": "Any required gate failure or missing exact baseline/extension identity makes the extension hardening incomplete and non-releasable.",
+  "next_phase_rule": "A green report permits a separately reviewed 2.1 release-identity candidate; it does not itself bump versions, move tags, publish releases, or close the live xAI empirical gate."
+}

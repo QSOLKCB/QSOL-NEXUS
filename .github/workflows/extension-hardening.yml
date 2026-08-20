@@ -1,0 +1,95 @@
+name: NEXUS 2.1 extension hardening
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/extension-hardening.yml'
+      - 'contracts/**'
+      - 'docs/POST_STABLE_EXTENSION_HARDENING.md'
+      - 'release/post_stable_extension_*.json'
+      - 'src/nexus_runtime/instruments.py'
+      - 'src/nexus_runtime/persistent_world.py'
+      - 'src/nexus_runtime/persistent_world_api.py'
+      - 'src/nexus_runtime/three_minds.py'
+      - 'src/nexus_runtime/world_lattice.py'
+      - 'tests/test_instruments.py'
+      - 'tests/test_release_candidate.py'
+      - 'tests/test_release_hardening*.py'
+      - 'tests/test_post_merge_grok_audit.py'
+      - 'tests/test_release_upgrade_rehearsal.py'
+      - 'tests/test_three_minds_demo.py'
+      - 'tests/test_world_lattice.py'
+      - 'tools/live_xai_acceptance.py'
+      - 'tools/nexus_extension_hardening.py'
+      - 'tui/src/bin/nexus-remote-setup.rs'
+      - 'tui/Cargo.toml'
+      - 'tui/Cargo.lock'
+      - 'ROADMAP.md'
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  post-stable-extension-hardening:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Checkout complete identity chain
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Initialize job-unique report path
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'EXTENSION_REPORT=%s\n' "$RUNNER_TEMP/nexus-extension-hardening-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json" >> "$GITHUB_ENV"
+
+      - name: Toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          cargo --version
+          rustc --version
+          test "$(cargo --version | awk '{print $2}')" = "1.97.1"
+          test "$(rustc --version | awk '{print $2}')" = "1.97.1"
+
+      - name: Static extension identity self-test
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python3 tools/nexus_extension_hardening.py --self-test --expect-commit "$GITHUB_SHA"
+
+      - name: Run exact-commit extension hardening matrix
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python3 tools/nexus_extension_hardening.py \
+            --expect-commit "$GITHUB_SHA" \
+            --json-out "$EXTENSION_REPORT"
+
+      - name: Show machine-readable report
+        if: always()
+        shell: bash
+        run: |
+          if test -f "$EXTENSION_REPORT"; then
+            cat "$EXTENSION_REPORT"
+          else
+            echo 'extension hardening report was not produced'
+          fi
+
+      - name: Upload extension hardening report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nexus-extension-hardening-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.EXTENSION_REPORT }}
+          if-no-files-found: warn
+          retention-days: 30
