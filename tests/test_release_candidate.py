@@ -1,13 +1,31 @@
 from __future__ import annotations
 
+import copy
+import importlib.util
 import json
 from pathlib import Path
+import sys
 import tomllib
 import unittest
+from unittest import mock
 
 from nexus_runtime import PROTOCOL_VERSION, RUNTIME_VERSION
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _load_extension_hardener():
+    path = ROOT / "tools" / "nexus_extension_hardening.py"
+    spec = importlib.util.spec_from_file_location("nexus_extension_hardening_test_target", path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError("could not load extension hardening runner")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+EXTENSION_HARDENER = _load_extension_hardener()
 
 
 class NEXUS20ReleaseCandidateTests(unittest.TestCase):
@@ -100,6 +118,81 @@ class NEXUS20ReleaseCandidateTests(unittest.TestCase):
         self.assertEqual(ai["bbs_wall"]["authority_effect"], "none")
         self.assertIn("social memory", notes)
         self.assertIn("no unresolved substantive release-blocking review thread", checklist)
+
+
+class PostStableExtensionHardeningTests(unittest.TestCase):
+    @staticmethod
+    def _candidate() -> dict:
+        return json.loads((ROOT / "release" / "post_stable_extension_candidate.json").read_text(encoding="utf-8"))
+
+    @staticmethod
+    def _matrix() -> dict:
+        return json.loads((ROOT / "release" / "post_stable_extension_matrix.json").read_text(encoding="utf-8"))
+
+    def test_frozen_publication_identity_is_exact_in_candidate_and_matrix(self) -> None:
+        candidate = self._candidate()
+        matrix = self._matrix()
+        expected = EXTENSION_HARDENER.EXPECTED_STABLE_BASELINE
+        self.assertEqual(candidate["stable_baseline"], expected)
+        self.assertEqual(matrix["stable_baseline"], expected)
+        EXTENSION_HARDENER._audit_candidate(candidate)
+        EXTENSION_HARDENER._audit_matrix(matrix, candidate)
+
+        for field, bad_value in (
+            ("formalization_pr", 530),
+            ("publication_pr", 540),
+            ("publication_doi", "10.5281/zenodo.00000000"),
+            ("immutable", False),
+        ):
+            with self.subTest(field=field):
+                bad_candidate = copy.deepcopy(candidate)
+                bad_candidate["stable_baseline"][field] = bad_value
+                with self.assertRaisesRegex(ValueError, "frozen stable/publication identity"):
+                    EXTENSION_HARDENER._audit_candidate(bad_candidate)
+
+                bad_matrix = copy.deepcopy(matrix)
+                bad_matrix["stable_baseline"][field] = bad_value
+                with self.assertRaisesRegex(ValueError, "frozen stable/publication identity"):
+                    EXTENSION_HARDENER._audit_matrix(bad_matrix, candidate)
+
+    def test_post_run_tracked_mutation_fails_closed(self) -> None:
+        with mock.patch.object(EXTENSION_HARDENER, "_tracked_status", return_value=" M tui/Cargo.lock"):
+            with self.assertRaisesRegex(ValueError, "mutated tracked candidate bytes"):
+                EXTENSION_HARDENER._candidate_tree_unchanged()
+
+    def test_post_run_head_or_tree_change_fails_closed(self) -> None:
+        initial_commit = "a" * 40
+        initial_tree = "b" * 40
+
+        def changed_head(*args: str) -> str:
+            if args == ("rev-parse", "HEAD"):
+                return "c" * 40
+            if args == ("rev-parse", "HEAD^{tree}"):
+                return initial_tree
+            raise AssertionError(args)
+
+        with mock.patch.object(EXTENSION_HARDENER, "_git", side_effect=changed_head):
+            with self.assertRaisesRegex(ValueError, "HEAD changed during hardening"):
+                EXTENSION_HARDENER._candidate_identity_unchanged(initial_commit, initial_tree, initial_commit)
+
+        def changed_tree(*args: str) -> str:
+            if args == ("rev-parse", "HEAD"):
+                return initial_commit
+            if args == ("rev-parse", "HEAD^{tree}"):
+                return "d" * 40
+            raise AssertionError(args)
+
+        with mock.patch.object(EXTENSION_HARDENER, "_git", side_effect=changed_tree):
+            with self.assertRaisesRegex(ValueError, "committed tree changed during hardening"):
+                EXTENSION_HARDENER._candidate_identity_unchanged(initial_commit, initial_tree, initial_commit)
+
+    def test_rust_hardening_is_lockfile_strict_and_post_run_checks_are_required(self) -> None:
+        source = (ROOT / "tools" / "nexus_extension_hardening.py").read_text(encoding="utf-8")
+        self.assertIn('"test",\n                "--locked",', source)
+        matrix = self._matrix()
+        release_gate = next(gate for gate in matrix["gates"] if gate["id"] == "release_composition")
+        self.assertIn("candidate_tree_unchanged", release_gate["runner_checks"])
+        self.assertIn("candidate_identity_unchanged", release_gate["runner_checks"])
 
 
 if __name__ == "__main__":
