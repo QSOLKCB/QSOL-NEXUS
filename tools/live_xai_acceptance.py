@@ -176,15 +176,60 @@ def _finalize_report(body: dict[str, Any]) -> dict[str, Any]:
     return report
 
 
+def _assert_safe_output_parent(path: Path) -> None:
+    cursor = path.parent
+    while True:
+        if cursor.is_symlink():
+            raise AcceptanceError("output parent path must not traverse a symbolic link")
+        if cursor.exists() and not cursor.is_dir():
+            raise AcceptanceError("output parent path must contain directories only")
+        if cursor.parent == cursor:
+            break
+        cursor = cursor.parent
+
+
+def _preflight_output_path(path: Path) -> None:
+    """Reject unusable archive targets before any live provider operation.
+
+    This does not replace the final O_EXCL create. It makes common reruns and
+    unsafe/unwritable destinations fail before connection tests, discovery, or
+    paid model calls, while the final write still closes the race at commit.
+    """
+
+    if not path.is_absolute():
+        raise AcceptanceError("output path must be absolute")
+    if path.is_symlink() or path.exists():
+        raise AcceptanceError("output path must not already exist or be a symbolic link")
+    _assert_safe_output_parent(path)
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    _assert_safe_output_parent(path)
+    if path.is_symlink() or path.exists():
+        raise AcceptanceError("output path became unavailable during preflight")
+
+    reservation = path.parent / f".{path.name}.alpha9-preflight-{os.getpid()}"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    descriptor = -1
+    try:
+        descriptor = os.open(reservation, flags, 0o600)
+    except OSError as exc:
+        raise AcceptanceError("output directory is not safely writable") from exc
+    finally:
+        if descriptor >= 0:
+            os.close(descriptor)
+        try:
+            reservation.unlink(missing_ok=True)
+        except OSError as exc:
+            raise AcceptanceError("output preflight reservation could not be removed") from exc
+
+
 def _write_private_json(path: Path, report: Mapping[str, Any]) -> None:
     if not path.is_absolute():
         raise AcceptanceError("output path must be absolute")
     if path.is_symlink() or path.exists():
         raise AcceptanceError("output path must not already exist or be a symbolic link")
-    parent = path.parent
-    if parent.is_symlink():
-        raise AcceptanceError("output parent must not be a symbolic link")
-    parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    _assert_safe_output_parent(path)
     encoded = (canonical_json(dict(report)) + "\n").encode("utf-8")
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     flags |= getattr(os, "O_CLOEXEC", 0)
@@ -214,6 +259,7 @@ def run_live(args: argparse.Namespace) -> dict[str, Any]:
     timeout = args.timeout_seconds
     if type(timeout) is not int or not 1 <= timeout <= MAX_TIMEOUT_SECONDS:
         raise AcceptanceError(f"timeout_seconds must be in [1, {MAX_TIMEOUT_SECONDS}]")
+    _preflight_output_path(args.output)
 
     with tempfile.TemporaryDirectory(prefix="nexus-alpha9-live-") as temporary:
         root = Path(temporary)
@@ -337,6 +383,27 @@ def self_test() -> None:
         pass
     else:
         raise AcceptanceError("self-test failed to reject credential-shaped material")
+
+    with tempfile.TemporaryDirectory(prefix="nexus-alpha9-preflight-") as temporary:
+        root = Path(temporary)
+        output = root / "new" / "acceptance.json"
+        _preflight_output_path(output)
+        if output.exists():
+            raise AcceptanceError("self-test preflight must not create the final archive")
+        output.write_text("occupied", encoding="utf-8")
+        try:
+            _preflight_output_path(output)
+        except AcceptanceError:
+            pass
+        else:
+            raise AcceptanceError("self-test failed to reject an existing archive before live work")
+        try:
+            _preflight_output_path(Path("relative-acceptance.json"))
+        except AcceptanceError:
+            pass
+        else:
+            raise AcceptanceError("self-test failed to reject a relative archive path")
+
     print("alpha9 live acceptance self-test: ok")
 
 
