@@ -288,3 +288,63 @@ __all__.extend([
     "WallService",
     "wall_policy_snapshot",
 ])
+
+# Alpha8 is an additive public overlay over the already-hardened Wall,
+# Continuity/Ark, and LATTICE world surfaces. It does not replace canonical
+# WorldStore identity or create a second persistence authority.
+from . import persistent_world_api as _persistent_world_api
+from .persistent_world import (
+    PERSISTENT_WORLD_EXPORT_SCHEMA,
+    PERSISTENT_WORLD_IMPORT_RECEIPT_SCHEMA,
+    PERSISTENT_WORLD_POLICY_ID,
+    PERSISTENT_WORLD_RESERVED_OBJECT_TYPES,
+    PersistentWorldError,
+    PersistentWorldService,
+    WORLD_EXPERIMENT_OBJECT_TYPE,
+    WORLD_HYPOTHESIS_OBJECT_TYPE,
+    WORLD_IMPORT_RECEIPT_OBJECT_TYPE,
+    WORLD_RELATION_OBJECT_TYPE,
+    persistent_world_policy_snapshot,
+    validate_world_export_bundle,
+)
+from .persistent_world_api import PersistentWorldNexusAPI as _Alpha8PersistentWorldNexusAPI
+
+PersistentWorldNexusAPI = _Alpha8PersistentWorldNexusAPI
+WallNexusAPI = _Alpha8PersistentWorldNexusAPI
+HardenedNexusAPI = _Alpha8PersistentWorldNexusAPI
+ProviderNexusAPI = _Alpha8PersistentWorldNexusAPI
+EpochNexusAPI = _Alpha8PersistentWorldNexusAPI
+GuardianNexusAPI = _Alpha8PersistentWorldNexusAPI
+CivicDueProcessNexusAPI = _Alpha8PersistentWorldNexusAPI
+WorldContinuityNexusAPI = _Alpha8PersistentWorldNexusAPI
+ProgressionNexusAPI = _Alpha8PersistentWorldNexusAPI
+CultureNexusAPI = _Alpha8PersistentWorldNexusAPI
+NexusAPI = _Alpha8PersistentWorldNexusAPI
+
+_api.NexusAPI = _Alpha8PersistentWorldNexusAPI
+_epoch_api.EpochNexusAPI = _Alpha8PersistentWorldNexusAPI
+_provider_api.ProviderNexusAPI = _Alpha8PersistentWorldNexusAPI
+_guardian_api.GuardianNexusAPI = _Alpha8PersistentWorldNexusAPI
+_civic_due_process_api.CivicDueProcessNexusAPI = _Alpha8PersistentWorldNexusAPI
+_world_continuity_api.WorldContinuityNexusAPI = _Alpha8PersistentWorldNexusAPI
+_progression_api.ProgressionNexusAPI = _Alpha8PersistentWorldNexusAPI
+_culture_api.CultureNexusAPI = _Alpha8PersistentWorldNexusAPI
+_culture_api_overlay.CultureNexusAPI = _Alpha8PersistentWorldNexusAPI
+_wall_api.WallNexusAPI = _Alpha8PersistentWorldNexusAPI
+_persistent_world_api.PersistentWorldNexusAPI = _Alpha8PersistentWorldNexusAPI
+
+__all__.extend([
+    "PERSISTENT_WORLD_EXPORT_SCHEMA",
+    "PERSISTENT_WORLD_IMPORT_RECEIPT_SCHEMA",
+    "PERSISTENT_WORLD_POLICY_ID",
+    "PERSISTENT_WORLD_RESERVED_OBJECT_TYPES",
+    "PersistentWorldError",
+    "PersistentWorldNexusAPI",
+    "PersistentWorldService",
+    "WORLD_EXPERIMENT_OBJECT_TYPE",
+    "WORLD_HYPOTHESIS_OBJECT_TYPE",
+    "WORLD_IMPORT_RECEIPT_OBJECT_TYPE",
+    "WORLD_RELATION_OBJECT_TYPE",
+    "persistent_world_policy_snapshot",
+    "validate_world_export_bundle",
+])
