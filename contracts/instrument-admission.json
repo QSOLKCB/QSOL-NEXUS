@@ -1,0 +1,35 @@
+{
+  "schema": "nexus-instrument-admission-contract/1",
+  "policy": "nexus-instrument-admission/1",
+  "admission": "default_deny",
+  "authority_effect": "none",
+  "rules": {
+    "catalogued_is_admitted": false,
+    "instrument_is_council_member": false,
+    "determinism_implies_authority": false,
+    "replayability_implies_evidence_authority": false,
+    "model_request_implies_executor_authority": false,
+    "execution_requires_exact_admitted_instrument_id": true,
+    "execution_requires_closed_input_contract": true,
+    "execution_requires_explicit_claim_boundary": true,
+    "execution_requires_content_addressed_receipt": true
+  },
+  "admitted": [
+    {
+      "instrument_id": "nexus.integer-primality/1",
+      "executor": "nexus_coordinator",
+      "deterministic": true,
+      "replayable": true,
+      "side_effects": "none",
+      "evidence_effect": "derived_result_only",
+      "authority_effect": "none",
+      "claim_boundary": "exact integer primality for the supplied bounded fixture only"
+    }
+  ],
+  "candidates_not_admitted": [
+    "qsol.qec-receipt-replay/1",
+    "qsol.spectral-analysis/1",
+    "qsol.sonification/1",
+    "nexus.symbolic-numeric/1"
+  ]
+}
