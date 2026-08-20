@@ -1,0 +1,81 @@
+{
+  "schema": "nexus-alpha9-remote-operator-contract/1",
+  "policy": "nexus-alpha9-remote-operator/1",
+  "milestone": "2.0-alpha9",
+  "provider_scope": {
+    "admitted_remote_provider": "xai",
+    "destination": "fixed provider transport already admitted before alpha9 completion",
+    "second_provider_rule": "must be admitted in a separate review before use",
+    "provider_identity_confers_authority": false
+  },
+  "rust_operator_surface": {
+    "binary": "nexus-remote-setup",
+    "crate": "tui",
+    "credential_entry": "forbidden",
+    "auth_operations": ["adapters", "list", "test"],
+    "model_operations": ["models xai [profile]"],
+    "roster_operations": [
+      "add xai <nick> <model> [profile]",
+      "add ollama <nick> <model>",
+      "add mock <nick> [profile]",
+      "remove <nick>",
+      "roster"
+    ],
+    "council_operation": "ask <question>",
+    "public_council_seat_limit": 5,
+    "remote_xai_seat_limit": 4,
+    "vote_weight": 1,
+    "epistemic_privilege": "none",
+    "roster_persistence": "none"
+  },
+  "credential_boundary": {
+    "profile_reference_is_secret": false,
+    "raw_credentials_in_tui": "reject",
+    "enrollment_path": "existing nexus auth add CLI hidden-prompt, environment, browser-key, or external-helper flows",
+    "world_state_contains_credentials": false,
+    "semantic_prompts_contain_credentials": false
+  },
+  "live_acceptance": {
+    "tool": "tools/live_xai_acceptance.py",
+    "schema": "nexus-alpha9-live-xai-acceptance/1",
+    "real_network_default": "disabled",
+    "authorization_flag": "--authorize-live-xai",
+    "preflight": [
+      "archive path is absolute, new, non-symlinked and safely writable",
+      "admitted xAI auth connection test",
+      "live language-model discovery",
+      "selected model present in discovery result"
+    ],
+    "council_roster": [
+      "deterministic local mock",
+      "deterministic local mock",
+      "live xAI remote peer"
+    ],
+    "archive": {
+      "canonical_json": true,
+      "content_addressed": true,
+      "owner_only": true,
+      "maximum_bytes": 1048576,
+      "credential_material_recorded": false,
+      "stores_question_text": false,
+      "stores_question_sha256": true,
+      "final_create": "exclusive"
+    },
+    "ci_rule": "CI runs only --self-test and never performs the live network acceptance session"
+  },
+  "completion_gate": {
+    "engineering": "implemented",
+    "empirical_live_acceptance": "operator-run-required",
+    "live_success_must_not_be_claimed_without_archive": true
+  },
+  "boundaries": [
+    "AUTH_PROFILE_REFERENCE != CREDENTIAL",
+    "REMOTE_MODEL != PRIVILEGED_MODEL",
+    "CONNECTION_SUCCESS != TRUTH",
+    "MODEL_DISCOVERY != MODEL_ENDORSEMENT",
+    "LIVE_ACCEPTANCE != SCIENTIFIC_VALIDATION",
+    "PROVIDER_IDENTITY != VOTE_WEIGHT",
+    "PROVIDER_IDENTITY != EPISTEMIC_PRIVILEGE"
+  ],
+  "authority_effect": "none"
+}
