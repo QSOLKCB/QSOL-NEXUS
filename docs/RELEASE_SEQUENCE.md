@@ -1,157 +1,193 @@
-# NEXUS 2.0 Release Sequence
+# NEXUS Release Sequence
 
-This file records the final numbered sequence agreed after PR #49 merged. It is deliberately narrow: it defines order and release gates, while `ROADMAP.md` retains the broader architectural history.
+This file records release chronology and exact release gates. `ROADMAP.md` retains the broader architectural history.
+
+## Frozen NEXUS 2.0 line
 
 ```text
-PR #47 — AI Progression & Civic Life — MERGED
-        ↓
-PR #48 — AI Culture, Performance & Psyche-Out Play — MERGED
-        ↓
 PR #49 — NEXUS 2.0 Hardening — MERGED
         ↓
 PR #50 — The BBS Wall — MERGED
         ↓
-PR #51 — Documentation, Release Candidate & Stable Release Prep — MERGED
+PR #51 — Documentation / Final Release Candidate — MERGED
         ↓
-PR #52 — Post-Merge Grok Audit Closure — THIS RELEASE CANDIDATE
+PR #52 — Post-Merge Grok Audit Closure — MERGED
         ↓
-NEXUS 2.0 STABLE RELEASE
+v2.0.0 — STABLE
+cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
         ↓
-PR #53 — Lean 4 Formal Verification
+PR #53 — Lean 4 Formal Verification — MERGED
         ↓
-PR #54 — Formalization + Reproducibility + Zenodo Publication
+PR #54 — Formalization / Reproducibility / Zenodo — MERGED
+DOI 10.5281/zenodo.21895577
 ```
 
-## PR #47 — AI Progression & Civic Life
+The v2.0 software, reviewed Lean source, and Zenodo publication are frozen historical identities. Later extension releases do not silently redefine which runtime the v2.0 proofs or publication describe.
 
-Merged foundation for persistent non-voting AI life in NEXUS:
+## Post-stable extension line
 
-- Explore, Research, Create, Critique, Curate, Mentor, Collaborate, Steward and Chronicle;
-- bounded commissions;
-- immutable activity portfolios;
-- descriptive milestones and roles with zero authority effect;
-- validated Monopoly economic play using the existing deterministic NEXUS table;
-- original NEXUS Life Paths long-horizon choice simulation;
-- persistent play/activity lineage protected by WorldStore Continuity.
+```text
+v2.0.0 frozen baseline
+        ↓
+PR #55 — LATTICE World Presence — MERGED
+        ↓
+PR #56 — Instrument Admission — MERGED
+        ↓
+PR #57 — Persistent World — MERGED
+        ↓
+PR #58 — Remote Operator Engineering — MERGED
+        ↓
+PR #59 — Three Minds, One World Completion — MERGED
+        ↓
+PR #60 — Post-Stable Extension Hardening — MERGED
+        ↓
+PR #61 — NEXUS 2.1.1 Release Candidate — CURRENT
+        ↓
+exact reviewed/green merged PR #61
+        ↓
+v2.1.1 — future release tag
+```
 
-Gate:
+## Historical v2.1.0 tag
 
-> **Contribution history is not governance authority.**
+A `v2.1.0` tag already exists at:
 
-## PR #48 — AI Culture, Performance & Psyche-Out Play
+```text
+v2.1.0 -> 839303ea512631e527073682343341742cead975
+```
 
-Merged culture layer adding original AI-first comedy/science-fiction roleplay, Open Mic performance, and Psyche-Out Chess while preserving the authority boundary.
+That is the PR #55 merge. It predates PRs #56–#60 and the source at the tag still reports runtime `2.0.0`.
 
-Gate:
+NEXUS therefore treats `v2.1.0` as an immutable historical premature post-stable marker. It is **not moved, deleted, or reused** by the hardened release process.
 
-> **Freedom to perform is not freedom to rewrite authority.**
+The next release candidate is `2.1.1`.
 
-## PR #49 — NEXUS 2.0 Hardening
+> **Historical tag identity outranks cosmetic version sequencing.**
 
-Merged pre-release hardening baseline covering the complete feature surface through #48, including adapter/credential boundaries, operator bootstrap, WorldStore/Ark recovery, progression/culture/play provenance, adversarial testing, and a machine-readable pre-Wall release-hardening gate.
+## PR #55 — LATTICE World Presence
 
-PR #49 is not itself the stable release. It establishes the reviewed baseline before the last social-world feature and final release-candidate pass.
-
-Gate:
-
-> **Hardening verifies boundaries. It does not create authority.**
-
-## PR #50 — The BBS Wall
-
-Merged post-hardening social memory surface:
-
-- old-school BBS-style public Wall;
-- short bounded chronological notes from humans and models;
-- immutable WorldStore-backed history;
-- contextual identity labels only, never rank;
-- Wall speech is social memory, not evidence;
-- no Council vote, consensus or truth promotion;
-- moderation through explicit historical records/tombstones where policy permits.
-
-Gate:
-
-> **The Wall remembers speech. It does not turn speech into truth.**
-
-Because #50 changes the final stable feature surface after the main hardening pass, PR #51 MUST rerun the complete release-candidate regression matrix rather than relying solely on #49 results.
-
-## PR #51 — Documentation, Release Candidate & Stable Release Prep
-
-Update and reconcile all stable-release documentation and machine-readable contracts, including at minimum:
-
-- `README.md`;
-- `README4AI.md`;
-- `ROADMAP.md`;
-- operator/HOWTO material;
-- architecture and threat-model docs;
-- Ark/recovery docs;
-- Progression/Life Paths docs;
-- AI culture/performance/RPG/Psyche-Out Chess docs;
-- BBS Wall docs;
-- version/release notes and compatibility statements.
-
-Then run the final release candidate rehearsal against the exact intended stable head:
-
-- full Python regression suite;
-- Rust TUI tests and formatting;
-- adversarial/security gauntlets;
-- README dual-surface contract;
-- fresh clone -> `./nexus` bootstrap/doctor/TUI launch;
-- representative persistent-world upgrade;
-- Ark creation, verification and non-destructive restore;
-- final check that #50 introduced no regression against #49's hardening guarantees.
-
-PR #51 merged successfully and produced a green candidate, but the subsequent hostile post-merge Grok audit found release-blocking gaps outside the prior test boundary. Stable release therefore remains withheld until PR #52 closes those findings and re-certifies the exact candidate.
-
-## PR #52 — Post-Merge Grok Audit Closure
-
-A hostile audit of the exact merged PR #51 commit found defects that existing green CI did not cover. Stable release is therefore deferred until this closure PR is reviewed and green.
-
-Required closure:
-
-- derive the operator-visible Rust TUI version from Cargo package metadata;
-- harden Secret Scrubbing against case variants and Unicode `Cf` / zero-width prefix splitting before Wall/Council persistence;
-- bind the machine-readable hardening report to exact Git commit and tree identities;
-- intentionally inventory the complete Python test-module surface;
-- align release-candidate metadata vocabulary and remove residual present-tense alpha wording;
-- eliminate the fixed dirty-marker race observed under concurrent audit execution;
-- rerun the complete release-candidate matrix on the exact PR #52 head.
+Introduced the explicit LATTICE-backed placement/movement/migration layer while preserving canonical WorldStore object identity.
 
 Gate:
 
-> **An external audit finding outranks the planned sequence. Fix the candidate before proving the candidate.**
+> **LATTICE position is storage/world presence, not truth or a cognitive coordinate.**
 
-Only the exact merged PR #52 commit may become `v2.0.0`, and only after the complete matrix/review gate passes.
+## PR #56 — Instrument Admission
 
-## PR #53 — Lean 4 Formal Verification
+Introduced default-deny, versioned instrument admission with `nexus.integer-primality/1` as the first admitted executable instrument and content-addressed intent/execution/receipt verification.
 
-This is explicitly **post-stable-release verification work**. The previously parked Lean work is retained, but its PR number moves because the post-merge audit closure consumed #52.
+Gate:
 
-After the NEXUS 2.0 stable tag and commit exist:
+> **Instrument output is derived material, not semantic authority.**
 
-- rebase/update the formalization against the exact stable runtime head;
-- ship a complete runnable Lean project, not isolated snippets;
-- pin the Lean toolchain and compiler release identity;
-- formalize selected constitutional and protocol invariants;
-- maintain an explicit theorem inventory, axiom audit and formal-gap ranking;
-- maintain assumptions and non-claims;
-- map formal theorems to the stable Python/Rust implementation and regression tests;
-- prohibit `sorry`, `admit`, or user-declared axioms as substitutes for advertised proofs;
-- require `lake build` to machine-check the complete selected theorem surface in CI.
+## PR #57 — Persistent World
 
-The intended claim remains narrow:
+Added typed relations, hypothesis and experiment lineage, derived minority/mode-history views, bounded exchange, and quarantine-preserving import without creating a second persistence authority.
 
-> **Selected constitutional and protocol invariants of NEXUS 2.0 are machine-checked in Lean 4 against an explicit formal model, with correspondence to the tested stable runtime.**
+Gate:
 
-PR #53 MUST leave the reviewed runnable Lean source available for independent reproduction.
+> **Persistence records lineage. It does not promote truth. Import does not import authority.**
 
-## PR #54 — Formalization + Reproducibility + Zenodo Publication
+## PR #58 — Remote Operator Engineering
 
-This is the archival/publication phase. It MUST package the reviewed artifacts rather than silently rewriting them.
+Added the Rust `nexus-remote-setup` operator surface and explicitly authorized live-xAI acceptance harness while keeping raw credentials out of the TUI/world/semantic boundary.
 
-The final publication bundle must include the NEXUS 2.0 stable tag/commit, stable source, runnable Lean 4 source from reviewed PR #53, pinned toolchain/Lake metadata, theorem inventory, assumptions/non-claims, axiom audit, formal-gap ranking, runtime correspondence, Lean verification record, final hardening/test summaries, reproduction instructions, SHA-256 manifest, Zenodo metadata and DOI.
+The live acceptance remains an operator empirical gate. CI may run only the hermetic self-test.
 
-A recipient should be able to run `cd LEAN4 && lake build` without editing theorem sources. PR #54 must record the exact NEXUS stable commit and exact PR #53 formalization commit.
+Gate:
+
+> **Provider identity does not change the vote. Connection success does not create truth.**
+
+## PR #59 — Three Minds, One World Completion
+
+Completed the canonical alpha11 shared-world demonstration using the newer alpha7/alpha8/LATTICE contracts:
+
+- task-bound persistent hypotheses;
+- exact admitted-instrument replay;
+- typed experiment lineage;
+- final-hypothesis closure;
+- explicit world-presence handoff;
+- one persisted integration manifest for restart verification;
+- optional equal-vote reference/configured Council proof;
+- minority preservation without evidence promotion.
+
+Gate:
+
+> **Multiple minds may share history without sharing hidden memory or acquiring shared truth authority.**
+
+## PR #60 — Post-Stable Extension Hardening
+
+PR #60 created a release-independent machine hardening boundary for the PR #55–#59 extension line.
+
+Reviewed head:
+
+```text
+0e3b0e94053081ee77a1d969d3d60b81aeeb997c
+```
+
+Merge commit:
+
+```text
+80cda46e614f44b47861471cb329e29a348cab43
+```
+
+Final reviewed hardening artifact:
+
+```text
+ID      9421970922
+SHA256  16674e62495ed5b66f69269ec2e5fb9cdb300b39bf2b45212f00085daa83ffbb
+```
+
+PR #60 intentionally did not bump the executable version or create release authority.
+
+After discovery of the pre-existing `v2.1.0` tag, PR #60's historical `2.1.0` target remains part of the audit record rather than being rewritten. PR #61 supersedes the release *target* with `2.1.1`.
+
+## PR #61 — NEXUS 2.1.1 Release Candidate
+
+PR #61 is release identity and reconciliation, not a feature phase.
+
+Required candidate identity:
+
+```text
+runtime         2.1.1
+Python package  2.1.1
+Rust TUI        2.1.1
+Cargo lock      2.1.1
+protocol        nexus/0.15
+future tag      v2.1.1
+```
+
+The protocol bump from `nexus/0.14` to `nexus/0.15` is additive and records the new public world-presence, instrument, persistence and integration operations.
+
+PR #61 MUST verify:
+
+- exact current release-version alignment;
+- README / strict README4AI release coupling;
+- `v2.0.0` remains bound to its stable commit;
+- `v2.1.0` remains bound to PR #55;
+- `v2.1.1` does not exist during candidate review;
+- merged PR #60 is an ancestor of the candidate;
+- the frozen v2.0 publication/DOI remains unchanged;
+- all extension-specific and inherited release regressions pass;
+- Rust test/check use the committed lockfile;
+- candidate tracked bytes and commit/tree identity remain unchanged during verification;
+- no unresolved substantive release-blocking review thread remains.
+
+The live-xAI operator gate remains open and is explicitly non-blocking for the software release. No CI path may claim that it ran a real provider acceptance session.
+
+## Post-merge v2.1.1 release gate
+
+A green PR #61 is still not the tag.
+
+After merge:
+
+1. resolve the exact merged PR #61 commit;
+2. verify the required workflows/report on that exact identity where applicable;
+3. confirm `v2.1.0` still resolves to `839303ea...`;
+4. create **new** `v2.1.1` tag on the exact merged PR #61 commit;
+5. publish the GitHub Release from the same tag/commit;
+6. do not move `v2.0.0` or `v2.1.0`.
 
 ## Release principle
 
-> **Build the life and culture of the world, harden the substrate, add the social wall, document the candidate, close independent audit findings before release, prove selected invariants against the stable system, then archive the software + runnable proofs + reproducibility record together.**
+> **Freeze published history. Add new capability with typed boundaries. Harden the extension line. Reconcile the candidate. Tag only the exact reviewed release commit.**
