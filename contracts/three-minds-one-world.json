@@ -1,0 +1,92 @@
+{
+  "schema": "nexus-three-minds-one-world-contract/1",
+  "policy": "nexus-three-minds-one-world/1",
+  "milestone": "2.0-alpha11",
+  "reference_demo": {
+    "execution": "deterministic_file_backed",
+    "actor_stages": ["Mind-A", "Mind-B", "Mind-C"],
+    "actor_model_semantics": "reference actor identities, not live-model execution claims",
+    "world_reopen_between_stages": true,
+    "same_world_lineage": true,
+    "manifest_schema": "nexus-three-minds-manifest/1"
+  },
+  "mind_a": {
+    "creates": ["thread", "declared fixture", "PROPOSED hypothesis", "PLANNED experiment"],
+    "executes": "nexus.integer-primality/1 over baseline [2,3,5,7,11]",
+    "records": "OBSERVED experiment",
+    "untested_declared_value": 25
+  },
+  "mind_b": {
+    "must_rediscover_mind_a_refs": true,
+    "replay": "same admitted baseline instrument input",
+    "replay_requirement": "complete instrument bundle byte identity",
+    "creates": ["critique", "CHALLENGED hypothesis", "OBSERVED replay descendant"],
+    "critique_boundary": "exact replay of incomplete input does not establish full fixture claim"
+  },
+  "mind_c": {
+    "must_rediscover_mind_b_refs": true,
+    "falsifier_values": [25],
+    "executes": "nexus.integer-primality/1 over [25]",
+    "required_result": {"composite_values": [25]},
+    "creates": ["CLOSED experiment", "RETIRED workflow hypothesis", "receipt-verified descendant"],
+    "verified_scope": "admitted instrument receipt and exact input only",
+    "semantic_truth_claimed": false
+  },
+  "world_presence": {
+    "profile": "qsol-3x3x3-sierpinski-derived-memory/1",
+    "authority": "storage-only",
+    "handoff_path": [
+      {"region": "observatory", "address": "L[0,0,0]"},
+      {"region": "archive", "address": "L[0,0,1]"},
+      {"region": "agora", "address": "L[0,1,1]"},
+      {"region": "observatory", "address": "L[1,1,1]"}
+    ],
+    "expected_lineage_length": 4,
+    "cognitive_coordinate_claimed": false
+  },
+  "reference_council": {
+    "network": "none",
+    "members": [
+      {"member_id": "Mind-A", "adapter_id": "mock", "profile": "skeptical"},
+      {"member_id": "Mind-B", "adapter_id": "mock", "profile": "balanced"},
+      {"member_id": "Mind-C", "adapter_id": "mock", "profile": "supportive"}
+    ],
+    "expected_majority": "TEST_FURTHER",
+    "expected_minority": "ACCEPT_WITH_CHANGES",
+    "expected_minority_report_count": 1,
+    "minority_report_is_evidence": false,
+    "authority_effect": "none"
+  },
+  "optional_mixed_provider_council": {
+    "ci_execution": "forbidden",
+    "operator_authorization_required": true,
+    "members": [
+      "fixed-destination xAI remote peer using auth-profile reference only",
+      "loopback Ollama local/open peer",
+      "deterministic mock reference peer"
+    ],
+    "raw_credentials_in_request": false,
+    "vote_weight_fields_in_request": false,
+    "epistemic_privilege_fields_in_request": false,
+    "provider_consensus_is_evidence": false,
+    "replayability_expected": false
+  },
+  "verification": {
+    "instrument_receipts_revalidated": true,
+    "mind_b_replay_exact": true,
+    "mind_c_counterexample_exact": true,
+    "world_presence_lineage_verified": true,
+    "minority_report_search_verified": true,
+    "clean_root_replay_identity_required": true
+  },
+  "boundaries": [
+    "PERSISTENT_LINEAGE != TRUTH",
+    "INSTRUMENT_RESULT != TRUTH",
+    "REPLAY != EMPIRICAL_CONFIRMATION",
+    "MINORITY_REPORT != EVIDENCE_PROMOTION",
+    "MULTI_MODEL_CONSENSUS != EVIDENCE",
+    "LATTICE_POSITION != COGNITIVE_COORDINATE",
+    "VERIFIED_DESCENDANT != SEMANTIC_TRUTH"
+  ],
+  "authority_effect": "none"
+}

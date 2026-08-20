@@ -1,0 +1,57 @@
+name: NEXUS alpha11 three minds
+
+on:
+  pull_request:
+    paths:
+      - "src/nexus_runtime/three_minds_world.py"
+      - "tools/three_minds_one_world.py"
+      - "contracts/three-minds-one-world.json"
+      - "docs/THREE_MINDS_ONE_WORLD.md"
+      - ".github/workflows/alpha11-three-minds.yml"
+  push:
+    branches: [main]
+    paths:
+      - "src/nexus_runtime/three_minds_world.py"
+      - "tools/three_minds_one_world.py"
+      - "contracts/three-minds-one-world.json"
+      - "docs/THREE_MINDS_ONE_WORLD.md"
+      - ".github/workflows/alpha11-three-minds.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  hermetic-alpha11:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Compile alpha11 surfaces
+        run: |
+          python3 -m py_compile src/nexus_runtime/three_minds_world.py
+          python3 -m py_compile tools/three_minds_one_world.py
+
+      - name: Validate machine contract JSON
+        run: python3 -m json.tool contracts/three-minds-one-world.json >/dev/null
+
+      - name: Deterministic three-minds self-test
+        env:
+          PYTHONPATH: src
+        run: python3 tools/three_minds_one_world.py --self-test
+
+      - name: Assert CI cannot authorize mixed providers
+        run: |
+          set -euo pipefail
+          workflow=.github/workflows/alpha11-three-minds.yml
+          live_flag='--authorize''-mixed-provider'
+          secret_context='secrets''.'
+          if grep -F -- "$live_flag" "$workflow"; then
+            echo "alpha11 hermetic CI must not authorize mixed-provider execution" >&2
+            exit 1
+          fi
+          if grep -F -- "$secret_context" "$workflow"; then
+            echo "alpha11 hermetic CI must not reference GitHub secret contexts" >&2
+            exit 1
+          fi
