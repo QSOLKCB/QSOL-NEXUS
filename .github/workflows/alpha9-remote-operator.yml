@@ -1,0 +1,55 @@
+name: NEXUS alpha9 remote operator
+
+on:
+  pull_request:
+    paths:
+      - "tui/src/bin/nexus-remote-setup.rs"
+      - "tools/live_xai_acceptance.py"
+      - "contracts/alpha9-remote-operator.json"
+      - "docs/ALPHA9_REMOTE_OPERATOR.md"
+      - ".github/workflows/alpha9-remote-operator.yml"
+  push:
+    branches: [main]
+    paths:
+      - "tui/src/bin/nexus-remote-setup.rs"
+      - "tools/live_xai_acceptance.py"
+      - "contracts/alpha9-remote-operator.json"
+      - "docs/ALPHA9_REMOTE_OPERATOR.md"
+      - ".github/workflows/alpha9-remote-operator.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  hermetic-alpha9:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Python version
+        run: python3 --version
+
+      - name: Compile live acceptance harness
+        run: python3 -m py_compile tools/live_xai_acceptance.py
+
+      - name: Hermetic live-acceptance self-test
+        env:
+          PYTHONPATH: src
+        run: python3 tools/live_xai_acceptance.py --self-test
+
+      - name: Rust remote operator tests
+        run: cargo test --manifest-path tui/Cargo.toml --bin nexus-remote-setup
+
+      - name: Rust format check
+        run: cargo fmt --manifest-path tui/Cargo.toml -- --check
+
+      - name: Assert workflow has no live credential wiring
+        run: |
+          set -euo pipefail
+          if grep -E 'secrets\.|XAI_API_KEY' .github/workflows/alpha9-remote-operator.yml; then
+            echo "alpha9 hermetic CI must not reference live credential material" >&2
+            exit 1
+          fi
+          test "$(grep -c 'live_xai_acceptance.py --self-test' .github/workflows/alpha9-remote-operator.yml)" -eq 1
