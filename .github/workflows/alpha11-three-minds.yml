@@ -3,16 +3,22 @@ name: NEXUS alpha11 three minds
 on:
   pull_request:
     paths:
-      - "src/nexus_runtime/three_minds_world.py"
-      - "tools/three_minds_one_world.py"
+      - "src/nexus_runtime/three_minds.py"
+      - "src/nexus_runtime/three_minds_validation.py"
+      - "src/nexus_runtime/three_minds_instrument.py"
+      - "tools/nexus_three_minds_demo.py"
+      - "tests/test_three_minds_demo.py"
       - "contracts/three-minds-one-world.json"
       - "docs/THREE_MINDS_ONE_WORLD.md"
       - ".github/workflows/alpha11-three-minds.yml"
   push:
     branches: [main]
     paths:
-      - "src/nexus_runtime/three_minds_world.py"
-      - "tools/three_minds_one_world.py"
+      - "src/nexus_runtime/three_minds.py"
+      - "src/nexus_runtime/three_minds_validation.py"
+      - "src/nexus_runtime/three_minds_instrument.py"
+      - "tools/nexus_three_minds_demo.py"
+      - "tests/test_three_minds_demo.py"
       - "contracts/three-minds-one-world.json"
       - "docs/THREE_MINDS_ONE_WORLD.md"
       - ".github/workflows/alpha11-three-minds.yml"
@@ -28,27 +34,29 @@ jobs:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
 
-      - name: Compile alpha11 surfaces
+      - name: Compile canonical alpha11 surfaces
         run: |
-          python3 -m py_compile src/nexus_runtime/three_minds_world.py
-          python3 -m py_compile tools/three_minds_one_world.py
+          python3 -m py_compile src/nexus_runtime/three_minds.py
+          python3 -m py_compile src/nexus_runtime/three_minds_validation.py
+          python3 -m py_compile src/nexus_runtime/three_minds_instrument.py
+          python3 -m py_compile tools/nexus_three_minds_demo.py
 
       - name: Validate machine contract JSON
         run: python3 -m json.tool contracts/three-minds-one-world.json >/dev/null
 
-      - name: Deterministic three-minds self-test
+      - name: Run canonical alpha11 tests
         env:
           PYTHONPATH: src
-        run: python3 tools/three_minds_one_world.py --self-test
+        run: python3 -m unittest discover -s tests -p 'test_three_minds_demo.py' -v
 
-      - name: Assert CI cannot authorize mixed providers
+      - name: Assert CI cannot authorize live Council providers
         run: |
           set -euo pipefail
           workflow=.github/workflows/alpha11-three-minds.yml
-          live_flag='--authorize''-mixed-provider'
+          auth_flag='--authorize''-council'
           secret_context='secrets''.'
-          if grep -F -- "$live_flag" "$workflow"; then
-            echo "alpha11 hermetic CI must not authorize mixed-provider execution" >&2
+          if grep -F -- "$auth_flag" "$workflow"; then
+            echo "alpha11 hermetic CI must not authorize non-mock Council calls" >&2
             exit 1
           fi
           if grep -F -- "$secret_context" "$workflow"; then

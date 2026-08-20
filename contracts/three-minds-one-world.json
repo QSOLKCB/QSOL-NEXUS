@@ -1,38 +1,42 @@
 {
-  "schema": "nexus-three-minds-one-world-contract/1",
+  "schema": "nexus-three-minds-one-world-contract/2",
   "policy": "nexus-three-minds-one-world/1",
   "milestone": "2.0-alpha11",
-  "reference_demo": {
-    "execution": "deterministic_file_backed",
-    "actor_stages": ["Mind-A", "Mind-B", "Mind-C"],
-    "actor_model_semantics": "reference actor identities, not live-model execution claims",
-    "world_reopen_between_stages": true,
-    "same_world_lineage": true,
-    "manifest_schema": "nexus-three-minds-manifest/1"
+  "canonical_implementation": {
+    "coordinator": "src/nexus_runtime/three_minds.py",
+    "validation": "src/nexus_runtime/three_minds_validation.py",
+    "bounded_probe": "src/nexus_runtime/three_minds_instrument.py",
+    "runner": "tools/nexus_three_minds_demo.py",
+    "legacy_stage_objects_preserved": true,
+    "parallel_reimplementation": false
   },
-  "mind_a": {
-    "creates": ["thread", "declared fixture", "PROPOSED hypothesis", "PLANNED experiment"],
-    "executes": "nexus.integer-primality/1 over baseline [2,3,5,7,11]",
-    "records": "OBSERVED experiment",
-    "untested_declared_value": 25
+  "sequential_world_demo": {
+    "mind_count": 3,
+    "shared_world": true,
+    "mind_a": "proposal plus alpha7 baseline execution",
+    "mind_b": "reproduction/critique plus byte-identical alpha7 baseline replay",
+    "mind_c": "falsification interpretation from coordinator-owned full-fixture execution",
+    "model_consensus_is_evidence": false,
+    "additional_votes_created": 0
   },
-  "mind_b": {
-    "must_rediscover_mind_a_refs": true,
-    "replay": "same admitted baseline instrument input",
-    "replay_requirement": "complete instrument bundle byte identity",
-    "creates": ["critique", "CHALLENGED hypothesis", "OBSERVED replay descendant"],
-    "critique_boundary": "exact replay of incomplete input does not establish full fixture claim"
+  "alpha7_instrument_integration": {
+    "instrument_id": "nexus.integer-primality/1",
+    "admission_source": "existing nexus-instrument-admission/1",
+    "mind_a_baseline": "content-addressed instrument intent/execution/receipt bundle",
+    "mind_b_replay": "same admitted input and exact complete bundle equality",
+    "full_fixture": "coordinator-owned admitted execution with receipt verification",
+    "derived_material_only": true,
+    "instrument_result_is_truth": false
   },
-  "mind_c": {
-    "must_rediscover_mind_b_refs": true,
-    "falsifier_values": [25],
-    "executes": "nexus.integer-primality/1 over [25]",
-    "required_result": {"composite_values": [25]},
-    "creates": ["CLOSED experiment", "RETIRED workflow hypothesis", "receipt-verified descendant"],
-    "verified_scope": "admitted instrument receipt and exact input only",
-    "semantic_truth_claimed": false
+  "alpha8_persistent_world_integration": {
+    "hypothesis_lineage": ["PROPOSED", "CHALLENGED", "RETIRED_or_CHALLENGED"],
+    "experiment_lineage": ["PLANNED", "OBSERVED", "CLOSED"],
+    "relations": ["interprets", "replays", "critiques", "bears_on", "verifies_receipt_for"],
+    "workflow_state_is_truth": false,
+    "closed_experiment_is_empirical_verification": false
   },
   "world_presence": {
+    "policy": "nexus-world-lattice/1",
     "profile": "qsol-3x3x3-sierpinski-derived-memory/1",
     "authority": "storage-only",
     "handoff_path": [
@@ -44,7 +48,19 @@
     "expected_lineage_length": 4,
     "cognitive_coordinate_claimed": false
   },
+  "integration_verification": {
+    "function": "verify_three_minds_integration",
+    "normal_receipt_verified": true,
+    "alpha7_receipts_revalidated": true,
+    "mind_b_replay_exact": true,
+    "world_presence_lineage_verified": true,
+    "persistent_hypothesis_boundary_verified": true,
+    "persistent_experiment_boundary_verified": true,
+    "verified_descendant_semantic_truth_claimed": false,
+    "restart_verification_required_by_tests": true
+  },
   "reference_council": {
+    "runner_flag": "--reference-council",
     "network": "none",
     "members": [
       {"member_id": "Mind-A", "adapter_id": "mock", "profile": "skeptical"},
@@ -54,30 +70,25 @@
     "expected_majority": "TEST_FURTHER",
     "expected_minority": "ACCEPT_WITH_CHANGES",
     "expected_minority_report_count": 1,
-    "minority_report_is_evidence": false,
+    "minority_search_is_evidence": false,
     "authority_effect": "none"
   },
-  "optional_mixed_provider_council": {
-    "ci_execution": "forbidden",
-    "operator_authorization_required": true,
-    "members": [
-      "fixed-destination xAI remote peer using auth-profile reference only",
-      "loopback Ollama local/open peer",
-      "deterministic mock reference peer"
-    ],
-    "raw_credentials_in_request": false,
-    "vote_weight_fields_in_request": false,
-    "epistemic_privilege_fields_in_request": false,
-    "provider_consensus_is_evidence": false,
-    "replayability_expected": false
+  "configured_roster_council": {
+    "runner_flag": "--council",
+    "uses_same_three_member_configuration": true,
+    "non_mock_extra_calls_require": "--authorize-council",
+    "authorization_checked_before_runtime_construction": true,
+    "raw_credentials_in_cli": false,
+    "provider_auth": "existing non-secret auth-profile references only",
+    "vote_weight": "runtime-owned integer 1",
+    "epistemic_privilege": "runtime-owned none",
+    "provider_consensus_is_evidence": false
   },
-  "verification": {
-    "instrument_receipts_revalidated": true,
-    "mind_b_replay_exact": true,
-    "mind_c_counterexample_exact": true,
-    "world_presence_lineage_verified": true,
-    "minority_report_search_verified": true,
-    "clean_root_replay_identity_required": true
+  "ci": {
+    "live_provider_calls": false,
+    "new_python_test_module": false,
+    "preserve_pinned_python_test_inventory": true,
+    "focus": "existing tests/test_three_minds_demo.py"
   },
   "boundaries": [
     "PERSISTENT_LINEAGE != TRUTH",

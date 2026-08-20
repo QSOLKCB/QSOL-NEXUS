@@ -9,6 +9,7 @@ from .three_minds_instrument import (
     INTEGER_PRIMALITY_INSTRUMENT,
     MAX_INTEGER_VALUE,
     MAX_INTEGER_VALUES,
+    integer_primality_probe,
     normalize_integer_values,
     render_integer_primality_evidence,
 )
@@ -1024,6 +1025,7 @@ __all__ = [
     "THREE_MINDS_INTEGRATION_SCHEMA",
     "THREE_MINDS_SCHEMA",
     "ThreeMindsError",
+    "integer_primality_probe",
     "run_three_minds_council_demo",
     "run_three_minds_demo",
     "run_three_minds_reference_council",

@@ -311,3 +311,182 @@ run/receipt refs, and any provider/runtime limitations.
 That split is intentional: CI proves the contract without spending money or depending on
 external model availability; a live run demonstrates the same contract against real
 provider boundaries.
+
+## Post-alpha7/alpha8/alpha9 completion upgrade
+
+The original alpha11 sequence above remains canonical. After alpha7 instrument admission,
+alpha8 persistent-world/LATTICE work, and alpha9 provider setup were completed, alpha11 was
+upgraded rather than replaced.
+
+The coordinator now preserves the original model-stage objects **and** adds a second,
+machine-verifiable integration layer.
+
+### Alpha7 admitted receipt lineage
+
+Mind A now gets a coordinator-owned baseline execution over every supplied value except the
+last one. Mind B receives that immutable record and independently reruns the exact same
+admitted instrument input.
+
+Both baseline records contain the complete:
+
+```text
+instrument-intent
+instrument-execution
+instrument-receipt
+```
+
+bundle produced by `nexus-instrument-admission/1`.
+
+Mind B's replay must be byte-identical to Mind A's complete bundle. The full fixture is
+then executed through the same admitted `run_instrument` path before Mind C interprets it.
+All three bundles are revalidated with `verify_instrument_receipt`.
+
+```text
+REPLAY != EMPIRICAL_CONFIRMATION
+INSTRUMENT_RESULT != TRUTH
+```
+
+The original `instrument_result` object remains for compatibility and model-readable exact
+fixture visibility, but it now also binds the alpha7 execution and receipt refs.
+
+### Alpha8 typed workflow lineage
+
+Alongside the original free-form model-stage lineage, alpha11 now records the same workflow
+through the validated alpha8 object types:
+
+```text
+hypothesis: PROPOSED -> CHALLENGED -> RETIRED | CHALLENGED
+experiment: PLANNED -> OBSERVED -> CLOSED
+```
+
+The final hypothesis is `RETIRED` when the supplied fixture contains a composite, otherwise
+it remains `CHALLENGED`. These are workflow labels only.
+
+Relations connect the model-stage and instrument records without promoting them:
+
+```text
+interprets
+replays
+critiques
+bears_on
+verifies_receipt_for
+```
+
+```text
+PERSISTENT_LINEAGE != TRUTH
+VERIFIED_DESCENDANT != SEMANTIC_TRUTH
+```
+
+The `three_minds_verified_descendant` object explicitly sets
+`semantic_truth_claimed=false`; its verified scope is only the admitted instrument receipt
+and exact input.
+
+### Explicit LATTICE handoff
+
+The shared task receives an ordinary storage-only LATTICE presence lineage:
+
+```text
+Observatory  L[0,0,0]
+    ->
+Archive      L[0,0,1]
+    ->
+Agora        L[0,1,1]
+    ->
+Observatory  L[1,1,1]
+```
+
+Every transition uses the existing validated `world.place` / `world.move` operations and
+adjacent named-region topology. `verify_three_minds_integration` requires exactly one
+placement plus three moves and requires the final region to be Observatory.
+
+```text
+LATTICE_POSITION != COGNITIVE_COORDINATE
+```
+
+### Restart verification
+
+`verify_three_minds_integration(api, result)` reopens no hidden state. It verifies only the
+persisted refs available through the supplied NEXUS runtime:
+
+- the ordinary integration receipt resolves;
+- Mind A and Mind B alpha7 bundles still verify;
+- Mind B's baseline replay remains byte-identical;
+- the full-fixture instrument receipt still verifies;
+- LATTICE handoff lineage remains valid;
+- the final typed hypothesis retains workflow-only semantics;
+- the typed experiment is `CLOSED` without claiming empirical truth;
+- the receipt-verified descendant still refuses a semantic-truth claim.
+
+The test suite calls this verifier again after reopening the file-backed NEXUS world.
+
+### Deterministic minority-report Council
+
+The sequential three-minds run still creates no vote. A separate optional reference Council
+can now be run with:
+
+```bash
+PYTHONPATH=src python3 tools/nexus_three_minds_demo.py \
+  --world /tmp/nexus-alpha11-world \
+  --reference-council
+```
+
+Its fixed network-free roster is:
+
+```text
+Mind-A  skeptical  -> TEST_FURTHER
+Mind-B  balanced   -> TEST_FURTHER
+Mind-C  supportive -> ACCEPT_WITH_CHANGES
+```
+
+The default two-thirds rule therefore leaves exactly one `ACCEPT_WITH_CHANGES` minority
+report. Alpha11 then requires that report to remain discoverable through
+`world.minority.search`, with `search_is_evidence=false`.
+
+```text
+MINORITY_REPORT != EVIDENCE_PROMOTION
+MULTI_MODEL_CONSENSUS != EVIDENCE
+```
+
+### Council using the configured roster
+
+The runner can also send the same three configured members into the ordinary NEXUS Council:
+
+```bash
+PYTHONPATH=src python3 tools/nexus_three_minds_demo.py \
+  --world /tmp/nexus-alpha11-world \
+  --council
+```
+
+For an all-mock roster, that remains hermetic. If any configured member is non-mock, the
+extra Council calls require an explicit flag **before runtime construction**:
+
+```text
+--authorize-council
+```
+
+This is separate from the three sequential model-stage calls already requested by the
+original heterogeneous alpha11 demo. It prevents accidentally turning a normal sequential
+run into an additional paid/provider Council workload.
+
+For example, an xAI + loopback Ollama + mock Council can be configured using the same
+existing member JSON and auth-profile references used elsewhere in NEXUS. No raw provider
+credential is accepted by this new Council option.
+
+Provider identity still cannot set vote weight or epistemic privilege:
+
+```text
+PROVIDER_IDENTITY != VOTE_WEIGHT
+PROVIDER_IDENTITY != EPISTEMIC_PRIVILEGE
+MULTI_MODEL_CONSENSUS != EVIDENCE
+```
+
+### Machine contract
+
+The completion layer is frozen in:
+
+```text
+contracts/three-minds-one-world.json
+```
+
+and hermetic CI exercises the existing `tests/test_three_minds_demo.py` module rather than
+adding another Python test file, preserving the pinned release-hardening test inventory.

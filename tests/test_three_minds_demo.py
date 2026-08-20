@@ -10,12 +10,17 @@ from unittest import mock
 from nexus_runtime import NexusAPI
 from nexus_runtime.adapters.third_party import ThirdPartyTransport
 from nexus_runtime.auth import AuthBroker
+from nexus_runtime.instruments import verify_instrument_receipt
 from nexus_runtime.three_minds import (
     INTEGER_PRIMALITY_INSTRUMENT,
     MAX_INTEGER_VALUE,
     MAX_INTEGER_VALUES,
+    THREE_MINDS_INTEGRATION_SCHEMA,
     integer_primality_probe,
+    run_three_minds_council_demo,
     run_three_minds_demo,
+    run_three_minds_reference_council,
+    verify_three_minds_integration,
 )
 from tools import nexus_three_minds_demo as demo_cli
 
@@ -84,6 +89,8 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             self.assertEqual(result["status"], "ok")
             self.assertEqual(result["result_state"], "FALSIFIED_BY_INTEGER_FIXTURE")
             self.assertEqual(result["receipt_status"], "verified")
+            self.assertEqual(result["integration_receipt_status"], "verified")
+            self.assertTrue(result["baseline_replay_exact"])
             self.assertTrue(result["execution_replayable"])
             self.assertEqual(result["additional_votes_created"], 0)
 
@@ -92,6 +99,8 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             instrument = api.world.inspect(result["instrument_result_ref"])
             falsification = api.world.inspect(result["falsification_ref"])
             run = api.world.inspect(result["run_ref"])
+            integration = api.world.inspect(result["integration_ref"])
+            descendant = api.world.inspect(result["verified_descendant_ref"])
 
             self.assertEqual(hypothesis.payload["sequence_index"], 1)
             self.assertIsNone(hypothesis.payload["previous_stage_ref"])
@@ -112,6 +121,9 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             self.assertEqual(run.payload["mind_count"], 3)
             self.assertEqual(run.payload["instrument_execution_actor"], "nexus_three_minds_demo")
             self.assertEqual(run.payload["additional_votes_created"], 0)
+            self.assertEqual(integration.payload["schema"], THREE_MINDS_INTEGRATION_SCHEMA)
+            self.assertTrue(integration.payload["mind_b_replay_exact"])
+            self.assertFalse(descendant.payload["semantic_truth_claimed"])
 
             reopened = NexusAPI(world_root, auth_root=auth_root)
             restarted_run = reopened.world.inspect(result["run_ref"])
@@ -120,6 +132,101 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
                 {"operation": "receipt.verify", "receipt_ref": result["receipt_ref"]}
             )
             self.assertEqual(verified["status"], "verified")
+            integration_verified = verify_three_minds_integration(reopened, result)
+            self.assertEqual(integration_verified["status"], "verified")
+            self.assertEqual(integration_verified["presence_lineage_length"], 4)
+            self.assertEqual(integration_verified["final_region_id"], "observatory")
+            self.assertTrue(integration_verified["baseline_replay_exact"])
+            self.assertFalse(integration_verified["semantic_truth_claimed"])
+
+    def test_alpha7_receipts_alpha8_workflow_and_lattice_handoff_verify(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            api = NexusAPI(base / "world", auth_root=base / "auth")
+            result = run_three_minds_demo(
+                api,
+                members=mock_roster(),
+                values=[2, 3, 5, 7, 11, 25],
+            )
+
+            baseline_a = api.world.inspect(result["mind_a_baseline_record_ref"])
+            baseline_b = api.world.inspect(result["mind_b_replay_record_ref"])
+            bundle_a = baseline_a.payload["instrument_bundle"]
+            bundle_b = baseline_b.payload["instrument_bundle"]
+            self.assertEqual(bundle_a, bundle_b)
+            self.assertEqual(verify_instrument_receipt(bundle_a)["status"], "verified")
+            self.assertEqual(verify_instrument_receipt(bundle_b)["status"], "verified")
+
+            instrument = api.world.inspect(result["instrument_result_ref"])
+            self.assertEqual(
+                verify_instrument_receipt(instrument.payload["instrument_bundle"])["status"],
+                "verified",
+            )
+            self.assertEqual(instrument.payload["composite_values"], [25])
+            self.assertTrue(instrument.payload["derived_material_only"])
+
+            persistent_hypothesis = api.world.inspect(result["persistent_hypothesis_ref"])
+            self.assertEqual(persistent_hypothesis.object_type, "world_hypothesis")
+            self.assertEqual(persistent_hypothesis.payload["state"], "RETIRED")
+            self.assertEqual(
+                persistent_hypothesis.payload["state_semantics"],
+                "workflow_label_not_truth_classification",
+            )
+            persistent_experiment = api.world.inspect(result["persistent_experiment_ref"])
+            self.assertEqual(persistent_experiment.object_type, "world_experiment")
+            self.assertEqual(persistent_experiment.payload["stage"], "CLOSED")
+            self.assertEqual(
+                persistent_experiment.payload["claim_boundary"],
+                "recorded_world_lineage_not_empirical_truth",
+            )
+
+            presence = api.handle(
+                {"operation": "world.presence", "event_ref": result["final_presence_ref"]}
+            )
+            self.assertEqual(presence["status"], "ok")
+            self.assertEqual(presence["presence"]["lineage_length"], 4)
+            self.assertEqual(presence["presence"]["current"]["region_id"], "observatory")
+            self.assertEqual(presence["presence"]["authority_effect"], "none")
+
+    def test_reference_council_preserves_one_searchable_minority_report(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            api = NexusAPI(base / "world", auth_root=base / "auth")
+            result = run_three_minds_demo(
+                api,
+                members=mock_roster(),
+                values=[2, 3, 5, 7, 11, 25],
+            )
+            council = run_three_minds_reference_council(
+                api,
+                evidence_refs=[result["run_ref"], result["integration_ref"]],
+            )
+            self.assertEqual(council["status"], "ok")
+            self.assertEqual(council["minority_search"]["returned"], 1)
+            self.assertFalse(council["minority_search"]["search_is_evidence"])
+            self.assertFalse(council["provider_consensus_is_evidence"])
+            self.assertEqual(council["authority_effect"], "none")
+            self.assertEqual(council["result"]["tally"]["TEST_FURTHER"], 2)
+            self.assertEqual(council["result"]["tally"]["ACCEPT_WITH_CHANGES"], 1)
+
+    def test_configured_mock_council_uses_same_constitutional_roster(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            api = NexusAPI(base / "world", auth_root=base / "auth")
+            result = run_three_minds_demo(api, members=mock_roster())
+            council = run_three_minds_council_demo(
+                api,
+                members=mock_roster(),
+                evidence_refs=[result["run_ref"], result["integration_ref"]],
+            )
+            self.assertEqual(council["status"], "ok")
+            self.assertTrue(council["execution_replayable"])
+            self.assertFalse(council["provider_consensus_is_evidence"])
+            self.assertEqual(council["authority_effect"], "none")
+            self.assertEqual(
+                [member["adapter_id"] for member in council["roster"]],
+                ["mock", "mock", "mock"],
+            )
 
     def test_task_and_instrument_evidence_expose_exact_custom_inputs(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -158,6 +265,8 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
                 "VERIFIED_FOR_SUPPLIED_INTEGER_FIXTURE",
             )
             self.assertIn("does not prove model truth", run.payload["claim_boundary"])
+            final_hypothesis = api.world.inspect(result["persistent_hypothesis_ref"])
+            self.assertEqual(final_hypothesis.payload["state"], "CHALLENGED")
 
     def test_exactly_three_distinct_identities_are_required_before_run(self) -> None:
         duplicate = list(mock_roster())
@@ -252,6 +361,8 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             self.assertFalse(run.payload["execution_replayable"])
             self.assertEqual(run.payload["result_state"], "FALSIFIED_BY_INTEGER_FIXTURE")
             self.assertEqual(run.payload["additional_votes_created"], 0)
+            integration_verified = verify_three_minds_integration(api, result)
+            self.assertEqual(integration_verified["status"], "verified")
 
 
 class ThreeMindsCLITests(unittest.TestCase):
@@ -302,6 +413,22 @@ class ThreeMindsCLITests(unittest.TestCase):
             self.assertEqual(code, 2)
             self.assertFalse(output.exists())
             self.assertIn("fixture failure", stderr.getvalue())
+
+    def test_non_mock_extra_council_requires_authorization_before_runtime(self) -> None:
+        remote = json.dumps(
+            {
+                "member_id": "RemoteXAI",
+                "model_id": "grok-fixture",
+                "adapter_id": "xai",
+                "auth_profile": "default",
+            }
+        )
+        stderr = io.StringIO()
+        with mock.patch.object(demo_cli, "NexusAPI") as api_constructor, redirect_stderr(stderr):
+            code = demo_cli.main(["--council", "--mind-a", remote])
+        self.assertEqual(code, 2)
+        api_constructor.assert_not_called()
+        self.assertIn("--authorize-council", stderr.getvalue())
 
 
 if __name__ == "__main__":
