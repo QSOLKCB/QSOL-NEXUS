@@ -48,8 +48,13 @@ jobs:
       - name: Assert workflow stays hermetic
         run: |
           set -euo pipefail
-          if grep -E 'secrets\.' .github/workflows/alpha9-remote-operator.yml; then
+          workflow=.github/workflows/alpha9-remote-operator.yml
+          if grep -E 'secrets\.' "$workflow"; then
             echo "alpha9 hermetic CI must not reference GitHub secret contexts" >&2
             exit 1
           fi
-          test "$(grep -c 'live_xai_acceptance.py --self-test' .github/workflows/alpha9-remote-operator.yml)" -eq 1
+          live_flag='--authorize''-live-xai'
+          if grep -F -- "$live_flag" "$workflow"; then
+            echo "alpha9 hermetic CI must not authorize a real xAI network run" >&2
+            exit 1
+          fi
