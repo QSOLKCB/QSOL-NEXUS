@@ -17,6 +17,7 @@ from nexus_runtime.three_minds import (
     MAX_INTEGER_VALUE,
     MAX_INTEGER_VALUES,
     THREE_MINDS_INTEGRATION_SCHEMA,
+    ThreeMindsError,
     integer_primality_probe,
     run_three_minds_council_demo,
     run_three_minds_demo,
@@ -169,6 +170,7 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             persistent_hypothesis = api.world.inspect(result["persistent_hypothesis_ref"])
             self.assertEqual(persistent_hypothesis.object_type, "world_hypothesis")
             self.assertEqual(persistent_hypothesis.payload["state"], "RETIRED")
+            self.assertEqual(persistent_hypothesis.payload["evidence_refs"], [result["task_ref"]])
             self.assertEqual(
                 persistent_hypothesis.payload["state_semantics"],
                 "workflow_label_not_truth_classification",
@@ -176,6 +178,10 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             persistent_experiment = api.world.inspect(result["persistent_experiment_ref"])
             self.assertEqual(persistent_experiment.object_type, "world_experiment")
             self.assertEqual(persistent_experiment.payload["stage"], "CLOSED")
+            self.assertEqual(
+                persistent_experiment.payload["hypothesis_refs"],
+                [result["persistent_hypothesis_ref"]],
+            )
             self.assertEqual(
                 persistent_experiment.payload["claim_boundary"],
                 "recorded_world_lineage_not_empirical_truth",
@@ -188,6 +194,61 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             self.assertEqual(presence["presence"]["lineage_length"], 4)
             self.assertEqual(presence["presence"]["current"]["region_id"], "observatory")
             self.assertEqual(presence["presence"]["authority_effect"], "none")
+
+    def test_restart_verifier_rejects_refs_mixed_across_runs(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            api = NexusAPI(base / "world", auth_root=base / "auth")
+            first = run_three_minds_demo(
+                api,
+                members=mock_roster(),
+                values=[2, 3, 5, 25],
+                question="first integration fixture",
+            )
+            second = run_three_minds_demo(
+                api,
+                members=mock_roster(),
+                values=[2, 3, 5, 9],
+                question="second integration fixture",
+            )
+            mixed = dict(first)
+            for key in (
+                "final_presence_ref",
+                "persistent_hypothesis_ref",
+                "persistent_experiment_ref",
+                "mind_a_baseline_record_ref",
+                "mind_b_replay_record_ref",
+                "verified_descendant_ref",
+                "instrument_result_ref",
+            ):
+                mixed[key] = second[key]
+
+            with self.assertRaisesRegex(ThreeMindsError, "integration ref mismatch"):
+                verify_three_minds_integration(api, mixed)
+
+    def test_persistent_hypotheses_are_bound_to_each_task(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            api = NexusAPI(base / "world", auth_root=base / "auth")
+            first = run_three_minds_demo(
+                api,
+                members=mock_roster(),
+                values=[2, 3, 5, 25],
+                question="task-bound fixture one",
+            )
+            second = run_three_minds_demo(
+                api,
+                members=mock_roster(),
+                values=[2, 3, 5, 9],
+                question="task-bound fixture two",
+            )
+
+            self.assertNotEqual(first["task_ref"], second["task_ref"])
+            self.assertNotEqual(first["persistent_hypothesis_ref"], second["persistent_hypothesis_ref"])
+            first_hypothesis = api.world.inspect(first["persistent_hypothesis_ref"])
+            second_hypothesis = api.world.inspect(second["persistent_hypothesis_ref"])
+            self.assertEqual(first_hypothesis.payload["evidence_refs"], [first["task_ref"]])
+            self.assertEqual(second_hypothesis.payload["evidence_refs"], [second["task_ref"]])
 
     def test_reference_council_preserves_one_searchable_minority_report(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -204,11 +265,50 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             )
             self.assertEqual(council["status"], "ok")
             self.assertEqual(council["minority_search"]["returned"], 1)
+            self.assertEqual(council["minority_search"]["matched_count"], 1)
+            self.assertEqual(
+                council["minority_search"]["matched_session_ref"],
+                council["session_ref"],
+            )
             self.assertFalse(council["minority_search"]["search_is_evidence"])
             self.assertFalse(council["provider_consensus_is_evidence"])
             self.assertEqual(council["authority_effect"], "none")
             self.assertEqual(council["result"]["tally"]["TEST_FURTHER"], 2)
             self.assertEqual(council["result"]["tally"]["ACCEPT_WITH_CHANGES"], 1)
+
+    def test_reference_council_repeated_runs_scope_minority_to_current_session(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            base = Path(directory)
+            api = NexusAPI(base / "world", auth_root=base / "auth")
+            first = run_three_minds_demo(
+                api,
+                members=mock_roster(),
+                values=[2, 3, 5, 25],
+                question="first council fixture",
+            )
+            first_council = run_three_minds_reference_council(
+                api,
+                evidence_refs=[first["run_ref"], first["integration_ref"]],
+            )
+            second = run_three_minds_demo(
+                api,
+                members=mock_roster(),
+                values=[2, 3, 5, 9],
+                question="second council fixture",
+            )
+            second_council = run_three_minds_reference_council(
+                api,
+                evidence_refs=[second["run_ref"], second["integration_ref"]],
+            )
+
+            self.assertNotEqual(first_council["session_ref"], second_council["session_ref"])
+            self.assertGreaterEqual(second_council["minority_search"]["returned"], 2)
+            self.assertEqual(second_council["minority_search"]["matched_count"], 1)
+            self.assertEqual(
+                second_council["minority_search"]["matched_session_ref"],
+                second_council["session_ref"],
+            )
+            self.assertFalse(second_council["minority_search"]["search_is_evidence"])
 
     def test_configured_mock_council_uses_same_constitutional_roster(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -268,6 +368,7 @@ class ThreeMindsSharedWorldTests(unittest.TestCase):
             self.assertIn("does not prove model truth", run.payload["claim_boundary"])
             final_hypothesis = api.world.inspect(result["persistent_hypothesis_ref"])
             self.assertEqual(final_hypothesis.payload["state"], "CHALLENGED")
+            self.assertEqual(final_hypothesis.payload["evidence_refs"], [result["task_ref"]])
 
     def test_exactly_three_distinct_identities_are_required_before_run(self) -> None:
         duplicate = list(mock_roster())

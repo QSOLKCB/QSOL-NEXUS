@@ -183,13 +183,14 @@ def _persistent_hypothesis(
     *,
     statement: str,
     state: str,
+    task_ref: str,
     previous_ref: str | None = None,
 ) -> dict[str, Any]:
     request: dict[str, Any] = {
         "operation": "world.hypothesis.create",
         "statement": statement,
         "state": state,
-        "evidence_refs": [],
+        "evidence_refs": [task_ref],
     }
     if previous_ref is not None:
         request["previous_hypothesis_ref"] = previous_ref
@@ -381,6 +382,7 @@ def run_three_minds_demo(
         api,
         statement="All integers in the declared alpha11 fixture are prime.",
         state="PROPOSED",
+        task_ref=task_ref,
     )
     persistent_plan_a = _persistent_experiment(
         api,
@@ -467,6 +469,7 @@ def run_three_minds_demo(
         api,
         statement="All integers in the declared alpha11 fixture are prime.",
         state="CHALLENGED",
+        task_ref=task_ref,
         previous_ref=persistent_hypothesis_a["object_id"],
     )
     persistent_observed_b = _persistent_experiment(
@@ -602,6 +605,7 @@ def run_three_minds_demo(
         api,
         statement="All integers in the declared alpha11 fixture are prime.",
         state=final_hypothesis_state,
+        task_ref=task_ref,
         previous_ref=persistent_hypothesis_b["object_id"],
     )
     persistent_closed_c = _persistent_experiment(
@@ -612,7 +616,7 @@ def run_three_minds_demo(
             "Close the workflow after the admitted full-fixture instrument execution and "
             "Mind C interpretation; CLOSED is workflow state, not a general truth label."
         ),
-        hypothesis_refs=[persistent_hypothesis_b["object_id"]],
+        hypothesis_refs=[persistent_hypothesis_c["object_id"]],
         input_refs=[task_ref],
         result_refs=[instrument_ref, falsification_ref],
         previous_ref=persistent_observed_b["object_id"],
@@ -847,19 +851,54 @@ def verify_three_minds_integration(api: NexusHandle, result: Mapping[str, Any]) 
     if missing:
         raise ThreeMindsError(f"three-minds integration result is missing refs: {missing}")
 
-    receipt = _call(
-        api,
-        {"operation": "receipt.verify", "receipt_ref": result["integration_receipt_ref"]},
-    )
-    if receipt.get("status") != "verified":
-        raise ThreeMindsError("three-minds integration receipt did not verify")
-
     def inspect(ref: str) -> dict[str, Any]:
         response = _call(api, {"operation": "world.inspect", "object_ref": ref})
         obj = response.get("object")
         if not isinstance(obj, dict):
             raise ThreeMindsError(f"world.inspect returned invalid object for {ref}")
         return obj
+
+    receipt = _call(
+        api,
+        {"operation": "receipt.verify", "receipt_ref": result["integration_receipt_ref"]},
+    )
+    if receipt.get("status") != "verified":
+        raise ThreeMindsError("three-minds integration receipt did not verify")
+    if receipt.get("result_ref") != result["integration_ref"]:
+        raise ThreeMindsError("three-minds integration receipt is bound to a different integration object")
+
+    integration = inspect(result["integration_ref"])
+    if integration.get("object_type") != "three_minds_integration":
+        raise ThreeMindsError("integration_ref does not identify a three_minds_integration object")
+    integration_payload = integration.get("payload")
+    if not isinstance(integration_payload, Mapping):
+        raise ThreeMindsError("three-minds integration object has an invalid payload")
+    if integration_payload.get("schema") != THREE_MINDS_INTEGRATION_SCHEMA:
+        raise ThreeMindsError("three-minds integration object has an unsupported schema")
+    if integration_payload.get("authority_effect") != "none":
+        raise ThreeMindsError("three-minds integration object attempts authority escalation")
+
+    persisted_bindings = {
+        "final_presence_ref": "final_presence_ref",
+        "persistent_hypothesis_ref": "mind_c_persistent_hypothesis_ref",
+        "persistent_experiment_ref": "mind_c_closed_experiment_ref",
+        "mind_a_baseline_record_ref": "mind_a_baseline_record_ref",
+        "mind_b_replay_record_ref": "mind_b_replay_record_ref",
+        "verified_descendant_ref": "verified_descendant_ref",
+        "instrument_result_ref": "full_instrument_result_ref",
+    }
+    for result_key, payload_key in persisted_bindings.items():
+        if integration_payload.get(payload_key) != result[result_key]:
+            raise ThreeMindsError(
+                f"three-minds integration ref mismatch for {result_key}: caller mapping does not match persisted integration"
+            )
+    presence_refs = integration_payload.get("presence_refs")
+    if (
+        not isinstance(presence_refs, list)
+        or len(presence_refs) != 4
+        or presence_refs[-1] != result["final_presence_ref"]
+    ):
+        raise ThreeMindsError("persisted integration does not bind the expected four-event presence lineage")
 
     baseline_a = inspect(result["mind_a_baseline_record_ref"])
     baseline_b = inspect(result["mind_b_replay_record_ref"])
@@ -896,6 +935,8 @@ def verify_three_minds_integration(api: NexusHandle, result: Mapping[str, Any]) 
         raise ThreeMindsError("alpha11 persistent hypothesis has invalid final workflow state")
     if hypothesis_payload.get("state_semantics") != "workflow_label_not_truth_classification":
         raise ThreeMindsError("alpha11 persistent hypothesis widened workflow state into truth")
+    if hypothesis_payload.get("evidence_refs") != [integration_payload.get("task_ref")]:
+        raise ThreeMindsError("alpha11 persistent hypothesis is not bound to the persisted integration task")
 
     persistent_experiment = inspect(result["persistent_experiment_ref"])
     experiment_payload = persistent_experiment.get("payload")
@@ -903,11 +944,19 @@ def verify_three_minds_integration(api: NexusHandle, result: Mapping[str, Any]) 
         raise ThreeMindsError("alpha11 persistent experiment is not CLOSED")
     if experiment_payload.get("claim_boundary") != "recorded_world_lineage_not_empirical_truth":
         raise ThreeMindsError("alpha11 experiment widened lineage into empirical truth")
+    if experiment_payload.get("hypothesis_refs") != [result["persistent_hypothesis_ref"]]:
+        raise ThreeMindsError("alpha11 CLOSED experiment is not bound to the final persistent hypothesis")
 
     descendant = inspect(result["verified_descendant_ref"])
     descendant_payload = descendant.get("payload")
     if not isinstance(descendant_payload, Mapping) or descendant_payload.get("semantic_truth_claimed") is not False:
         raise ThreeMindsError("alpha11 verified descendant widened receipt verification into truth")
+    if descendant_payload.get("persistent_hypothesis_ref") != result["persistent_hypothesis_ref"]:
+        raise ThreeMindsError("alpha11 verified descendant is not bound to the final persistent hypothesis")
+    if descendant_payload.get("closed_experiment_ref") != result["persistent_experiment_ref"]:
+        raise ThreeMindsError("alpha11 verified descendant is not bound to the final CLOSED experiment")
+    if descendant_payload.get("instrument_result_ref") != result["instrument_result_ref"]:
+        raise ThreeMindsError("alpha11 verified descendant is not bound to the persisted instrument result")
 
     return {
         "status": "verified",
@@ -995,21 +1044,41 @@ def run_three_minds_reference_council(
         members=members,
         evidence_refs=evidence_refs,
     )
+    session_ref = council.get("session_ref")
+    if not isinstance(session_ref, str):
+        raise ThreeMindsError("alpha11 reference Council did not return a session reference")
     minority = _call(
         api,
         {
             "operation": "world.minority.search",
             "choice": "ACCEPT_WITH_CHANGES",
             "member_id": "Mind-C",
-            "limit": 10,
+            "limit": 50,
         },
     )
-    if minority.get("returned") != 1:
-        raise ThreeMindsError("alpha11 reference Council did not preserve exactly one minority report")
+    matches = minority.get("matches")
+    if not isinstance(matches, list):
+        raise ThreeMindsError("alpha11 minority search returned an invalid matches array")
+    session_matches = [
+        match
+        for match in matches
+        if isinstance(match, Mapping) and match.get("session_ref") == session_ref
+    ]
+    if len(session_matches) != 1:
+        raise ThreeMindsError("alpha11 reference Council did not preserve its own minority report")
+    report = session_matches[0].get("minority_report")
+    if (
+        not isinstance(report, Mapping)
+        or report.get("member_id") != "Mind-C"
+        or report.get("choice") != "ACCEPT_WITH_CHANGES"
+    ):
+        raise ThreeMindsError("alpha11 reference Council minority report identity is invalid")
     return {
         **council,
         "minority_search": {
-            "returned": minority["returned"],
+            "returned": minority.get("returned"),
+            "matched_count": 1,
+            "matched_session_ref": session_ref,
             "search_is_evidence": minority.get("search_is_evidence"),
         },
     }
