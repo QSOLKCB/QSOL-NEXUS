@@ -21,12 +21,13 @@ import subprocess
 import sys
 import time
 import tomllib
-from typing import Any
+from typing import Any, Callable
 
 
 ROOT = Path(__file__).resolve().parents[1]
 MATRIX_PATH = ROOT / "release" / "post_stable_extension_matrix.json"
 CANDIDATE_PATH = ROOT / "release" / "post_stable_extension_candidate.json"
+PUBLICATION_IDENTITY_PATH = ROOT / "publication" / "nexus-2.0-formalization" / "IDENTITY.env"
 REPORT_SCHEMA = "nexus-post-stable-extension-hardening-report/1"
 EXPECTED_MATRIX_SCHEMA = "nexus-post-stable-extension-matrix/1"
 EXPECTED_CANDIDATE_SCHEMA = "nexus-post-stable-extension-candidate/1"
@@ -37,6 +38,17 @@ EXPECTED_CURRENT_VERSION = "2.0.0"
 EXPECTED_TEST_FILE_COUNT = 83
 EXPECTED_STABLE_TAG = "v2.0.0"
 EXPECTED_STABLE_COMMIT = "cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a"
+EXPECTED_FORMALIZATION_PR = 53
+EXPECTED_PUBLICATION_PR = 54
+EXPECTED_PUBLICATION_DOI = "10.5281/zenodo.21895577"
+EXPECTED_STABLE_BASELINE = {
+    "tag": EXPECTED_STABLE_TAG,
+    "commit": EXPECTED_STABLE_COMMIT,
+    "formalization_pr": EXPECTED_FORMALIZATION_PR,
+    "publication_pr": EXPECTED_PUBLICATION_PR,
+    "publication_doi": EXPECTED_PUBLICATION_DOI,
+    "immutable": True,
+}
 EXPECTED_EXTENSION_BASELINE = "0b2a3ee467faad89e5a56b51779dc20ba13ad75d"
 EXPECTED_EXTENSION_CHAIN = (
     (55, "839303ea512631e527073682343341742cead975"),
@@ -67,6 +79,8 @@ ALLOWED_RUNNER_CHECKS = frozenset(
         "candidate_contract",
         "candidate_tree_clean",
         "candidate_commit_binding",
+        "candidate_tree_unchanged",
+        "candidate_identity_unchanged",
     }
 )
 EXPECTED_CONTRACT_SCHEMAS = {
@@ -150,11 +164,11 @@ def _run(
     )
 
 
-def _internal(name: str, callback) -> CheckResult:
+def _internal(name: str, callback: Callable[[], Any]) -> CheckResult:
     started = time.monotonic()
     try:
         detail = callback()
-    except Exception as exc:  # hardening must convert unexpected audit failures to a failed report
+    except Exception as exc:
         return CheckResult(name, "fail", time.monotonic() - started, f"{type(exc).__name__}: {exc}")
     return CheckResult(name, "pass", time.monotonic() - started, str(detail))
 
@@ -203,8 +217,12 @@ def _current_versions() -> dict[str, str]:
     }
 
 
+def _tracked_status() -> str:
+    return _git("status", "--porcelain=v1", "--untracked-files=no")
+
+
 def _candidate_tree_clean() -> str:
-    status = _git("status", "--porcelain=v1", "--untracked-files=no")
+    status = _tracked_status()
     if status:
         raise ValueError(f"candidate worktree has tracked changes before hardening:\n{status}")
     return "tracked candidate tree is clean before extension hardening"
@@ -215,6 +233,29 @@ def _candidate_commit_binding(expect_commit: str | None) -> str:
     if expect_commit is not None and head != expect_commit:
         raise ValueError(f"checked-out HEAD {head} does not match expected candidate {expect_commit}")
     return f"candidate commit={head}"
+
+
+def _candidate_tree_unchanged() -> str:
+    status = _tracked_status()
+    if status:
+        raise ValueError(f"matrix commands mutated tracked candidate bytes:\n{status}")
+    return "tracked candidate tree remained clean after extension hardening"
+
+
+def _candidate_identity_unchanged(
+    initial_commit: str,
+    initial_tree: str,
+    expect_commit: str | None,
+) -> str:
+    head = _git("rev-parse", "HEAD")
+    tree = _git("rev-parse", "HEAD^{tree}")
+    if head != initial_commit:
+        raise ValueError(f"candidate HEAD changed during hardening: {initial_commit} -> {head}")
+    if tree != initial_tree:
+        raise ValueError(f"candidate committed tree changed during hardening: {initial_tree} -> {tree}")
+    if expect_commit is not None and head != expect_commit:
+        raise ValueError(f"post-run HEAD {head} does not match expected candidate {expect_commit}")
+    return f"candidate identity unchanged; commit={head}; tree={tree}"
 
 
 def _audit_candidate(candidate: Any) -> str:
@@ -232,13 +273,8 @@ def _audit_candidate(candidate: Any) -> str:
         raise ValueError("extension hardening candidate cannot self-declare release authority")
     if candidate.get("authority_effect") != "none":
         raise ValueError("extension candidate cannot create authority")
-    stable = candidate.get("stable_baseline")
-    if not isinstance(stable, dict):
-        raise ValueError("extension candidate requires a stable baseline")
-    if stable.get("tag") != EXPECTED_STABLE_TAG or stable.get("commit") != EXPECTED_STABLE_COMMIT:
-        raise ValueError("extension candidate stable baseline identity mismatch")
-    if stable.get("immutable") is not True:
-        raise ValueError("stable baseline must be explicitly immutable")
+    if candidate.get("stable_baseline") != EXPECTED_STABLE_BASELINE:
+        raise ValueError("extension candidate frozen stable/publication identity mismatch")
     if candidate.get("extension_baseline_head") != EXPECTED_EXTENSION_BASELINE:
         raise ValueError("extension baseline head mismatch")
     chain = candidate.get("extension_merge_chain")
@@ -262,7 +298,7 @@ def _audit_candidate(candidate: Any) -> str:
     versions = _current_versions()
     if set(versions.values()) != {EXPECTED_CURRENT_VERSION}:
         raise ValueError(f"version bump happened before extension hardening: {versions}")
-    return f"candidate contract valid; current versions remain {EXPECTED_CURRENT_VERSION}; target={EXPECTED_TARGET_VERSION}"
+    return f"candidate contract valid; frozen publication DOI={EXPECTED_PUBLICATION_DOI}; target={EXPECTED_TARGET_VERSION}"
 
 
 def _audit_matrix(matrix: Any, candidate: Any) -> str:
@@ -291,9 +327,10 @@ def _audit_matrix(matrix: Any, candidate: Any) -> str:
         raise ValueError("extension matrix baseline head mismatch")
     if matrix.get("extension_prs") != [item[0] for item in EXPECTED_EXTENSION_CHAIN]:
         raise ValueError("extension matrix PR inventory mismatch")
-    stable = matrix.get("stable_baseline")
-    if not isinstance(stable, dict) or stable.get("tag") != EXPECTED_STABLE_TAG or stable.get("commit") != EXPECTED_STABLE_COMMIT:
-        raise ValueError("extension matrix stable baseline mismatch")
+    if matrix.get("stable_baseline") != EXPECTED_STABLE_BASELINE:
+        raise ValueError("extension matrix frozen stable/publication identity mismatch")
+    if candidate.get("stable_baseline") != matrix.get("stable_baseline"):
+        raise ValueError("candidate/matrix frozen stable publication identity disagreement")
     if matrix.get("contract_schemas") != EXPECTED_CONTRACT_SCHEMAS:
         raise ValueError("extension matrix contract schema inventory mismatch")
     boundaries = matrix.get("required_boundaries")
@@ -359,16 +396,44 @@ def _extension_merge_chain() -> str:
     return " -> ".join(f"PR#{pr}:{commit[:12]}" for pr, commit in EXPECTED_EXTENSION_CHAIN)
 
 
+def _parse_identity_env(path: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#"):
+            continue
+        if "=" not in line:
+            raise ValueError(f"malformed publication identity line: {line!r}")
+        key, value = line.split("=", 1)
+        if key in result:
+            raise ValueError(f"duplicate publication identity key: {key}")
+        result[key] = value
+    return result
+
+
 def _frozen_2_0_release_metadata() -> str:
     candidate = _strict_json(ROOT / "release" / "release_candidate.json")
     matrix = _strict_json(ROOT / "release" / "hardening_matrix.json")
-    if candidate.get("target_version") != "2.0.0" or candidate.get("target_tag") != "v2.0.0":
+    if candidate.get("target_version") != "2.0.0" or candidate.get("target_tag") != EXPECTED_STABLE_TAG:
         raise ValueError("historical 2.0 candidate metadata was repurposed by the extension line")
     if candidate.get("candidate_pr") != 52:
         raise ValueError("historical 2.0 candidate PR identity changed")
     if matrix.get("target_version") != "2.0.0" or matrix.get("milestone") != "PR #52":
         raise ValueError("historical 2.0 hardening matrix identity changed")
-    return "historical 2.0 candidate/matrix remain distinct from the post-stable extension candidate"
+
+    identity = _parse_identity_env(PUBLICATION_IDENTITY_PATH)
+    required_identity = {
+        "NEXUS_STABLE_TAG": EXPECTED_STABLE_TAG,
+        "NEXUS_STABLE_COMMIT": EXPECTED_STABLE_COMMIT,
+        "ZENODO_DOI": EXPECTED_PUBLICATION_DOI,
+    }
+    for key, expected in required_identity.items():
+        if identity.get(key) != expected:
+            raise ValueError(f"frozen publication identity mismatch for {key}: {identity.get(key)!r}")
+    return (
+        "historical 2.0 candidate/matrix and publication identity remain frozen; "
+        f"formalization_pr={EXPECTED_FORMALIZATION_PR}; publication_pr={EXPECTED_PUBLICATION_PR}; "
+        f"doi={EXPECTED_PUBLICATION_DOI}"
+    )
 
 
 def _contract_bundle() -> str:
@@ -442,6 +507,8 @@ def _write_report(path: Path, report: dict[str, Any]) -> None:
 def run_hardening(expect_commit: str | None) -> dict[str, Any]:
     matrix = _strict_json(MATRIX_PATH)
     candidate = _strict_json(CANDIDATE_PATH)
+    initial_commit = _git("rev-parse", "HEAD")
+    initial_tree = _git("rev-parse", "HEAD^{tree}")
     checks: list[CheckResult] = []
 
     checks.append(_internal("candidate-tree-clean", _candidate_tree_clean))
@@ -478,7 +545,15 @@ def run_hardening(expect_commit: str | None) -> dict[str, Any]:
     checks.append(
         _run(
             "rust-remote-operator",
-            ["cargo", "test", "--manifest-path", "tui/Cargo.toml", "--bin", "nexus-remote-setup"],
+            [
+                "cargo",
+                "test",
+                "--locked",
+                "--manifest-path",
+                "tui/Cargo.toml",
+                "--bin",
+                "nexus-remote-setup",
+            ],
             timeout=1200,
         )
     )
@@ -490,6 +565,14 @@ def run_hardening(expect_commit: str | None) -> dict[str, Any]:
         )
     )
 
+    checks.append(_internal("candidate-tree-unchanged", _candidate_tree_unchanged))
+    checks.append(
+        _internal(
+            "candidate-identity-unchanged",
+            lambda: _candidate_identity_unchanged(initial_commit, initial_tree, expect_commit),
+        )
+    )
+
     passed = all(check.passed for check in checks)
     report = {
         "schema": REPORT_SCHEMA,
@@ -497,8 +580,8 @@ def run_hardening(expect_commit: str | None) -> dict[str, Any]:
         "profile": EXPECTED_PROFILE,
         "target_version": EXPECTED_TARGET_VERSION,
         "current_runtime_version": EXPECTED_CURRENT_VERSION,
-        "git_commit": _git("rev-parse", "HEAD"),
-        "git_tree": _git("rev-parse", "HEAD^{tree}"),
+        "git_commit": initial_commit,
+        "git_tree": initial_tree,
         "stable_baseline": candidate["stable_baseline"],
         "extension_baseline_head": candidate["extension_baseline_head"],
         "extension_merge_chain": candidate["extension_merge_chain"],
