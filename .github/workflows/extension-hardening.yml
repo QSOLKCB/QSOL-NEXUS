@@ -35,6 +35,8 @@ jobs:
   post-stable-extension-hardening:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
     steps:
       - name: Checkout complete identity chain
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
