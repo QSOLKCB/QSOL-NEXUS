@@ -22,7 +22,8 @@
       "roster"
     ],
     "council_operation": "ask <question>",
-    "remote_seat_limit": 4,
+    "public_council_seat_limit": 5,
+    "remote_xai_seat_limit": 4,
     "vote_weight": 1,
     "epistemic_privilege": "none",
     "roster_persistence": "none"
@@ -40,6 +41,7 @@
     "real_network_default": "disabled",
     "authorization_flag": "--authorize-live-xai",
     "preflight": [
+      "archive path is absolute, new, non-symlinked and safely writable",
       "admitted xAI auth connection test",
       "live language-model discovery",
       "selected model present in discovery result"
@@ -56,7 +58,8 @@
       "maximum_bytes": 1048576,
       "credential_material_recorded": false,
       "stores_question_text": false,
-      "stores_question_sha256": true
+      "stores_question_sha256": true,
+      "final_create": "exclusive"
     },
     "ci_rule": "CI runs only --self-test and never performs the live network acceptance session"
   },
