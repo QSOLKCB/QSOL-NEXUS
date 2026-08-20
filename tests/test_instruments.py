@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import copy
+import tempfile
 import unittest
+from pathlib import Path
 
 from nexus_runtime import NexusAPI
 from nexus_runtime.canonical import sha256_ref
@@ -176,6 +178,18 @@ class PersistentWorldLineageTests(unittest.TestCase):
         self.assertEqual(result["matches"][0]["object_id"], relation.object_id)
         self.assertFalse(result["search_is_evidence"])
 
+    def test_relation_rejects_explicit_non_object_metadata(self) -> None:
+        for malformed in ([], False, 0, ""):
+            with self.subTest(metadata=malformed):
+                with self.assertRaises(PersistentWorldError) as raised:
+                    self.service.create_relation(
+                        relation_type="supports",
+                        source_ref=self.a.object_id,
+                        target_ref=self.b.object_id,
+                        metadata=malformed,  # type: ignore[arg-type]
+                    )
+                self.assertEqual(raised.exception.code, "world_relation_invalid")
+
     def test_hypothesis_lineage_is_immutable_and_retired_is_terminal(self) -> None:
         proposed = self.service.create_hypothesis(
             statement="A bounded fixture may support this hypothesis.",
@@ -203,6 +217,21 @@ class PersistentWorldLineageTests(unittest.TestCase):
                 evidence_refs=[],
                 previous_hypothesis_ref=retired.object_id,
             )
+
+    def test_legacy_hypothesis_object_cannot_be_reinterpreted_as_alpha8_predecessor(self) -> None:
+        legacy = self.world.create_object(
+            WORLD_HYPOTHESIS_OBJECT_TYPE,
+            {"state": "ACTIVE", "statement": "legacy object with colliding type name"},
+            {"actor": "legacy"},
+        )
+        with self.assertRaises(PersistentWorldError) as raised:
+            self.service.create_hypothesis(
+                statement="new alpha8 hypothesis",
+                state="CHALLENGED",
+                evidence_refs=[],
+                previous_hypothesis_ref=legacy.object_id,
+            )
+        self.assertEqual(raised.exception.code, "world_persistence_invalid_lineage")
 
     def test_experiment_lineage_requires_plan_before_observation_and_result_refs(self) -> None:
         hypothesis = self.service.create_hypothesis(
@@ -238,6 +267,24 @@ class PersistentWorldLineageTests(unittest.TestCase):
                 input_refs=[],
                 result_refs=[self.c.object_id],
             )
+
+    def test_legacy_experiment_object_cannot_be_reinterpreted_as_alpha8_predecessor(self) -> None:
+        legacy = self.world.create_object(
+            WORLD_EXPERIMENT_OBJECT_TYPE,
+            {"stage": "PLANNED", "title": "legacy collision", "method": "legacy"},
+            {"actor": "legacy"},
+        )
+        with self.assertRaises(PersistentWorldError) as raised:
+            self.service.create_experiment(
+                title="new alpha8 experiment",
+                stage="PLANNED",
+                method="new method",
+                hypothesis_refs=[],
+                input_refs=[],
+                result_refs=[],
+                previous_experiment_ref=legacy.object_id,
+            )
+        self.assertEqual(raised.exception.code, "world_persistence_invalid_lineage")
 
 
 class PersistentWorldDerivedViewTests(unittest.TestCase):
@@ -291,8 +338,34 @@ class PersistentWorldDerivedViewTests(unittest.TestCase):
         self.assertEqual(history["events"][0]["mode_id"], "historical")
         self.assertFalse(history["geometry_is_semantic_authority"])
 
+    def test_plain_file_world_reports_hash_order_honestly(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            world = WorldStore(Path(temporary) / "world")
+            a = world.create_object("note", {"content": "alpha"}, {"actor": "test"})
+            b = world.create_object("note", {"content": "beta"}, {"actor": "test"})
+            service = PersistentWorldService(world)
+            service.create_relation(relation_type="related_to", source_ref=a.object_id, target_ref=b.object_id)
+            service.create_relation(relation_type="supports", source_ref=b.object_id, target_ref=a.object_id)
+            result = service.search_relations(limit=1)
+            self.assertEqual(result["order_basis"], "lexical_object_ref")
+            self.assertEqual(result["order"], "lexical_descending_object_ref")
+            self.assertNotEqual(result["order"], "newest_first")
+
 
 class PersistentWorldExportImportTests(unittest.TestCase):
+    @staticmethod
+    def _bundle_for_objects(objects: list[dict]) -> dict:
+        body = {
+            "schema": PERSISTENT_WORLD_EXPORT_SCHEMA,
+            "world_policy": PERSISTENT_WORLD_POLICY_ID,
+            "order_basis": "memory_insertion_order",
+            "source_head_ref": None,
+            "object_count": len(objects),
+            "objects": objects,
+            "authority_effect": "none",
+        }
+        return {**body, "bundle_ref": sha256_ref("world-export", body)}
+
     def test_export_import_quarantines_foreign_objects_and_adds_receipt(self) -> None:
         source = WorldStore()
         service = PersistentWorldService(source)
@@ -390,21 +463,52 @@ class PersistentWorldExportImportTests(unittest.TestCase):
             "provenance": {"actor": "fixture"},
         }
         object_id = sha256_ref("object", raw)
-        body = {
-            "schema": PERSISTENT_WORLD_EXPORT_SCHEMA,
-            "world_policy": PERSISTENT_WORLD_POLICY_ID,
-            "order_basis": "lexical_object_ref",
-            "source_head_ref": None,
-            "object_count": 1,
-            "objects": [{"object_id": object_id, **raw}],
-            "authority_effect": "none",
-        }
-        bundle = {**body, "bundle_ref": sha256_ref("world-export", body)}
+        bundle = self._bundle_for_objects([{"object_id": object_id, **raw}])
         validate_world_export_bundle(bundle)
         target = WorldStore()
         with self.assertRaises(PersistentWorldError) as raised:
             PersistentWorldService(target).import_bundle(bundle)
         self.assertEqual(raised.exception.code, "world_import_secret_rejected")
+
+    def test_import_rejects_credential_shaped_object_type_before_mutation(self) -> None:
+        raw = {
+            "object_type": "sk-" + "B" * 48,
+            "payload": {"content": "safe"},
+            "provenance": {"actor": "fixture"},
+        }
+        object_id = sha256_ref("object", raw)
+        bundle = self._bundle_for_objects([{"object_id": object_id, **raw}])
+        target = WorldStore()
+        with self.assertRaises(PersistentWorldError) as raised:
+            PersistentWorldService(target).import_bundle(bundle)
+        self.assertEqual(raised.exception.code, "world_import_secret_rejected")
+        self.assertEqual(len(target._objects), 0)
+
+    def test_conflicting_existing_wrapper_is_preflighted_before_any_new_wrapper(self) -> None:
+        source = WorldStore()
+        first = source.create_object("note", {"content": "first"}, {"actor": "source"})
+        second = source.create_object("note", {"content": "second"}, {"actor": "source"})
+        bundle = PersistentWorldService(source).export_bundle()
+
+        target = WorldStore()
+        target.create_object(
+            WORLD_IMPORTED_OBJECT_TYPE,
+            {
+                "schema": PERSISTENT_WORLD_POLICY_ID,
+                "source_object_ref": second.object_id,
+                "source_object": {**second.as_dict(), "payload": {"content": "conflicting"}},
+                "materialized_as_live_world_object": False,
+                "authority_effect": "none",
+            },
+            {"actor": "legacy"},
+        )
+        before = set(target._objects)
+        with self.assertRaises(PersistentWorldError) as raised:
+            PersistentWorldService(target).import_bundle(bundle)
+        self.assertEqual(raised.exception.code, "world_export_invalid")
+        self.assertEqual(set(target._objects), before)
+        with self.assertRaises(KeyError):
+            target.inspect(first.object_id)
 
     def test_exchange_bundle_has_canonical_byte_ceiling(self) -> None:
         source = WorldStore()

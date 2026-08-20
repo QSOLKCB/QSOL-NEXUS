@@ -70,6 +70,32 @@ _EXPERIMENT_TRANSITIONS = {
     "CLOSED": frozenset(),
 }
 
+_HYPOTHESIS_FIELDS = frozenset(
+    {
+        "schema",
+        "statement",
+        "state",
+        "evidence_refs",
+        "previous_hypothesis_ref",
+        "state_semantics",
+        "authority_effect",
+    }
+)
+_EXPERIMENT_FIELDS = frozenset(
+    {
+        "schema",
+        "title",
+        "stage",
+        "method",
+        "hypothesis_refs",
+        "input_refs",
+        "result_refs",
+        "previous_experiment_ref",
+        "claim_boundary",
+        "authority_effect",
+    }
+)
+
 _EVENT_PROVENANCE = {"actor": "nexus", "subsystem": "persistent-world"}
 
 
@@ -105,7 +131,7 @@ def persistent_world_policy_snapshot() -> dict[str, Any]:
             "additive_rule": "new semantic object types are additive WorldStore objects",
             "rewrite_rule": "in-place reinterpretation of historical objects is forbidden",
         },
-        "search_rule": "deterministic derived scan; search rank or text match creates no evidence authority",
+        "search_rule": "deterministic derived scan; ordering metadata states whether the source has chronology or only lexical identity order",
         "import_authority_rule": "foreign source object types are never materialized as live local Council/governance/runtime objects by world.import",
         "boundaries": [
             "RELATION != FACT",
@@ -322,6 +348,14 @@ class PersistentWorldService:
             refs.append(object_ref)
         return refs, "lexical_object_ref", None
 
+    @staticmethod
+    def _scan_refs(refs: Sequence[str], order_basis: str) -> tuple[list[str], str]:
+        if order_basis in {"continuity_commit_order", "memory_insertion_order"}:
+            return list(reversed(refs)), "newest_first"
+        if order_basis == "lexical_object_ref":
+            return list(reversed(refs)), "lexical_descending_object_ref"
+        raise _fail("world_persistence_invalid", f"unsupported order basis: {order_basis}")
+
     def _inspect(self, object_ref: str) -> WorldObject:
         _validate_object_ref(object_ref, field="object_ref")
         try:
@@ -338,6 +372,57 @@ class PersistentWorldService:
                 "world_persistence_invalid_lineage",
                 f"{field} must reference a {expected_type} object",
             )
+        return obj
+
+    def _validate_hypothesis_record(self, obj: WorldObject, *, field: str) -> WorldObject:
+        if obj.object_type != WORLD_HYPOTHESIS_OBJECT_TYPE:
+            raise _fail("world_persistence_invalid_lineage", f"{field} must reference a {WORLD_HYPOTHESIS_OBJECT_TYPE} object")
+        if obj.provenance != _EVENT_PROVENANCE:
+            raise _fail("world_persistence_invalid_lineage", f"{field} does not have alpha8 persistent-world provenance")
+        payload = obj.payload
+        if set(payload) != _HYPOTHESIS_FIELDS or payload.get("schema") != PERSISTENT_WORLD_POLICY_ID:
+            raise _fail("world_persistence_invalid_lineage", f"{field} is not an alpha8 hypothesis record")
+        _bounded_text(payload.get("statement"), field="hypothesis statement")
+        if payload.get("state") not in _HYPOTHESIS_STATES:
+            raise _fail("world_persistence_invalid_lineage", f"{field} has an invalid hypothesis state")
+        evidence_refs = _validate_ref_list(payload.get("evidence_refs"), field="hypothesis evidence_refs")
+        self._require_existing_refs(evidence_refs)
+        previous = payload.get("previous_hypothesis_ref")
+        if previous is not None:
+            _validate_object_ref(previous, field="previous_hypothesis_ref")
+        if payload.get("state_semantics") != "workflow_label_not_truth_classification" or payload.get("authority_effect") != "none":
+            raise _fail("world_persistence_invalid_lineage", f"{field} violates the alpha8 hypothesis boundary")
+        return obj
+
+    def _validate_experiment_record(self, obj: WorldObject, *, field: str) -> WorldObject:
+        if obj.object_type != WORLD_EXPERIMENT_OBJECT_TYPE:
+            raise _fail("world_persistence_invalid_lineage", f"{field} must reference a {WORLD_EXPERIMENT_OBJECT_TYPE} object")
+        if obj.provenance != _EVENT_PROVENANCE:
+            raise _fail("world_persistence_invalid_lineage", f"{field} does not have alpha8 persistent-world provenance")
+        payload = obj.payload
+        if set(payload) != _EXPERIMENT_FIELDS or payload.get("schema") != PERSISTENT_WORLD_POLICY_ID:
+            raise _fail("world_persistence_invalid_lineage", f"{field} is not an alpha8 experiment record")
+        _bounded_text(payload.get("title"), field="experiment title")
+        _bounded_text(payload.get("method"), field="experiment method")
+        stage = payload.get("stage")
+        if stage not in _EXPERIMENT_STAGES:
+            raise _fail("world_persistence_invalid_lineage", f"{field} has an invalid experiment stage")
+        hypothesis_refs = _validate_ref_list(payload.get("hypothesis_refs"), field="experiment hypothesis_refs")
+        input_refs = _validate_ref_list(payload.get("input_refs"), field="experiment input_refs")
+        result_refs = _validate_ref_list(payload.get("result_refs"), field="experiment result_refs")
+        for hypothesis_ref in hypothesis_refs:
+            self._validate_hypothesis_record(self._inspect(hypothesis_ref), field="experiment hypothesis_refs")
+        self._require_existing_refs(input_refs)
+        self._require_existing_refs(result_refs)
+        previous = payload.get("previous_experiment_ref")
+        if previous is not None:
+            _validate_object_ref(previous, field="previous_experiment_ref")
+        if stage == "PLANNED" and result_refs:
+            raise _fail("world_persistence_invalid_lineage", f"{field} has results while still PLANNED")
+        if stage in {"OBSERVED", "CLOSED"} and not result_refs:
+            raise _fail("world_persistence_invalid_lineage", f"{field} lacks required result_refs")
+        if payload.get("claim_boundary") != "recorded_world_lineage_not_empirical_truth" or payload.get("authority_effect") != "none":
+            raise _fail("world_persistence_invalid_lineage", f"{field} violates the alpha8 experiment boundary")
         return obj
 
     def _require_existing_refs(self, refs: Sequence[str]) -> None:
@@ -360,7 +445,12 @@ class PersistentWorldService:
         source_ref = _validate_object_ref(source_ref, field="source_ref")
         target_ref = _validate_object_ref(target_ref, field="target_ref")
         self._require_existing_refs([source_ref, target_ref])
-        normalized_metadata = copy.deepcopy(dict(metadata or {}))
+        if metadata is None:
+            normalized_metadata: dict[str, Any] = {}
+        elif not isinstance(metadata, Mapping):
+            raise _fail("world_relation_invalid", "relation metadata must be a JSON object when supplied")
+        else:
+            normalized_metadata = copy.deepcopy(dict(metadata))
         _finite_json(normalized_metadata, field="relation metadata")
         if len(canonical_json(normalized_metadata).encode("utf-8")) > MAX_RELATION_METADATA_BYTES:
             raise _fail("world_persistence_limit", "relation metadata exceeds the admitted byte limit")
@@ -393,22 +483,15 @@ class PersistentWorldService:
         self._require_existing_refs(normalized_evidence)
         if previous_hypothesis_ref is None:
             if state != "PROPOSED":
-                raise _fail(
-                    "world_hypothesis_invalid",
-                    "initial hypothesis state must be PROPOSED",
-                )
+                raise _fail("world_hypothesis_invalid", "initial hypothesis state must be PROPOSED")
         else:
-            previous_hypothesis_ref = _validate_object_ref(
-                previous_hypothesis_ref,
+            previous_hypothesis_ref = _validate_object_ref(previous_hypothesis_ref, field="previous_hypothesis_ref")
+            previous = self._validate_hypothesis_record(
+                self._inspect(previous_hypothesis_ref),
                 field="previous_hypothesis_ref",
             )
-            previous = self._inspect_expected_type(
-                previous_hypothesis_ref,
-                WORLD_HYPOTHESIS_OBJECT_TYPE,
-                field="previous_hypothesis_ref",
-            )
-            previous_state = previous.payload.get("state")
-            if previous_state not in _HYPOTHESIS_TRANSITIONS or state not in _HYPOTHESIS_TRANSITIONS[previous_state]:
+            previous_state = previous.payload["state"]
+            if state not in _HYPOTHESIS_TRANSITIONS[previous_state]:
                 raise _fail(
                     "world_hypothesis_invalid",
                     f"hypothesis state transition {previous_state!r} -> {state!r} is not admitted",
@@ -446,11 +529,7 @@ class PersistentWorldService:
         normalized_inputs = _validate_ref_list(input_refs, field="input_refs")
         normalized_results = _validate_ref_list(result_refs, field="result_refs")
         for hypothesis_ref in normalized_hypotheses:
-            self._inspect_expected_type(
-                hypothesis_ref,
-                WORLD_HYPOTHESIS_OBJECT_TYPE,
-                field="hypothesis_refs",
-            )
+            self._validate_hypothesis_record(self._inspect(hypothesis_ref), field="hypothesis_refs")
         self._require_existing_refs(normalized_inputs)
         self._require_existing_refs(normalized_results)
 
@@ -460,26 +539,19 @@ class PersistentWorldService:
             if normalized_results:
                 raise _fail("world_experiment_invalid", "PLANNED experiments cannot already contain result_refs")
         else:
-            previous_experiment_ref = _validate_object_ref(
-                previous_experiment_ref,
+            previous_experiment_ref = _validate_object_ref(previous_experiment_ref, field="previous_experiment_ref")
+            previous = self._validate_experiment_record(
+                self._inspect(previous_experiment_ref),
                 field="previous_experiment_ref",
             )
-            previous = self._inspect_expected_type(
-                previous_experiment_ref,
-                WORLD_EXPERIMENT_OBJECT_TYPE,
-                field="previous_experiment_ref",
-            )
-            previous_stage = previous.payload.get("stage")
-            if previous_stage not in _EXPERIMENT_TRANSITIONS or stage not in _EXPERIMENT_TRANSITIONS[previous_stage]:
+            previous_stage = previous.payload["stage"]
+            if stage not in _EXPERIMENT_TRANSITIONS[previous_stage]:
                 raise _fail(
                     "world_experiment_invalid",
                     f"experiment stage transition {previous_stage!r} -> {stage!r} is not admitted",
                 )
             if stage in {"OBSERVED", "CLOSED"} and not normalized_results:
-                raise _fail(
-                    "world_experiment_invalid",
-                    f"{stage} experiment records require at least one result_ref",
-                )
+                raise _fail("world_experiment_invalid", f"{stage} experiment records require at least one result_ref")
             if stage == "PLANNED" and normalized_results:
                 raise _fail("world_experiment_invalid", "PLANNED experiments cannot contain result_refs")
 
@@ -513,17 +585,13 @@ class PersistentWorldService:
         if query is not None:
             query = _bounded_text(query, field="query", allow_empty=True).casefold()
         refs, order_basis, head_ref = self._ordered_refs()
+        scan_refs, result_order = self._scan_refs(refs, order_basis)
         matches: list[dict[str, Any]] = []
-        for object_ref in reversed(refs):
+        for object_ref in scan_refs:
             obj = self._inspect(object_ref)
             if obj.object_type != object_type:
                 continue
-            rejected = False
-            for field, expected in exact_filters.items():
-                if expected is not None and obj.payload.get(field) != expected:
-                    rejected = True
-                    break
-            if rejected:
+            if any(expected is not None and obj.payload.get(field) != expected for field, expected in exact_filters.items()):
                 continue
             if query and query not in canonical_json(obj.payload).casefold():
                 continue
@@ -534,7 +602,7 @@ class PersistentWorldService:
             "matches": matches,
             "returned": len(matches),
             "limit": limit,
-            "order": "newest_first",
+            "order": result_order,
             "order_basis": order_basis,
             "source_head_ref": head_ref,
             "search_is_evidence": False,
@@ -562,20 +630,10 @@ class PersistentWorldService:
             object_type=WORLD_RELATION_OBJECT_TYPE,
             query=query,
             limit=limit,
-            exact_filters={
-                "relation_type": relation_type,
-                "source_ref": source_ref,
-                "target_ref": target_ref,
-            },
+            exact_filters={"relation_type": relation_type, "source_ref": source_ref, "target_ref": target_ref},
         )
 
-    def search_hypotheses(
-        self,
-        *,
-        query: str | None = None,
-        state: str | None = None,
-        limit: int = 20,
-    ) -> dict[str, Any]:
+    def search_hypotheses(self, *, query: str | None = None, state: str | None = None, limit: int = 20) -> dict[str, Any]:
         if state is not None and state not in _HYPOTHESIS_STATES:
             raise _fail("world_hypothesis_invalid", "hypothesis state filter is invalid")
         return self._search_objects(
@@ -585,13 +643,7 @@ class PersistentWorldService:
             exact_filters={"state": state},
         )
 
-    def search_experiments(
-        self,
-        *,
-        query: str | None = None,
-        stage: str | None = None,
-        limit: int = 20,
-    ) -> dict[str, Any]:
+    def search_experiments(self, *, query: str | None = None, stage: str | None = None, limit: int = 20) -> dict[str, Any]:
         if stage is not None and stage not in _EXPERIMENT_STAGES:
             raise _fail("world_experiment_invalid", "experiment stage filter is invalid")
         return self._search_objects(
@@ -618,9 +670,10 @@ class PersistentWorldService:
         if member_id is not None:
             member_id = _bounded_text(member_id, field="member_id")
         refs, order_basis, head_ref = self._ordered_refs()
+        scan_refs, result_order = self._scan_refs(refs, order_basis)
         matches: list[dict[str, Any]] = []
         sessions_scanned = 0
-        for object_ref in reversed(refs):
+        for object_ref in scan_refs:
             obj = self._inspect(object_ref)
             if obj.object_type != "council_session":
                 continue
@@ -641,10 +694,7 @@ class PersistentWorldService:
                     continue
                 if member_id is not None and report_member != member_id:
                     continue
-                if query and (
-                    not isinstance(rationale, str)
-                    or query not in rationale.casefold()
-                ):
+                if query and (not isinstance(rationale, str) or query not in rationale.casefold()):
                     continue
                 matches.append(
                     {
@@ -665,7 +715,7 @@ class PersistentWorldService:
                         "matches": matches,
                         "returned": len(matches),
                         "sessions_scanned": sessions_scanned,
-                        "order": "newest_first",
+                        "order": result_order,
                         "order_basis": order_basis,
                         "source_head_ref": head_ref,
                         "search_is_evidence": False,
@@ -675,7 +725,7 @@ class PersistentWorldService:
             "matches": matches,
             "returned": len(matches),
             "sessions_scanned": sessions_scanned,
-            "order": "newest_first",
+            "order": result_order,
             "order_basis": order_basis,
             "source_head_ref": head_ref,
             "search_is_evidence": False,
@@ -686,9 +736,10 @@ class PersistentWorldService:
         if type(limit) is not int or not 1 <= limit <= MAX_SEARCH_RESULTS:
             raise _fail("world_persistence_limit", f"limit must be an integer in [1, {MAX_SEARCH_RESULTS}]")
         refs, order_basis, head_ref = self._ordered_refs()
+        scan_refs, result_order = self._scan_refs(refs, order_basis)
         events: list[dict[str, Any]] = []
         presence_types = set(WORLD_LATTICE_RESERVED_OBJECT_TYPES)
-        for object_ref in reversed(refs):
+        for object_ref in scan_refs:
             obj = self._inspect(object_ref)
             if obj.object_type == "council_session":
                 world_mode = obj.payload.get("world_mode")
@@ -721,7 +772,7 @@ class PersistentWorldService:
         return {
             "events": events,
             "returned": len(events),
-            "order": "newest_first",
+            "order": result_order,
             "order_basis": order_basis,
             "source_head_ref": head_ref,
             "geometry_is_semantic_authority": False,
@@ -795,26 +846,38 @@ class PersistentWorldService:
             source_ref = obj.payload.get("source_object_ref")
             source_object = obj.payload.get("source_object")
             if (
-                isinstance(source_ref, str)
-                and _OBJECT_REF_RE.fullmatch(source_ref) is not None
-                and isinstance(source_object, Mapping)
+                not isinstance(source_ref, str)
+                or _OBJECT_REF_RE.fullmatch(source_ref) is None
+                or not isinstance(source_object, Mapping)
             ):
-                wrappers[source_ref] = (obj.object_id, copy.deepcopy(dict(source_object)))
+                continue
+            rendered = copy.deepcopy(dict(source_object))
+            previous = wrappers.get(source_ref)
+            if previous is not None and previous[1] != rendered:
+                raise _fail(
+                    "world_export_invalid",
+                    "local world contains conflicting import wrappers for the same source object",
+                )
+            wrappers[source_ref] = (obj.object_id, rendered)
         return wrappers
 
     def import_bundle(self, bundle: Mapping[str, Any]) -> dict[str, Any]:
         verification = validate_world_export_bundle(bundle)
         parsed = [_world_object_from_raw(raw) for raw in bundle["objects"]]
+
+        # Full semantic/security preflight must complete before append-only
+        # history is touched. This includes every string-bearing source field,
+        # not only payload/provenance.
         for obj in parsed:
+            self._reject_secret_material(obj.object_type)
             self._reject_secret_material(obj.payload)
             self._reject_secret_material(obj.provenance)
 
         recognized, _, _ = self._ordered_refs()
         recognized_set = set(recognized)
         existing_wrappers = self._existing_import_wrappers(recognized)
-        already_local_refs: list[str] = []
-        quarantined: list[dict[str, str]] = []
 
+        plan: list[tuple[str, WorldObject, str | None]] = []
         for obj in parsed:
             if obj.object_id in recognized_set:
                 current = self._inspect(obj.object_id)
@@ -823,7 +886,7 @@ class PersistentWorldService:
                         "world_export_invalid",
                         "recognized object identity resolves to different canonical content",
                     )
-                already_local_refs.append(obj.object_id)
+                plan.append(("already_local", obj, None))
                 continue
 
             existing = existing_wrappers.get(obj.object_id)
@@ -834,6 +897,21 @@ class PersistentWorldService:
                         "world_export_invalid",
                         "existing import wrapper does not preserve the supplied source object",
                     )
+                plan.append(("reuse_wrapper", obj, wrapper_ref))
+                continue
+
+            plan.append(("create_wrapper", obj, None))
+
+        # Only after every recognized object and every pre-existing wrapper has
+        # been checked do we create any new append-only records.
+        already_local_refs: list[str] = []
+        quarantined: list[dict[str, str]] = []
+        for action, obj, wrapper_ref in plan:
+            if action == "already_local":
+                already_local_refs.append(obj.object_id)
+                continue
+            if action == "reuse_wrapper":
+                assert wrapper_ref is not None
                 quarantined.append({"source_ref": obj.object_id, "wrapper_ref": wrapper_ref})
                 continue
 
@@ -849,7 +927,6 @@ class PersistentWorldService:
                 copy.deepcopy(_EVENT_PROVENANCE),
             )
             quarantined.append({"source_ref": obj.object_id, "wrapper_ref": wrapper.object_id})
-            existing_wrappers[obj.object_id] = (wrapper.object_id, obj.as_dict())
 
         receipt = self.world.create_object(
             WORLD_IMPORT_RECEIPT_OBJECT_TYPE,
