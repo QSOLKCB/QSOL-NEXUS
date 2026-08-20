@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import copy
 import importlib.util
 import json
 from pathlib import Path
+import re
 import sys
 import tomllib
 import unittest
@@ -14,185 +14,209 @@ from nexus_runtime import PROTOCOL_VERSION, RUNTIME_VERSION
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _load_extension_hardener():
-    path = ROOT / "tools" / "nexus_extension_hardening.py"
-    spec = importlib.util.spec_from_file_location("nexus_extension_hardening_test_target", path)
+def _load_release_runner():
+    path = ROOT / "tools" / "nexus_2_1_1_release_candidate.py"
+    spec = importlib.util.spec_from_file_location("nexus_2_1_1_release_candidate_test_target", path)
     if spec is None or spec.loader is None:
-        raise RuntimeError("could not load extension hardening runner")
+        raise RuntimeError("could not load NEXUS 2.1.1 release-candidate runner")
     module = importlib.util.module_from_spec(spec)
     sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
 
-EXTENSION_HARDENER = _load_extension_hardener()
+RELEASE_RUNNER = _load_release_runner()
 
 
-class NEXUS20ReleaseCandidateTests(unittest.TestCase):
-    def test_intended_stable_version_is_aligned_without_self_declaring_release(self) -> None:
-        pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        cargo = tomllib.loads((ROOT / "tui" / "Cargo.toml").read_text(encoding="utf-8"))
-        manifest = json.loads((ROOT / "README4AI.md").read_text(encoding="utf-8"))
+class HistoricalNEXUS20ReleaseTests(unittest.TestCase):
+    def test_v2_0_release_metadata_remains_historical_and_frozen(self) -> None:
         candidate = json.loads((ROOT / "release" / "release_candidate.json").read_text(encoding="utf-8"))
         matrix = json.loads((ROOT / "release" / "hardening_matrix.json").read_text(encoding="utf-8"))
+        identity = (ROOT / "publication" / "nexus-2.0-formalization" / "IDENTITY.env").read_text(encoding="utf-8")
 
-        self.assertEqual(PROTOCOL_VERSION, "nexus/0.14")
-        self.assertEqual(RUNTIME_VERSION, "2.0.0")
-        self.assertEqual(pyproject["project"]["version"], "2.0.0")
-        self.assertEqual(cargo["package"]["version"], "2.0.0")
-        self.assertEqual(manifest["release_identity"]["runtime"], "2.0.0")
-        self.assertEqual(manifest["release_identity"]["python_package"], "2.0.0")
-        self.assertEqual(manifest["release_identity"]["rust_tui"], "2.0.0")
-        self.assertEqual(manifest["release_identity"]["release_posture"], "release_candidate")
-        self.assertFalse(manifest["release_identity"]["stable_2_0"])
-        self.assertFalse(manifest["stable_2_0"]["declared"])
-        self.assertFalse(candidate["stable_release"])
-        self.assertFalse(matrix["stable_release"])
+        self.assertEqual(candidate["target_version"], "2.0.0")
         self.assertEqual(candidate["target_tag"], "v2.0.0")
-
-    def test_release_candidate_is_exactly_post_wall_and_preserves_future_formalization_sequence(self) -> None:
-        candidate = json.loads((ROOT / "release" / "release_candidate.json").read_text(encoding="utf-8"))
-        sequence = (ROOT / "docs" / "RELEASE_SEQUENCE.md").read_text(encoding="utf-8")
-        roadmap = (ROOT / "ROADMAP.md").read_text(encoding="utf-8")
-        self.assertEqual(candidate["feature_surface_through_pr"], 50)
-        self.assertEqual(candidate["scope_through_pr"], 51)
-        self.assertEqual(candidate["base_feature_merge"], "1bc078ed266e7fac02d6f905f8ddd0c9061c1d8b")
         self.assertEqual(candidate["candidate_pr"], 52)
-        self.assertIn("PR #50 — The BBS Wall — MERGED", sequence)
-        self.assertIn("PR #53 — Lean 4 Formal Verification", sequence)
-        self.assertIn("PR #54 — Formalization + Reproducibility + Zenodo Publication", sequence)
-        self.assertIn("## PR #53 — Lean 4 Formal Verification", roadmap)
-        self.assertIn("## PR #54 — Formalization + Reproducibility + Zenodo Publication", roadmap)
-        self.assertIn("LEAN 4 FORMAL VERIFICATION - PR #53", roadmap)
-        self.assertIn("ZENODO - PR #54", roadmap)
-
-    def test_canonical_docs_do_not_retain_known_alpha_architecture_fossils(self) -> None:
-        architecture = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
-        security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
-        threat = (ROOT / "THREAT_MODEL.md").read_text(encoding="utf-8")
-        claims = (ROOT / "CLAIMS.md").read_text(encoding="utf-8")
-        citation = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
-
-        self.assertNotIn("future RUST TUI", architecture)
-        self.assertNotIn("Rust CLI/TUI (future)", architecture)
-        self.assertNotIn("xAI is the first fixed-destination remote adapter", architecture)
-        self.assertNotIn("xAI is the first admitted remote adapter", security)
-        self.assertNotIn("other remote providers   not implemented", security)
-        self.assertIn("api.openai.com", security)
-        self.assertIn("api.anthropic.com", security)
-        self.assertIn("generativelanguage.googleapis.com", security)
-        self.assertIn("api.groq.com", security)
-        self.assertIn("api.together.ai", security)
-        self.assertNotIn("remote providers other than xAI", threat)
-        self.assertNotIn("when the executable protocol is implemented", claims)
-        self.assertNotIn("version: 2.0.0-alpha0", citation)
-        self.assertNotIn("documentation-only", citation)
-        self.assertIn("version: 2.0.0", citation)
-        self.assertIn("## BBS Wall", architecture)
-        self.assertIn("### T54 — Release paperwork declares stable without the tested stable head", threat)
-
-    def test_release_matrix_is_final_rc_scoped_through_wall_and_covers_contract(self) -> None:
-        matrix = json.loads((ROOT / "release" / "hardening_matrix.json").read_text(encoding="utf-8"))
+        self.assertFalse(candidate["stable_release"])
+        self.assertEqual(matrix["target_version"], "2.0.0")
         self.assertEqual(matrix["milestone"], "PR #52")
+        self.assertFalse(matrix["stable_release"])
+        self.assertIn(
+            "NEXUS_STABLE_COMMIT=cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a",
+            identity,
+        )
+        self.assertIn("ZENODO_DOI=10.5281/zenodo.21895577", identity)
+
+    def test_v2_0_historical_hardening_inventory_remains_pinned(self) -> None:
+        matrix = json.loads((ROOT / "release" / "hardening_matrix.json").read_text(encoding="utf-8"))
         self.assertEqual(matrix["profile"], "final_release_candidate")
         self.assertEqual(matrix["scope_through_pr"], 51)
-        self.assertEqual(matrix["target_version"], "2.0.0")
-        self.assertFalse(matrix["stable_release"])
+        self.assertEqual(matrix["expected_python_test_files"], 83)
         release_gate = next(g for g in matrix["gates"] if g["id"] == "release_composition")
         self.assertIn("test_wall*.py", release_gate["patterns"])
         self.assertIn("test_release_candidate.py", release_gate["patterns"])
         self.assertIn("test_release_upgrade_rehearsal.py", release_gate["patterns"])
-        rehearsal_ids = {item["id"] for item in matrix["rehearsals"]}
-        self.assertIn("representative_pre_beta_upgrade_ark_round_trip", rehearsal_ids)
-        self.assertEqual(set(matrix["external_audit_closure"]["finding_ids"]), {f"R{i}" for i in range(1, 13)})
-
-    def test_release_docs_and_wall_claims_are_coupled(self) -> None:
-        readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        ai = json.loads((ROOT / "README4AI.md").read_text(encoding="utf-8"))
-        notes = (ROOT / "docs" / "RELEASE_NOTES_2.0.0.md").read_text(encoding="utf-8")
-        checklist = (ROOT / "docs" / "RELEASE_CHECKLIST.md").read_text(encoding="utf-8")
-        self.assertIn("status:          release candidate", readme)
-        self.assertNotIn("broader instrument layer, persistent-world/migration hardening", readme)
-        self.assertIn("exact merged #52 head after the complete release-candidate matrix", readme)
-        self.assertEqual(ai["bbs_wall"]["evidence_effect"], "none")
-        self.assertEqual(ai["bbs_wall"]["authority_effect"], "none")
-        self.assertIn("social memory", notes)
-        self.assertIn("no unresolved substantive release-blocking review thread", checklist)
+        self.assertEqual(
+            set(matrix["external_audit_closure"]["finding_ids"]),
+            {f"R{i}" for i in range(1, 13)},
+        )
 
 
-class PostStableExtensionHardeningTests(unittest.TestCase):
+class NEXUS211ReleaseCandidateTests(unittest.TestCase):
     @staticmethod
     def _candidate() -> dict:
-        return json.loads((ROOT / "release" / "post_stable_extension_candidate.json").read_text(encoding="utf-8"))
+        return json.loads((ROOT / "release" / "nexus_2_1_1_candidate.json").read_text(encoding="utf-8"))
 
     @staticmethod
     def _matrix() -> dict:
-        return json.loads((ROOT / "release" / "post_stable_extension_matrix.json").read_text(encoding="utf-8"))
+        return json.loads((ROOT / "release" / "nexus_2_1_1_matrix.json").read_text(encoding="utf-8"))
 
-    def test_frozen_publication_identity_is_exact_in_candidate_and_matrix(self) -> None:
+    @staticmethod
+    def _manifest() -> dict:
+        return json.loads((ROOT / "README4AI.md").read_text(encoding="utf-8"))
+
+    def test_current_executable_release_identity_is_aligned(self) -> None:
+        pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+        cargo = tomllib.loads((ROOT / "tui" / "Cargo.toml").read_text(encoding="utf-8"))
+        lock = tomllib.loads((ROOT / "tui" / "Cargo.lock").read_text(encoding="utf-8"))
+        manifest = self._manifest()
+        citation = (ROOT / "CITATION.cff").read_text(encoding="utf-8")
+
+        self.assertEqual(PROTOCOL_VERSION, "nexus/0.15")
+        self.assertEqual(RUNTIME_VERSION, "2.1.1")
+        self.assertEqual(pyproject["project"]["version"], "2.1.1")
+        self.assertEqual(cargo["package"]["version"], "2.1.1")
+        local_lock = [
+            package for package in lock["package"] if package.get("name") == "nexus-irc-tui"
+        ]
+        self.assertEqual(len(local_lock), 1)
+        self.assertEqual(local_lock[0]["version"], "2.1.1")
+        self.assertEqual(manifest["release_identity"]["protocol"], "nexus/0.15")
+        self.assertEqual(manifest["release_identity"]["runtime"], "2.1.1")
+        self.assertEqual(manifest["release_identity"]["python_package"], "2.1.1")
+        self.assertEqual(manifest["release_identity"]["rust_tui"], "2.1.1")
+        self.assertEqual(
+            manifest["release_identity"]["release_posture"],
+            "release_candidate_2_1_1",
+        )
+        self.assertTrue(manifest["release_identity"]["stable_2_0"])
+        self.assertRegex(citation, r"(?m)^version:\s*2\.1\.1\s*$")
+
+    def test_candidate_preserves_historical_tags_and_pr60_provenance(self) -> None:
         candidate = self._candidate()
+        self.assertEqual(candidate["candidate_pr"], 61)
+        self.assertEqual(candidate["target_version"], "2.1.1")
+        self.assertEqual(candidate["target_tag"], "v2.1.1")
+        self.assertEqual(candidate["protocol"], "nexus/0.15")
+        self.assertFalse(candidate["stable_release"])
+        self.assertFalse(candidate["release_authority"])
+        self.assertEqual(
+            candidate["candidate_base"]["merge_commit"],
+            "80cda46e614f44b47861471cb329e29a348cab43",
+        )
+        historical = candidate["historical_v2_1_0_tag"]
+        self.assertEqual(
+            historical["commit"],
+            "839303ea512631e527073682343341742cead975",
+        )
+        self.assertEqual(historical["move_or_rewrite"], "forbidden")
+        self.assertFalse(historical["release_target"])
+        hardening = candidate["extension_hardening"]
+        self.assertEqual(hardening["artifact_id"], 9421970922)
+        self.assertEqual(
+            hardening["artifact_digest"],
+            "sha256:16674e62495ed5b66f69269ec2e5fb9cdb300b39bf2b45212f00085daa83ffbb",
+        )
+        self.assertFalse(candidate["empirical_gates"]["blocking_for_2_1_1_software_release"])
+        self.assertFalse(candidate["empirical_gates"]["live_success_claimed_by_ci"])
+
+    def test_protocol_bump_is_explicitly_additive_not_breaking(self) -> None:
+        candidate = self._candidate()
+        change = candidate["protocol_change"]
+        self.assertEqual(change["from"], "nexus/0.14")
+        self.assertEqual(change["to"], "nexus/0.15")
+        self.assertEqual(change["classification"], "additive_minor_protocol_surface")
+        self.assertFalse(change["breaking_change_claimed"])
+
+    def test_release_matrix_requires_identity_history_rust_and_integrity_gates(self) -> None:
         matrix = self._matrix()
-        expected = EXTENSION_HARDENER.EXPECTED_STABLE_BASELINE
-        self.assertEqual(candidate["stable_baseline"], expected)
-        self.assertEqual(matrix["stable_baseline"], expected)
-        EXTENSION_HARDENER._audit_candidate(candidate)
-        EXTENSION_HARDENER._audit_matrix(matrix, candidate)
+        self.assertEqual(matrix["candidate_pr"], 61)
+        self.assertEqual(matrix["target_version"], "2.1.1")
+        self.assertEqual(matrix["target_tag"], "v2.1.1")
+        self.assertEqual(matrix["protocol"], "nexus/0.15")
+        self.assertEqual(matrix["expected_python_test_files"], 83)
+        gate_ids = {gate["id"] for gate in matrix["required_gates"]}
+        self.assertEqual(
+            gate_ids,
+            {
+                "release_identity",
+                "post_stable_extension",
+                "historical_release_regression",
+                "rust_release_surface",
+                "candidate_integrity",
+            },
+        )
+        integrity = next(g for g in matrix["required_gates"] if g["id"] == "candidate_integrity")
+        self.assertIn("candidate_tree_clean_after", integrity["checks"])
+        self.assertIn("candidate_identity_unchanged", integrity["checks"])
+        rust = next(g for g in matrix["required_gates"] if g["id"] == "rust_release_surface")
+        self.assertIn("cargo_test_locked", rust["checks"])
+        self.assertIn("cargo_check_locked", rust["checks"])
 
-        for field, bad_value in (
-            ("formalization_pr", 530),
-            ("publication_pr", 540),
-            ("publication_doi", "10.5281/zenodo.00000000"),
-            ("immutable", False),
-        ):
-            with self.subTest(field=field):
-                bad_candidate = copy.deepcopy(candidate)
-                bad_candidate["stable_baseline"][field] = bad_value
-                with self.assertRaisesRegex(ValueError, "frozen stable/publication identity"):
-                    EXTENSION_HARDENER._audit_candidate(bad_candidate)
+    def test_human_and_machine_release_docs_record_tag_archaeology_and_gate(self) -> None:
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        manifest = self._manifest()
+        notes = (ROOT / "docs" / "RELEASE_NOTES_2.1.1.md").read_text(encoding="utf-8")
+        compatibility = (ROOT / "docs" / "COMPATIBILITY.md").read_text(encoding="utf-8")
+        sequence = (ROOT / "docs" / "RELEASE_SEQUENCE.md").read_text(encoding="utf-8")
 
-                bad_matrix = copy.deepcopy(matrix)
-                bad_matrix["stable_baseline"][field] = bad_value
-                with self.assertRaisesRegex(ValueError, "frozen stable/publication identity"):
-                    EXTENSION_HARDENER._audit_matrix(bad_matrix, candidate)
+        for text in (readme, notes, compatibility, sequence):
+            self.assertIn("v2.1.0", text)
+            self.assertIn("839303ea512631e527073682343341742cead975", text)
+            self.assertIn("v2.1.1", text)
+        self.assertIn("tag not created by this PR", readme)
+        self.assertIn("Only the exact reviewed-and-green merged PR #61 commit", notes)
+        self.assertEqual(
+            manifest["post_stable_extension"]["v2_1_0_tag"]["move"],
+            "forbidden",
+        )
+        self.assertFalse(manifest["release_candidate_2_1_1"]["tag_created_in_pr"])
+        self.assertFalse(manifest["release_candidate_2_1_1"]["release_authority"])
 
-    def test_post_run_tracked_mutation_fails_closed(self) -> None:
-        with mock.patch.object(EXTENSION_HARDENER, "_tracked_status", return_value=" M tui/Cargo.lock"):
-            with self.assertRaisesRegex(ValueError, "mutated tracked candidate bytes"):
-                EXTENSION_HARDENER._candidate_tree_unchanged()
+    def test_release_runner_is_exact_commit_lockfile_strict_and_non_authoritative(self) -> None:
+        source = (ROOT / "tools" / "nexus_2_1_1_release_candidate.py").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "nexus-2.1.1-release-candidate.yml").read_text(encoding="utf-8")
+        self.assertIn('TARGET_TAG = "v2.1.1"', source)
+        self.assertIn('HISTORICAL_TAG = "v2.1.0"', source)
+        self.assertIn('"test", "--locked"', source)
+        self.assertIn('"check", "--locked"', source)
+        self.assertIn('"release_authority": False', source)
+        self.assertIn('"tag_created": False', source)
+        self.assertIn('--expect-commit "$GITHUB_SHA"', workflow)
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("fetch-tags: true", workflow)
+        self.assertIn("PYTHONDONTWRITEBYTECODE: '1'", workflow)
 
-    def test_post_run_head_or_tree_change_fails_closed(self) -> None:
-        initial_commit = "a" * 40
-        initial_tree = "b" * 40
+    def test_release_runner_rejects_dirty_post_run_tree(self) -> None:
+        with mock.patch.object(RELEASE_RUNNER, "_tracked_status", return_value=" M tui/Cargo.lock"):
+            with self.assertRaisesRegex(ValueError, "tracked candidate bytes differ from HEAD"):
+                RELEASE_RUNNER._tree_clean("after")
 
-        def changed_head(*args: str) -> str:
-            if args == ("rev-parse", "HEAD"):
-                return "c" * 40
-            if args == ("rev-parse", "HEAD^{tree}"):
-                return initial_tree
-            raise AssertionError(args)
+    def test_release_runner_rejects_commit_or_tree_drift(self) -> None:
+        original_commit = "a" * 40
+        original_tree = "b" * 40
+        with mock.patch.object(RELEASE_RUNNER, "_identity", return_value=("c" * 40, original_tree)):
+            with self.assertRaisesRegex(ValueError, "candidate HEAD changed"):
+                RELEASE_RUNNER._identity_unchanged(original_commit, original_tree, original_commit)
+        with mock.patch.object(RELEASE_RUNNER, "_identity", return_value=(original_commit, "d" * 40)):
+            with self.assertRaisesRegex(ValueError, "candidate identity changed"):
+                RELEASE_RUNNER._identity_unchanged(original_commit, original_tree, original_commit)
 
-        with mock.patch.object(EXTENSION_HARDENER, "_git", side_effect=changed_head):
-            with self.assertRaisesRegex(ValueError, "HEAD changed during hardening"):
-                EXTENSION_HARDENER._candidate_identity_unchanged(initial_commit, initial_tree, initial_commit)
-
-        def changed_tree(*args: str) -> str:
-            if args == ("rev-parse", "HEAD"):
-                return initial_commit
-            if args == ("rev-parse", "HEAD^{tree}"):
-                return "d" * 40
-            raise AssertionError(args)
-
-        with mock.patch.object(EXTENSION_HARDENER, "_git", side_effect=changed_tree):
-            with self.assertRaisesRegex(ValueError, "committed tree changed during hardening"):
-                EXTENSION_HARDENER._candidate_identity_unchanged(initial_commit, initial_tree, initial_commit)
-
-    def test_rust_hardening_is_lockfile_strict_and_post_run_checks_are_required(self) -> None:
-        source = (ROOT / "tools" / "nexus_extension_hardening.py").read_text(encoding="utf-8")
-        self.assertIn('"test",\n                "--locked",', source)
-        matrix = self._matrix()
-        release_gate = next(gate for gate in matrix["gates"] if gate["id"] == "release_composition")
-        self.assertIn("candidate_tree_unchanged", release_gate["runner_checks"])
-        self.assertIn("candidate_identity_unchanged", release_gate["runner_checks"])
+    def test_extension_hardening_workflow_verifies_historical_pr60_after_version_bump(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "extension-hardening.yml").read_text(encoding="utf-8")
+        self.assertIn("git worktree add --detach", workflow)
+        self.assertIn("80cda46e614f44b47861471cb329e29a348cab43", workflow)
+        self.assertIn("historical-pr60-merge", workflow)
 
 
 if __name__ == "__main__":
