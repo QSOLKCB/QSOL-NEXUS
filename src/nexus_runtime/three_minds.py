@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
 from typing import Any, Iterable, Protocol
 
+from .instruments import run_instrument, verify_instrument_receipt
 from .three_minds_instrument import (
     DEFAULT_INTEGER_VALUES,
     INTEGER_PRIMALITY_INSTRUMENT,
@@ -18,9 +20,23 @@ from .three_minds_validation import (
     validate_question,
 )
 from .version import PROTOCOL_VERSION
+from .world_lattice import LATTICE_PROFILE_ID, LATTICE_REFERENCE_PROTOCOL
 
 
 THREE_MINDS_SCHEMA = "nexus-three-minds/1"
+THREE_MINDS_INTEGRATION_SCHEMA = "nexus-three-minds-integration/1"
+THREE_MINDS_INSTRUMENT_RECORD_SCHEMA = "nexus-three-minds-instrument-record/1"
+THREE_MINDS_VERIFIED_DESCENDANT_SCHEMA = "nexus-three-minds-verified-descendant/1"
+
+THREE_MINDS_BOUNDARIES = (
+    "PERSISTENT_LINEAGE != TRUTH",
+    "INSTRUMENT_RESULT != TRUTH",
+    "REPLAY != EMPIRICAL_CONFIRMATION",
+    "MINORITY_REPORT != EVIDENCE_PROMOTION",
+    "MULTI_MODEL_CONSENSUS != EVIDENCE",
+    "LATTICE_POSITION != COGNITIVE_COORDINATE",
+    "VERIFIED_DESCENDANT != SEMANTIC_TRUTH",
+)
 
 
 class NexusHandle(Protocol):
@@ -44,6 +60,13 @@ def _call(api: NexusHandle, request: dict[str, Any]) -> dict[str, Any]:
     raise ThreeMindsError(f"{operation} failed without a structured error")
 
 
+def _response_object(response: Mapping[str, Any], key: str, *, operation: str) -> dict[str, Any]:
+    obj = response.get(key)
+    if not isinstance(obj, dict) or not isinstance(obj.get("object_id"), str):
+        raise ThreeMindsError(f"{operation} returned an invalid object shape")
+    return obj
+
+
 def _create_world_object(
     api: NexusHandle,
     object_type: str,
@@ -59,10 +82,7 @@ def _create_world_object(
             "provenance": provenance,
         },
     )
-    obj = response.get("object")
-    if not isinstance(obj, dict) or not isinstance(obj.get("object_id"), str):
-        raise ThreeMindsError("world.create returned an invalid object shape")
-    return obj
+    return _response_object(response, "object", operation="world.create")
 
 
 def _chat(
@@ -144,6 +164,131 @@ def _task_content(question: str, values: tuple[int, ...]) -> str:
     )
 
 
+def _lattice_reference(address: str) -> dict[str, Any]:
+    return {
+        "protocol": LATTICE_REFERENCE_PROTOCOL,
+        "profile_id": LATTICE_PROFILE_ID,
+        "address": address,
+        "authority": "storage-only",
+    }
+
+
+def _presence_ref(response: Mapping[str, Any], *, operation: str) -> str:
+    event = _response_object(response, "presence_event", operation=operation)
+    return event["object_id"]
+
+
+def _persistent_hypothesis(
+    api: NexusHandle,
+    *,
+    statement: str,
+    state: str,
+    task_ref: str,
+    previous_ref: str | None = None,
+) -> dict[str, Any]:
+    request: dict[str, Any] = {
+        "operation": "world.hypothesis.create",
+        "statement": statement,
+        "state": state,
+        "evidence_refs": [task_ref],
+    }
+    if previous_ref is not None:
+        request["previous_hypothesis_ref"] = previous_ref
+    return _response_object(
+        _call(api, request),
+        "hypothesis",
+        operation="world.hypothesis.create",
+    )
+
+
+def _persistent_experiment(
+    api: NexusHandle,
+    *,
+    title: str,
+    stage: str,
+    method: str,
+    hypothesis_refs: list[str],
+    input_refs: list[str],
+    result_refs: list[str],
+    previous_ref: str | None = None,
+) -> dict[str, Any]:
+    request: dict[str, Any] = {
+        "operation": "world.experiment.create",
+        "title": title,
+        "stage": stage,
+        "method": method,
+        "hypothesis_refs": list(hypothesis_refs),
+        "input_refs": list(input_refs),
+        "result_refs": list(result_refs),
+    }
+    if previous_ref is not None:
+        request["previous_experiment_ref"] = previous_ref
+    return _response_object(
+        _call(api, request),
+        "experiment",
+        operation="world.experiment.create",
+    )
+
+
+def _relation(
+    api: NexusHandle,
+    *,
+    relation_type: str,
+    source_ref: str,
+    target_ref: str,
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    return _response_object(
+        _call(
+            api,
+            {
+                "operation": "world.relation.create",
+                "relation_type": relation_type,
+                "source_ref": source_ref,
+                "target_ref": target_ref,
+                "metadata": metadata,
+            },
+        ),
+        "relation",
+        operation="world.relation.create",
+    )
+
+
+def _instrument_record(
+    api: NexusHandle,
+    *,
+    stage_owner: dict[str, str],
+    role: str,
+    values: tuple[int, ...],
+    reproduces_record_ref: str | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    bundle = run_instrument(INTEGER_PRIMALITY_INSTRUMENT, {"values": list(values)})
+    verification = verify_instrument_receipt(bundle)
+    record = _create_world_object(
+        api,
+        "three_minds_instrument_record",
+        {
+            "schema": THREE_MINDS_INSTRUMENT_RECORD_SCHEMA,
+            "role": role,
+            "stage_owner": dict(stage_owner),
+            "execution_initiator": "nexus_three_minds_demo",
+            "values": list(values),
+            "instrument_bundle": bundle,
+            "receipt_verification": verification,
+            "reproduces_record_ref": reproduces_record_ref,
+            "derived_material_only": True,
+            "semantic_truth_claimed": False,
+            "authority_effect": "none",
+        },
+        {
+            "actor": "nexus_three_minds_demo",
+            "instrument_id": INTEGER_PRIMALITY_INSTRUMENT,
+            "alpha11_stage": role,
+        },
+    )
+    return record, bundle
+
+
 def run_three_minds_demo(
     api: NexusHandle,
     *,
@@ -154,11 +299,10 @@ def run_three_minds_demo(
 ) -> dict[str, Any]:
     """Run the alpha11 sequential shared-world demonstration.
 
-    Mind A proposes a falsifiable interpretation, Mind B arrives later and
-    reproduces/critiques it from immutable evidence, the NEXUS coordinator then
-    executes one bounded deterministic instrument, and Mind C interprets that
-    result while attempting falsification. Every stage is preserved as a
-    content-addressed object in the same WorldStore lineage.
+    The original alpha11 model-stage lineage remains intact. The post-alpha7/8
+    completion layer additionally records admitted instrument receipts, typed
+    hypothesis/experiment/relations, and explicit LATTICE handoffs without
+    granting any of those records semantic or governance authority.
     """
 
     roster, public_roster_tuple = validate_members(members)
@@ -194,6 +338,18 @@ def run_three_minds_demo(
         {"actor": "nexus_three_minds_demo", "alpha11_stage": "task"},
     )
     task_ref = task["object_id"]
+    presence_a_ref = _presence_ref(
+        _call(
+            api,
+            {
+                "operation": "world.place",
+                "object_ref": task_ref,
+                "region_id": "observatory",
+                "lattice_reference": _lattice_reference("L[0,0,0]"),
+            },
+        ),
+        operation="world.place",
+    )
 
     mind_a_evidence = [task_ref]
     mind_a = _chat(
@@ -222,16 +378,65 @@ def run_three_minds_demo(
     )
     hypothesis_ref = hypothesis["object_id"]
 
-    mind_b_evidence = [task_ref, hypothesis_ref]
+    persistent_hypothesis_a = _persistent_hypothesis(
+        api,
+        statement="All integers in the declared alpha11 fixture are prime.",
+        state="PROPOSED",
+        task_ref=task_ref,
+    )
+    persistent_plan_a = _persistent_experiment(
+        api,
+        title="Alpha11 bounded integer-primality experiment",
+        stage="PLANNED",
+        method=(
+            "Execute the admitted bounded integer-primality instrument; interpret only the "
+            "exact finite values supplied by the alpha11 task."
+        ),
+        hypothesis_refs=[persistent_hypothesis_a["object_id"]],
+        input_refs=[task_ref],
+        result_refs=[],
+    )
+    relation_a = _relation(
+        api,
+        relation_type="interprets",
+        source_ref=hypothesis_ref,
+        target_ref=persistent_hypothesis_a["object_id"],
+        metadata={"model_stage_is_interpretation_not_evidence": True},
+    )
+
+    baseline_values = normalized_values[:-1] if len(normalized_values) > 1 else normalized_values
+    initially_untested_values = normalized_values[len(baseline_values) :]
+    baseline_a, baseline_bundle_a = _instrument_record(
+        api,
+        stage_owner=public_roster[0],
+        role="mind_a_baseline_execution",
+        values=baseline_values,
+    )
+
+    presence_b_ref = _presence_ref(
+        _call(
+            api,
+            {
+                "operation": "world.move",
+                "object_ref": task_ref,
+                "previous_presence_ref": presence_a_ref,
+                "region_id": "archive",
+                "lattice_reference": _lattice_reference("L[0,0,1]"),
+            },
+        ),
+        operation="world.move",
+    )
+
+    mind_b_evidence = [task_ref, hypothesis_ref, baseline_a["object_id"]]
     mind_b = _chat(
         api,
         roster[1],
         (
             "You are Mind B arriving after Mind A has left. Read the immutable task, its "
-            "exact question and integer fixture, and Mind A's hypothesis object. Reproduce "
-            "the proposed test independently, identify assumptions or confounders, and "
-            "state what observation would discriminate the benchmark claim. Preserve "
-            "disagreement rather than rewriting Mind A's contribution."
+            "exact question and integer fixture, Mind A's hypothesis object, and the bounded "
+            "coordinator-owned baseline instrument record. Reproduce the proposed test "
+            "independently, identify assumptions or confounders, and preserve disagreement "
+            "rather than rewriting Mind A's contribution."
         ),
         mode=mode,
         evidence_refs=mind_b_evidence,
@@ -250,7 +455,74 @@ def run_three_minds_demo(
     )
     reproduction_ref = reproduction["object_id"]
 
-    probe = integer_primality_probe(normalized_values)
+    baseline_b, baseline_bundle_b = _instrument_record(
+        api,
+        stage_owner=public_roster[1],
+        role="mind_b_baseline_replay",
+        values=baseline_values,
+        reproduces_record_ref=baseline_a["object_id"],
+    )
+    if baseline_bundle_b != baseline_bundle_a:
+        raise ThreeMindsError("Mind B baseline replay did not reproduce Mind A instrument bundle exactly")
+
+    persistent_hypothesis_b = _persistent_hypothesis(
+        api,
+        statement="All integers in the declared alpha11 fixture are prime.",
+        state="CHALLENGED",
+        task_ref=task_ref,
+        previous_ref=persistent_hypothesis_a["object_id"],
+    )
+    persistent_observed_b = _persistent_experiment(
+        api,
+        title="Alpha11 bounded integer-primality experiment",
+        stage="OBSERVED",
+        method=(
+            "Mind B reproduces the fixed baseline instrument bytes and records critique; "
+            "exact replay does not widen the tested scope."
+        ),
+        hypothesis_refs=[persistent_hypothesis_b["object_id"]],
+        input_refs=[task_ref],
+        result_refs=[baseline_a["object_id"], baseline_b["object_id"], reproduction_ref],
+        previous_ref=persistent_plan_a["object_id"],
+    )
+    relation_b_replay = _relation(
+        api,
+        relation_type="replays",
+        source_ref=baseline_b["object_id"],
+        target_ref=baseline_a["object_id"],
+        metadata={"byte_identical_instrument_bundle": True, "authority_effect": "none"},
+    )
+    relation_b_critique = _relation(
+        api,
+        relation_type="critiques",
+        source_ref=reproduction_ref,
+        target_ref=persistent_hypothesis_b["object_id"],
+        metadata={
+            "initially_untested_values": list(initially_untested_values),
+            "replay_is_empirical_confirmation": False,
+        },
+    )
+
+    presence_c_ref = _presence_ref(
+        _call(
+            api,
+            {
+                "operation": "world.move",
+                "object_ref": task_ref,
+                "previous_presence_ref": presence_b_ref,
+                "region_id": "agora",
+                "lattice_reference": _lattice_reference("L[0,1,1]"),
+            },
+        ),
+        operation="world.move",
+    )
+
+    full_bundle = run_instrument(
+        INTEGER_PRIMALITY_INSTRUMENT,
+        {"values": list(normalized_values)},
+    )
+    full_verification = verify_instrument_receipt(full_bundle)
+    probe = full_bundle["execution"]["result"]
     instrument = _create_world_object(
         api,
         "instrument_result",
@@ -266,6 +538,12 @@ def run_three_minds_demo(
             "composite_values": probe["composite_values"],
             "content": render_integer_primality_evidence(probe),
             "claim_boundary": probe["claim_boundary"],
+            "instrument_execution_ref": full_bundle["execution_ref"],
+            "instrument_receipt_ref": full_bundle["receipt"]["receipt_ref"],
+            "instrument_bundle": full_bundle,
+            "receipt_verification": full_verification,
+            "derived_material_only": True,
+            "authority_effect": "none",
             "execution_initiator": {
                 "actor": "nexus_three_minds_demo",
                 "reason": "fixed_alpha11_stage_contract",
@@ -281,18 +559,24 @@ def run_three_minds_demo(
     )
     instrument_ref = instrument["object_id"]
 
-    mind_c_evidence = [task_ref, hypothesis_ref, reproduction_ref, instrument_ref]
+    mind_c_evidence = [
+        task_ref,
+        hypothesis_ref,
+        reproduction_ref,
+        instrument_ref,
+        persistent_hypothesis_b["object_id"],
+        persistent_observed_b["object_id"],
+    ]
     mind_c = _chat(
         api,
         roster[2],
         (
             "You are Mind C arriving after Minds A and B. The NEXUS coordinator has already "
             "executed the bounded integer-primality probe; you did not invoke it. Read the "
-            "immutable task, both earlier model contributions, and the attached instrument "
-            "result. Attempt to falsify the benchmark hypothesis. Treat the instrument "
-            "output as verified only for the exact supplied finite integer fixture, "
-            "distinguish arithmetic from broader interpretation, and preserve earlier "
-            "minority or mistaken hypotheses in lineage."
+            "immutable task, both earlier model contributions, the alpha8 challenged lineage, "
+            "and the attached instrument result. Attempt to falsify the benchmark hypothesis. "
+            "Treat the instrument output as verified only for the exact supplied finite integer "
+            "fixture and preserve earlier minority or mistaken hypotheses in lineage."
         ),
         mode=mode,
         evidence_refs=mind_c_evidence,
@@ -316,7 +600,140 @@ def run_three_minds_demo(
         if probe["composite_values"]
         else "NOT_FALSIFIED_WITHIN_INTEGER_FIXTURE"
     )
+    final_hypothesis_state = "RETIRED" if probe["composite_values"] else "CHALLENGED"
+    persistent_hypothesis_c = _persistent_hypothesis(
+        api,
+        statement="All integers in the declared alpha11 fixture are prime.",
+        state=final_hypothesis_state,
+        task_ref=task_ref,
+        previous_ref=persistent_hypothesis_b["object_id"],
+    )
+    persistent_closed_c = _persistent_experiment(
+        api,
+        title="Alpha11 bounded integer-primality experiment",
+        stage="CLOSED",
+        method=(
+            "Close the workflow after the admitted full-fixture instrument execution and "
+            "Mind C interpretation; CLOSED is workflow state, not a general truth label."
+        ),
+        hypothesis_refs=[persistent_hypothesis_c["object_id"]],
+        input_refs=[task_ref],
+        result_refs=[instrument_ref, falsification_ref],
+        previous_ref=persistent_observed_b["object_id"],
+    )
+    verified_descendant = _create_world_object(
+        api,
+        "three_minds_verified_descendant",
+        {
+            "schema": THREE_MINDS_VERIFIED_DESCENDANT_SCHEMA,
+            "persistent_hypothesis_ref": persistent_hypothesis_c["object_id"],
+            "closed_experiment_ref": persistent_closed_c["object_id"],
+            "instrument_result_ref": instrument_ref,
+            "instrument_execution_ref": full_bundle["execution_ref"],
+            "instrument_receipt_ref": full_bundle["receipt"]["receipt_ref"],
+            "receipt_verification": full_verification,
+            "verified_scope": "admitted_instrument_receipt_and_exact_input_only",
+            "semantic_truth_claimed": False,
+            "authority_effect": "none",
+        },
+        {"actor": "nexus_three_minds_demo", "alpha11_stage": "verified_descendant"},
+    )
+    relation_c_result = _relation(
+        api,
+        relation_type="bears_on",
+        source_ref=instrument_ref,
+        target_ref=persistent_hypothesis_c["object_id"],
+        metadata={"instrument_result_is_general_truth": False},
+    )
+    relation_c_verified = _relation(
+        api,
+        relation_type="verifies_receipt_for",
+        source_ref=verified_descendant["object_id"],
+        target_ref=persistent_closed_c["object_id"],
+        metadata={"verified_scope": "instrument_receipt_only", "authority_effect": "none"},
+    )
+
+    final_presence_ref = _presence_ref(
+        _call(
+            api,
+            {
+                "operation": "world.move",
+                "object_ref": task_ref,
+                "previous_presence_ref": presence_c_ref,
+                "region_id": "observatory",
+                "lattice_reference": _lattice_reference("L[1,1,1]"),
+            },
+        ),
+        operation="world.move",
+    )
+
     replayable = all(member["adapter_id"] == "mock" for member in public_roster)
+    integration = _create_world_object(
+        api,
+        "three_minds_integration",
+        {
+            "schema": THREE_MINDS_INTEGRATION_SCHEMA,
+            "task_ref": task_ref,
+            "mind_a_persistent_hypothesis_ref": persistent_hypothesis_a["object_id"],
+            "mind_a_planned_experiment_ref": persistent_plan_a["object_id"],
+            "mind_a_baseline_record_ref": baseline_a["object_id"],
+            "mind_b_replay_record_ref": baseline_b["object_id"],
+            "mind_b_persistent_hypothesis_ref": persistent_hypothesis_b["object_id"],
+            "mind_b_observed_experiment_ref": persistent_observed_b["object_id"],
+            "mind_c_persistent_hypothesis_ref": persistent_hypothesis_c["object_id"],
+            "mind_c_closed_experiment_ref": persistent_closed_c["object_id"],
+            "verified_descendant_ref": verified_descendant["object_id"],
+            "full_instrument_result_ref": instrument_ref,
+            "presence_refs": [presence_a_ref, presence_b_ref, presence_c_ref, final_presence_ref],
+            "final_presence_ref": final_presence_ref,
+            "relations": [
+                relation_a["object_id"],
+                relation_b_replay["object_id"],
+                relation_b_critique["object_id"],
+                relation_c_result["object_id"],
+                relation_c_verified["object_id"],
+            ],
+            "baseline_values": list(baseline_values),
+            "initially_untested_values": list(initially_untested_values),
+            "mind_b_replay_exact": True,
+            "final_workflow_hypothesis_state": final_hypothesis_state,
+            "boundaries": list(THREE_MINDS_BOUNDARIES),
+            "authority_effect": "none",
+        },
+        {"actor": "nexus_three_minds_demo", "alpha11_stage": "post_alpha8_integration"},
+    )
+    integration_ref = integration["object_id"]
+    integration_receipt = _create_world_object(
+        api,
+        "receipt",
+        {
+            "operation": "three_minds.integration",
+            "input_refs": [
+                persistent_hypothesis_a["object_id"],
+                persistent_plan_a["object_id"],
+                baseline_a["object_id"],
+                baseline_b["object_id"],
+                persistent_hypothesis_b["object_id"],
+                persistent_observed_b["object_id"],
+                instrument_ref,
+                falsification_ref,
+                persistent_hypothesis_c["object_id"],
+                persistent_closed_c["object_id"],
+                verified_descendant["object_id"],
+                final_presence_ref,
+            ],
+            "result_ref": integration_ref,
+            "replayable": replayable,
+            "protocol": PROTOCOL_VERSION,
+        },
+        {"actor": "nexus_three_minds_demo"},
+    )
+    integration_receipt_ref = integration_receipt["object_id"]
+    integration_receipt_status = _call(
+        api,
+        {"operation": "receipt.verify", "receipt_ref": integration_receipt_ref},
+    )
+
     run = _create_world_object(
         api,
         "three_minds_run",
@@ -334,6 +751,13 @@ def run_three_minds_demo(
                 instrument_ref,
                 falsification_ref,
             ],
+            "integration_ref": integration_ref,
+            "integration_receipt_ref": integration_receipt_ref,
+            "final_presence_ref": final_presence_ref,
+            "persistent_hypothesis_ref": persistent_hypothesis_c["object_id"],
+            "persistent_experiment_ref": persistent_closed_c["object_id"],
+            "verified_descendant_ref": verified_descendant["object_id"],
+            "baseline_replay_exact": True,
             "roster": public_roster,
             "mind_count": 3,
             "shared_world": True,
@@ -396,8 +820,267 @@ def run_three_minds_demo(
         "run_ref": run_ref,
         "receipt_ref": receipt_ref,
         "receipt_status": receipt_status["status"],
+        "integration_ref": integration_ref,
+        "integration_receipt_ref": integration_receipt_ref,
+        "integration_receipt_status": integration_receipt_status["status"],
+        "final_presence_ref": final_presence_ref,
+        "persistent_hypothesis_ref": persistent_hypothesis_c["object_id"],
+        "persistent_experiment_ref": persistent_closed_c["object_id"],
+        "mind_a_baseline_record_ref": baseline_a["object_id"],
+        "mind_b_replay_record_ref": baseline_b["object_id"],
+        "verified_descendant_ref": verified_descendant["object_id"],
+        "baseline_replay_exact": True,
         "execution_replayable": replayable,
         "additional_votes_created": 0,
+    }
+
+
+def verify_three_minds_integration(api: NexusHandle, result: Mapping[str, Any]) -> dict[str, Any]:
+    required = {
+        "integration_ref",
+        "integration_receipt_ref",
+        "final_presence_ref",
+        "persistent_hypothesis_ref",
+        "persistent_experiment_ref",
+        "mind_a_baseline_record_ref",
+        "mind_b_replay_record_ref",
+        "verified_descendant_ref",
+        "instrument_result_ref",
+    }
+    missing = sorted(key for key in required if not isinstance(result.get(key), str))
+    if missing:
+        raise ThreeMindsError(f"three-minds integration result is missing refs: {missing}")
+
+    def inspect(ref: str) -> dict[str, Any]:
+        response = _call(api, {"operation": "world.inspect", "object_ref": ref})
+        obj = response.get("object")
+        if not isinstance(obj, dict):
+            raise ThreeMindsError(f"world.inspect returned invalid object for {ref}")
+        return obj
+
+    receipt = _call(
+        api,
+        {"operation": "receipt.verify", "receipt_ref": result["integration_receipt_ref"]},
+    )
+    if receipt.get("status") != "verified":
+        raise ThreeMindsError("three-minds integration receipt did not verify")
+    if receipt.get("result_ref") != result["integration_ref"]:
+        raise ThreeMindsError("three-minds integration receipt is bound to a different integration object")
+
+    integration = inspect(result["integration_ref"])
+    if integration.get("object_type") != "three_minds_integration":
+        raise ThreeMindsError("integration_ref does not identify a three_minds_integration object")
+    integration_payload = integration.get("payload")
+    if not isinstance(integration_payload, Mapping):
+        raise ThreeMindsError("three-minds integration object has an invalid payload")
+    if integration_payload.get("schema") != THREE_MINDS_INTEGRATION_SCHEMA:
+        raise ThreeMindsError("three-minds integration object has an unsupported schema")
+    if integration_payload.get("authority_effect") != "none":
+        raise ThreeMindsError("three-minds integration object attempts authority escalation")
+
+    persisted_bindings = {
+        "final_presence_ref": "final_presence_ref",
+        "persistent_hypothesis_ref": "mind_c_persistent_hypothesis_ref",
+        "persistent_experiment_ref": "mind_c_closed_experiment_ref",
+        "mind_a_baseline_record_ref": "mind_a_baseline_record_ref",
+        "mind_b_replay_record_ref": "mind_b_replay_record_ref",
+        "verified_descendant_ref": "verified_descendant_ref",
+        "instrument_result_ref": "full_instrument_result_ref",
+    }
+    for result_key, payload_key in persisted_bindings.items():
+        if integration_payload.get(payload_key) != result[result_key]:
+            raise ThreeMindsError(
+                f"three-minds integration ref mismatch for {result_key}: caller mapping does not match persisted integration"
+            )
+    presence_refs = integration_payload.get("presence_refs")
+    if (
+        not isinstance(presence_refs, list)
+        or len(presence_refs) != 4
+        or presence_refs[-1] != result["final_presence_ref"]
+    ):
+        raise ThreeMindsError("persisted integration does not bind the expected four-event presence lineage")
+
+    baseline_a = inspect(result["mind_a_baseline_record_ref"])
+    baseline_b = inspect(result["mind_b_replay_record_ref"])
+    bundle_a = baseline_a.get("payload", {}).get("instrument_bundle")
+    bundle_b = baseline_b.get("payload", {}).get("instrument_bundle")
+    if not isinstance(bundle_a, Mapping) or not isinstance(bundle_b, Mapping):
+        raise ThreeMindsError("baseline instrument records are missing bundles")
+    verify_instrument_receipt(bundle_a)
+    verify_instrument_receipt(bundle_b)
+    if bundle_a != bundle_b:
+        raise ThreeMindsError("Mind B replay no longer reproduces Mind A instrument bundle")
+
+    instrument = inspect(result["instrument_result_ref"])
+    full_bundle = instrument.get("payload", {}).get("instrument_bundle")
+    if not isinstance(full_bundle, Mapping):
+        raise ThreeMindsError("full alpha11 instrument result is missing admitted receipt bundle")
+    verify_instrument_receipt(full_bundle)
+
+    presence = _call(
+        api,
+        {"operation": "world.presence", "event_ref": result["final_presence_ref"]},
+    ).get("presence")
+    if not isinstance(presence, Mapping):
+        raise ThreeMindsError("world.presence returned invalid alpha11 handoff lineage")
+    if presence.get("lineage_length") != 4:
+        raise ThreeMindsError("alpha11 handoff must contain one placement plus three moves")
+    current = presence.get("current")
+    if not isinstance(current, Mapping) or current.get("region_id") != "observatory":
+        raise ThreeMindsError("alpha11 final presence must return the shared task to Observatory")
+
+    persistent_hypothesis = inspect(result["persistent_hypothesis_ref"])
+    hypothesis_payload = persistent_hypothesis.get("payload")
+    if not isinstance(hypothesis_payload, Mapping) or hypothesis_payload.get("state") not in {"RETIRED", "CHALLENGED"}:
+        raise ThreeMindsError("alpha11 persistent hypothesis has invalid final workflow state")
+    if hypothesis_payload.get("state_semantics") != "workflow_label_not_truth_classification":
+        raise ThreeMindsError("alpha11 persistent hypothesis widened workflow state into truth")
+    if hypothesis_payload.get("evidence_refs") != [integration_payload.get("task_ref")]:
+        raise ThreeMindsError("alpha11 persistent hypothesis is not bound to the persisted integration task")
+
+    persistent_experiment = inspect(result["persistent_experiment_ref"])
+    experiment_payload = persistent_experiment.get("payload")
+    if not isinstance(experiment_payload, Mapping) or experiment_payload.get("stage") != "CLOSED":
+        raise ThreeMindsError("alpha11 persistent experiment is not CLOSED")
+    if experiment_payload.get("claim_boundary") != "recorded_world_lineage_not_empirical_truth":
+        raise ThreeMindsError("alpha11 experiment widened lineage into empirical truth")
+    if experiment_payload.get("hypothesis_refs") != [result["persistent_hypothesis_ref"]]:
+        raise ThreeMindsError("alpha11 CLOSED experiment is not bound to the final persistent hypothesis")
+
+    descendant = inspect(result["verified_descendant_ref"])
+    descendant_payload = descendant.get("payload")
+    if not isinstance(descendant_payload, Mapping) or descendant_payload.get("semantic_truth_claimed") is not False:
+        raise ThreeMindsError("alpha11 verified descendant widened receipt verification into truth")
+    if descendant_payload.get("persistent_hypothesis_ref") != result["persistent_hypothesis_ref"]:
+        raise ThreeMindsError("alpha11 verified descendant is not bound to the final persistent hypothesis")
+    if descendant_payload.get("closed_experiment_ref") != result["persistent_experiment_ref"]:
+        raise ThreeMindsError("alpha11 verified descendant is not bound to the final CLOSED experiment")
+    if descendant_payload.get("instrument_result_ref") != result["instrument_result_ref"]:
+        raise ThreeMindsError("alpha11 verified descendant is not bound to the persisted instrument result")
+
+    return {
+        "status": "verified",
+        "integration_ref": result["integration_ref"],
+        "integration_receipt_ref": result["integration_receipt_ref"],
+        "presence_lineage_length": presence["lineage_length"],
+        "final_region_id": current["region_id"],
+        "baseline_replay_exact": True,
+        "full_instrument_receipt_verified": True,
+        "persistent_hypothesis_state": hypothesis_payload["state"],
+        "persistent_experiment_stage": experiment_payload["stage"],
+        "semantic_truth_claimed": False,
+        "authority_effect": "none",
+    }
+
+
+def run_three_minds_council_demo(
+    api: NexusHandle,
+    *,
+    members: Iterable[dict[str, Any]],
+    evidence_refs: Iterable[str],
+    question: str | None = None,
+    mode: str = "analytical",
+) -> dict[str, Any]:
+    roster, public_roster_tuple = validate_members(members)
+    public_roster = [dict(member) for member in public_roster_tuple]
+    refs = list(evidence_refs)
+    if not refs or not all(isinstance(ref, str) for ref in refs):
+        raise ValueError("alpha11 Council evidence_refs must be a non-empty list of object refs")
+    council_question = question or (
+        "Alpha11 Council: given the shared-world lineage and bounded instrument receipts, "
+        "what conclusion is justified without turning consensus into evidence?"
+    )
+    response = _call(
+        api,
+        {
+            "operation": "council.run",
+            "question": council_question,
+            "members": [dict(member) for member in roster],
+            "evidence_refs": refs,
+            "evidence_state": "UNTESTED",
+            "mode": mode,
+        },
+    )
+    return {
+        "status": "ok",
+        "session_ref": response.get("session_ref"),
+        "receipt_ref": response.get("receipt_ref"),
+        "execution_replayable": response.get("execution_replayable"),
+        "roster": public_roster,
+        "result": response.get("result"),
+        "telemetry": response.get("telemetry"),
+        "provider_consensus_is_evidence": False,
+        "authority_effect": "none",
+    }
+
+
+def run_three_minds_reference_council(
+    api: NexusHandle,
+    *,
+    evidence_refs: Iterable[str],
+) -> dict[str, Any]:
+    members = (
+        {
+            "member_id": "Mind-A",
+            "model_id": "alpha11-council-a",
+            "adapter_id": "mock",
+            "profile": "skeptical",
+        },
+        {
+            "member_id": "Mind-B",
+            "model_id": "alpha11-council-b",
+            "adapter_id": "mock",
+            "profile": "balanced",
+        },
+        {
+            "member_id": "Mind-C",
+            "model_id": "alpha11-council-c",
+            "adapter_id": "mock",
+            "profile": "supportive",
+        },
+    )
+    council = run_three_minds_council_demo(
+        api,
+        members=members,
+        evidence_refs=evidence_refs,
+    )
+    session_ref = council.get("session_ref")
+    if not isinstance(session_ref, str):
+        raise ThreeMindsError("alpha11 reference Council did not return a session reference")
+    minority = _call(
+        api,
+        {
+            "operation": "world.minority.search",
+            "choice": "ACCEPT_WITH_CHANGES",
+            "member_id": "Mind-C",
+            "limit": 50,
+        },
+    )
+    matches = minority.get("matches")
+    if not isinstance(matches, list):
+        raise ThreeMindsError("alpha11 minority search returned an invalid matches array")
+    session_matches = [
+        match
+        for match in matches
+        if isinstance(match, Mapping) and match.get("session_ref") == session_ref
+    ]
+    if len(session_matches) != 1:
+        raise ThreeMindsError("alpha11 reference Council did not preserve its own minority report")
+    report = session_matches[0].get("minority_report")
+    if (
+        not isinstance(report, Mapping)
+        or report.get("member_id") != "Mind-C"
+        or report.get("choice") != "ACCEPT_WITH_CHANGES"
+    ):
+        raise ThreeMindsError("alpha11 reference Council minority report identity is invalid")
+    return {
+        **council,
+        "minority_search": {
+            "returned": minority.get("returned"),
+            "matched_count": 1,
+            "matched_session_ref": session_ref,
+            "search_is_evidence": minority.get("search_is_evidence"),
+        },
     }
 
 
@@ -407,8 +1090,13 @@ __all__ = [
     "MAX_INTEGER_VALUE",
     "MAX_INTEGER_VALUES",
     "MAX_TASK_QUESTION_CHARS",
+    "THREE_MINDS_BOUNDARIES",
+    "THREE_MINDS_INTEGRATION_SCHEMA",
     "THREE_MINDS_SCHEMA",
     "ThreeMindsError",
     "integer_primality_probe",
+    "run_three_minds_council_demo",
     "run_three_minds_demo",
+    "run_three_minds_reference_council",
+    "verify_three_minds_integration",
 ]

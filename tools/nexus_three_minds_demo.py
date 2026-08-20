@@ -12,7 +12,10 @@ from nexus_runtime.canonical import canonical_json
 from nexus_runtime.three_minds import (
     DEFAULT_INTEGER_VALUES,
     ThreeMindsError,
+    run_three_minds_council_demo,
     run_three_minds_demo,
+    run_three_minds_reference_council,
+    verify_three_minds_integration,
 )
 
 
@@ -60,8 +63,8 @@ def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         description=(
             "Run NEXUS 2.0-alpha11 Three Minds, One World: A proposes, B arrives later "
-            "to reproduce/critique, the coordinator runs a bounded integer instrument, "
-            "and C attempts falsification from the shared lineage."
+            "to reproduce/critique, the coordinator runs bounded admitted instruments, "
+            "and C attempts falsification from the shared persistent lineage."
         )
     )
     parser.add_argument("--world", default=".nexus-alpha11-world", help="persistent WorldStore directory")
@@ -94,6 +97,21 @@ def _parser() -> argparse.ArgumentParser:
         help="JSON CouncilActor member object for Mind C",
     )
     parser.add_argument(
+        "--reference-council",
+        action="store_true",
+        help="after the sequential run, execute the deterministic three-mock Council with one preserved minority report",
+    )
+    parser.add_argument(
+        "--council",
+        action="store_true",
+        help="after the sequential run, execute a Council with the same three configured members",
+    )
+    parser.add_argument(
+        "--authorize-council",
+        action="store_true",
+        help="explicitly authorize the additional Council calls when --council includes any non-mock member",
+    )
+    parser.add_argument(
         "--json-out",
         help=(
             "optional new output file; reserved before any model call and never overwritten "
@@ -101,6 +119,13 @@ def _parser() -> argparse.ArgumentParser:
         ),
     )
     return parser
+
+
+def _has_non_mock_member(args: argparse.Namespace) -> bool:
+    return any(
+        isinstance(member, dict) and member.get("adapter_id", "mock") != "mock"
+        for member in (args.mind_a, args.mind_b, args.mind_c)
+    )
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -111,6 +136,11 @@ def main(argv: list[str] | None = None) -> int:
     output_committed = False
 
     try:
+        if args.council and _has_non_mock_member(args) and not args.authorize_council:
+            raise ThreeMindsError(
+                "--council with non-mock members requires --authorize-council before any runtime/provider call"
+            )
+
         if args.json_out:
             output_path = Path(args.json_out)
             # Reserve the path before constructing the runtime or contacting any
@@ -131,6 +161,22 @@ def main(argv: list[str] | None = None) -> int:
             question=args.question,
             mode=args.mode,
         )
+        result["integration_verification"] = verify_three_minds_integration(api, result)
+
+        evidence_refs = [result["run_ref"], result["integration_ref"]]
+        if args.reference_council:
+            result["reference_council"] = run_three_minds_reference_council(
+                api,
+                evidence_refs=evidence_refs,
+            )
+        if args.council:
+            result["council"] = run_three_minds_council_demo(
+                api,
+                members=(args.mind_a, args.mind_b, args.mind_c),
+                evidence_refs=evidence_refs,
+                mode=args.mode,
+            )
+
         rendered = canonical_json(result) + "\n"
         if output_handle is not None:
             output_handle.write(rendered)

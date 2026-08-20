@@ -1,0 +1,103 @@
+{
+  "schema": "nexus-three-minds-one-world-contract/2",
+  "policy": "nexus-three-minds-one-world/1",
+  "milestone": "2.0-alpha11",
+  "canonical_implementation": {
+    "coordinator": "src/nexus_runtime/three_minds.py",
+    "validation": "src/nexus_runtime/three_minds_validation.py",
+    "bounded_probe": "src/nexus_runtime/three_minds_instrument.py",
+    "runner": "tools/nexus_three_minds_demo.py",
+    "legacy_stage_objects_preserved": true,
+    "parallel_reimplementation": false
+  },
+  "sequential_world_demo": {
+    "mind_count": 3,
+    "shared_world": true,
+    "mind_a": "proposal plus alpha7 baseline execution",
+    "mind_b": "reproduction/critique plus byte-identical alpha7 baseline replay",
+    "mind_c": "falsification interpretation from coordinator-owned full-fixture execution",
+    "model_consensus_is_evidence": false,
+    "additional_votes_created": 0
+  },
+  "alpha7_instrument_integration": {
+    "instrument_id": "nexus.integer-primality/1",
+    "admission_source": "existing nexus-instrument-admission/1",
+    "mind_a_baseline": "content-addressed instrument intent/execution/receipt bundle",
+    "mind_b_replay": "same admitted input and exact complete bundle equality",
+    "full_fixture": "coordinator-owned admitted execution with receipt verification",
+    "derived_material_only": true,
+    "instrument_result_is_truth": false
+  },
+  "alpha8_persistent_world_integration": {
+    "hypothesis_lineage": ["PROPOSED", "CHALLENGED", "RETIRED_or_CHALLENGED"],
+    "experiment_lineage": ["PLANNED", "OBSERVED", "CLOSED"],
+    "relations": ["interprets", "replays", "critiques", "bears_on", "verifies_receipt_for"],
+    "workflow_state_is_truth": false,
+    "closed_experiment_is_empirical_verification": false
+  },
+  "world_presence": {
+    "policy": "nexus-world-lattice/1",
+    "profile": "qsol-3x3x3-sierpinski-derived-memory/1",
+    "authority": "storage-only",
+    "handoff_path": [
+      {"region": "observatory", "address": "L[0,0,0]"},
+      {"region": "archive", "address": "L[0,0,1]"},
+      {"region": "agora", "address": "L[0,1,1]"},
+      {"region": "observatory", "address": "L[1,1,1]"}
+    ],
+    "expected_lineage_length": 4,
+    "cognitive_coordinate_claimed": false
+  },
+  "integration_verification": {
+    "function": "verify_three_minds_integration",
+    "normal_receipt_verified": true,
+    "alpha7_receipts_revalidated": true,
+    "mind_b_replay_exact": true,
+    "world_presence_lineage_verified": true,
+    "persistent_hypothesis_boundary_verified": true,
+    "persistent_experiment_boundary_verified": true,
+    "verified_descendant_semantic_truth_claimed": false,
+    "restart_verification_required_by_tests": true
+  },
+  "reference_council": {
+    "runner_flag": "--reference-council",
+    "network": "none",
+    "members": [
+      {"member_id": "Mind-A", "adapter_id": "mock", "profile": "skeptical"},
+      {"member_id": "Mind-B", "adapter_id": "mock", "profile": "balanced"},
+      {"member_id": "Mind-C", "adapter_id": "mock", "profile": "supportive"}
+    ],
+    "expected_majority": "TEST_FURTHER",
+    "expected_minority": "ACCEPT_WITH_CHANGES",
+    "expected_minority_report_count": 1,
+    "minority_search_is_evidence": false,
+    "authority_effect": "none"
+  },
+  "configured_roster_council": {
+    "runner_flag": "--council",
+    "uses_same_three_member_configuration": true,
+    "non_mock_extra_calls_require": "--authorize-council",
+    "authorization_checked_before_runtime_construction": true,
+    "raw_credentials_in_cli": false,
+    "provider_auth": "existing non-secret auth-profile references only",
+    "vote_weight": "runtime-owned integer 1",
+    "epistemic_privilege": "runtime-owned none",
+    "provider_consensus_is_evidence": false
+  },
+  "ci": {
+    "live_provider_calls": false,
+    "new_python_test_module": false,
+    "preserve_pinned_python_test_inventory": true,
+    "focus": "existing tests/test_three_minds_demo.py"
+  },
+  "boundaries": [
+    "PERSISTENT_LINEAGE != TRUTH",
+    "INSTRUMENT_RESULT != TRUTH",
+    "REPLAY != EMPIRICAL_CONFIRMATION",
+    "MINORITY_REPORT != EVIDENCE_PROMOTION",
+    "MULTI_MODEL_CONSENSUS != EVIDENCE",
+    "LATTICE_POSITION != COGNITIVE_COORDINATE",
+    "VERIFIED_DESCENDANT != SEMANTIC_TRUTH"
+  ],
+  "authority_effect": "none"
+}
