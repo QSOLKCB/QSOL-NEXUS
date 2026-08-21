@@ -1,0 +1,64 @@
+{
+  "schema": "nexus-user-world-modes-contract/1",
+  "policy": "nexus-user-world-modes/1",
+  "definition_schema": "nexus-user-world-mode-definition/1",
+  "definition_object_type": "user_world_mode_definition",
+  "mode_namespace": "user:<lowercase-id>",
+  "maximum_user_modes": 128,
+  "definition": {
+    "immutable": true,
+    "one_definition_per_mode_id": true,
+    "exact_repeat_is_idempotent": true,
+    "content_addressed": true,
+    "source": "user_defined",
+    "framing_only": true
+  },
+  "region_policy": {
+    "existing_region_required": true,
+    "reserved_regions": [
+      "bureaucratic_vote_room",
+      "upside_down"
+    ],
+    "custom_region_creation": false,
+    "geometry_mutation": false
+  },
+  "prompt_policy": {
+    "secret_scrubbed_before_persistence": true,
+    "fixed_guardrail": "nexus-user-world-mode-guardrail/1",
+    "guardrail_cannot_be_removed_by_definition": true
+  },
+  "runtime_use": {
+    "actor_chat": true,
+    "council_run": true,
+    "world_modes_listing": true,
+    "system_health_listing": true,
+    "vote_mechanics_changed": false,
+    "evidence_status_changed": false,
+    "tool_authority_changed": false,
+    "security_policy_changed": false
+  },
+  "persistence": {
+    "source_world_object_required": true,
+    "foreign_import_wrapper_auto_admission": false,
+    "ambiguous_duplicate_mode_id": "fail_closed",
+    "exact_definition_ref_frozen_in_council_session": true
+  },
+  "replay": {
+    "deterministic_mock_council": "replayable_when_exact_definition_remains_valid",
+    "definition_resolution": "source_world_context",
+    "semantic_truth_effect": "none"
+  },
+  "authority_effect": "none",
+  "evidence_effect": "none",
+  "vote_effect": "none",
+  "tool_effect": "none",
+  "security_effect": "none",
+  "boundaries": [
+    "USER_MODE != PROCEDURAL_AUTHORITY",
+    "USER_PROMPT != SYSTEM_POLICY",
+    "MODE_REGION != CIVIC_ACCESS",
+    "MODE_DEFINITION != EVIDENCE",
+    "MODE_POPULARITY != TRUTH",
+    "CUSTOM_FRAMING != VOTE_WEIGHT"
+  ]
+}
