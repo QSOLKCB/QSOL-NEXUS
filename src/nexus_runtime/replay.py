@@ -6,7 +6,7 @@ from .council import CouncilCoordinator
 from .mock import DeterministicMockActor
 from .types import CouncilMember, CouncilPolicy, PHASE_ORDER
 from .version import PROTOCOL_VERSION
-from .world import WorldStore
+from .world import WorldObject, WorldStore
 
 
 OPERATION_REPLAY_POLICY_ID = "nexus-operation-replay/1"
@@ -69,8 +69,22 @@ class OperationReplayService:
             raise OperationReplayError("replay_invalid", f"{label} must be a list of non-empty strings")
         return list(value)
 
+    def _inspect_source(self, object_ref: str, label: str) -> WorldObject:
+        try:
+            return self.source_world.inspect(object_ref)
+        except KeyError as exc:
+            raise OperationReplayError(
+                "replay_context_not_reconstructible",
+                f"{label} is missing from the source world",
+            ) from exc
+        except ValueError as exc:
+            raise OperationReplayError(
+                "replay_invalid",
+                f"{label} failed source-world validation",
+            ) from exc
+
     def replay_receipt(self, receipt_ref: str) -> dict[str, Any]:
-        receipt = self.source_world.inspect(receipt_ref)
+        receipt = self._inspect_source(receipt_ref, "receipt")
         if receipt.object_type != "receipt":
             raise OperationReplayError("replay_invalid", "object is not a standard NEXUS receipt")
         payload = self._require_object(receipt.payload, "receipt payload")
@@ -96,7 +110,7 @@ class OperationReplayService:
         return self._replay_council(receipt_ref, payload)
 
     def _copy_isolated_object(self, target: WorldStore, object_ref: str) -> None:
-        source = self.source_world.inspect(object_ref)
+        source = self._inspect_source(object_ref, "referenced replay input")
         copied = target.create_object(source.object_type, source.payload, source.provenance)
         if copied.object_id != object_ref:
             raise OperationReplayError(
@@ -112,7 +126,7 @@ class OperationReplayService:
                 "council receipt includes stateful inputs beyond question/evidence/presence",
             )
         result_ref = self._require_text(receipt.get("result_ref"), "receipt result_ref")
-        session = self.source_world.inspect(result_ref)
+        session = self._inspect_source(result_ref, "council result")
         if session.object_type != "council_session":
             raise OperationReplayError("replay_invalid", "council receipt result is not a council_session")
         session_payload = self._require_object(session.payload, "council session payload")
@@ -137,7 +151,7 @@ class OperationReplayService:
                 "receipt input refs do not exactly bind the Council frozen input refs",
             )
 
-        question = self.source_world.inspect(question_ref)
+        question = self._inspect_source(question_ref, "Council question")
         if question.object_type != "question":
             raise OperationReplayError("replay_invalid", "Council question ref is not a question object")
         question_payload = self._require_object(question.payload, "question payload")
@@ -153,7 +167,7 @@ class OperationReplayService:
             )
         question_text = self._require_text(question_payload.get("text"), "question text")
 
-        evidence = self.source_world.inspect(evidence_ref)
+        evidence = self._inspect_source(evidence_ref, "Council evidence snapshot")
         if evidence.object_type != "evidence_snapshot":
             raise OperationReplayError("replay_invalid", "Council evidence ref is not an evidence_snapshot")
         evidence_payload = self._require_object(evidence.payload, "evidence snapshot payload")
@@ -164,6 +178,13 @@ class OperationReplayService:
             "evidence included_object_refs",
         )
         evidence_state = self._require_text(evidence_payload.get("evidence_state"), "evidence state")
+
+        presence = self._inspect_source(presence_ref, "Council world presence")
+        if presence.object_type != "world_presence":
+            raise OperationReplayError("replay_invalid", "Council presence ref is not a world_presence object")
+        presence_payload = self._require_object(presence.payload, "world presence payload")
+        if presence_payload.get("question_ref") != question_ref:
+            raise OperationReplayError("replay_invalid", "world presence is not bound to the Council question")
 
         roster = session_payload.get("roster")
         if not isinstance(roster, list) or not roster:
@@ -202,7 +223,9 @@ class OperationReplayService:
                     "replay_context_not_reconstructible",
                     "mock actor metadata is not the admitted replay shape",
                 )
-            profile = self._require_text(actor_metadata.get("mock_profile"), "mock profile")
+            profile = actor_metadata.get("mock_profile")
+            if not isinstance(profile, str):
+                raise OperationReplayError("replay_invalid", "mock profile must be a string")
             cheat = actor_metadata.get("mock_attempt_privilege_claim")
             if type(cheat) is not bool:
                 raise OperationReplayError("replay_invalid", "mock privilege flag must be boolean")
@@ -224,6 +247,10 @@ class OperationReplayService:
                 )
             )
 
+        expected_member_ids = [actor.member.member_id for actor in actors]
+        if presence_payload.get("member_ids") != expected_member_ids:
+            raise OperationReplayError("replay_invalid", "world presence member_ids do not match the Council roster")
+
         policy_payload = self._require_object(session_payload.get("policy"), "Council policy")
         if policy_payload.get("vote_weight") != 1:
             raise OperationReplayError("replay_invalid", "Council replay requires unit vote weight")
@@ -239,6 +266,15 @@ class OperationReplayService:
 
         world_mode = self._require_object(session_payload.get("world_mode"), "world_mode")
         mode_id = self._require_text(world_mode.get("mode_id"), "world mode id")
+        geometry_region = self._require_object(session_payload.get("geometry_region"), "geometry_region")
+        region_id = self._require_text(geometry_region.get("region_id"), "geometry region id")
+        if presence_payload.get("mode_id") != mode_id or presence_payload.get("region_id") != region_id:
+            raise OperationReplayError("replay_invalid", "world presence mode/region does not match the Council session")
+        if presence_payload.get("geometry_id") != session_payload.get("world_mode", {}).get("geometry_id"):
+            # Current mode snapshots do not carry geometry_id. The authoritative check is
+            # against the regenerated presence identity below, while this branch only
+            # avoids inventing a second geometry authority here.
+            pass
 
         replay_world = WorldStore()
         for ref in evidence_refs:
