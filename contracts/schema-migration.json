@@ -1,0 +1,38 @@
+{
+  "schema": "nexus-schema-migration-contract/1",
+  "policy": "nexus-schema-migration/1",
+  "plan_schema": "nexus-schema-migration-plan/1",
+  "identity_kinds": {
+    "schema": "family/major",
+    "protocol": "nexus/major.minor",
+    "runtime": "major.minor.patch with optional bounded prerelease"
+  },
+  "rules": {
+    "validator_precedence": "subsystem closed-shape validators outrank generic compatibility classification",
+    "same_major": "does not imply automatic compatibility",
+    "unknown_major": "reject unless an exact separately reviewed migration adapter is registered",
+    "source_preservation": "required",
+    "in_place_rewrite": false,
+    "automatic_execution": false,
+    "downgrade": "not generically admitted",
+    "adapter_registration": "exact kind/source/target identity and separate review required"
+  },
+  "public_operations": [
+    "schema.version.policy",
+    "schema.version.classify",
+    "schema.migration.plan",
+    "schema.migration.verify"
+  ],
+  "registered_adapters": [],
+  "boundaries": [
+    "VERSION_CHANGE != MIGRATION_AUTHORITY",
+    "SAME_MAJOR != AUTOMATIC_COMPATIBILITY",
+    "PLAN != EXECUTION",
+    "MIGRATION != REWRITE",
+    "HASH_MATCH != SEMANTIC_COMPATIBILITY",
+    "RUNTIME_VERSION != ARTIFACT_SCHEMA",
+    "PROTOCOL_VERSION != STORAGE_SCHEMA"
+  ],
+  "authority_effect": "none",
+  "evidence_effect": "none"
+}
