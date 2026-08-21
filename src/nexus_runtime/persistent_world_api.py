@@ -437,6 +437,14 @@ class PersistentWorldNexusAPI(WallNexusAPI):
                             response = {**response, "mode_definition_ref": definition_ref}
                 except UserModeError as exc:
                     return self._error(safe_request_id, exc.code, str(exc))
+                except WorldContinuityError as exc:
+                    return self._error(safe_request_id, exc.code, str(exc))
+                except OSError:
+                    return self._error(
+                        safe_request_id,
+                        "world_persistence_unavailable",
+                        "persistent world storage is unavailable",
+                    )
 
         if operation == "system.health" and response.get("status") == "ok":
             return {
