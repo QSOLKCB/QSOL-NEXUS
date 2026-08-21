@@ -14,6 +14,11 @@ from .persistent_world import (
     persistent_world_policy_snapshot,
 )
 from .progression import ProgressionError
+from .replay import (
+    OperationReplayError,
+    OperationReplayService,
+    operation_replay_policy_snapshot,
+)
 from .trap import TrapError
 from .wall import WallError
 from .wall_api import WallNexusAPI
@@ -23,6 +28,7 @@ from .world_lattice import WorldLatticeError
 
 _PERSISTENT_WORLD_OPERATIONS = frozenset(
     {
+        "receipt.replay",
         "world.persistence.policy",
         "world.relation.create",
         "world.relation.search",
@@ -47,11 +53,12 @@ _PERSISTENT_WORLD_MUTATIONS = frozenset(
 
 
 class PersistentWorldNexusAPI(WallNexusAPI):
-    """Alpha8 overlay: typed semantic lineage and bounded portable world views."""
+    """Alpha8+ overlay: typed world lineage plus fail-closed operation replay."""
 
     def __init__(self, world_root: str | Path | None = None, **kwargs: Any) -> None:
         super().__init__(world_root, **kwargs)
         self.persistent_world = PersistentWorldService(self.world, scrubber=self.scrubber)
+        self.operation_replay = OperationReplayService(self.world)
 
     @staticmethod
     def _optional_text(request: dict[str, Any], field: str) -> str | None:
@@ -79,9 +86,15 @@ class PersistentWorldNexusAPI(WallNexusAPI):
     ) -> dict[str, Any]:
         operation = request.get("operation")
         try:
-            if operation == "world.persistence.policy":
+            if operation == "receipt.replay":
+                self._require_exact_fields(request, operation, {"receipt_ref"})
+                response: dict[str, Any] = self.operation_replay.replay_receipt(
+                    self._require_str(request, "receipt_ref")
+                )
+
+            elif operation == "world.persistence.policy":
                 self._require_exact_fields(request, operation, set())
-                response: dict[str, Any] = {
+                response = {
                     "status": "ok",
                     "policy": persistent_world_policy_snapshot(),
                 }
@@ -288,6 +301,8 @@ class PersistentWorldNexusAPI(WallNexusAPI):
                 response = {"request_id": request_id, **response}
             return response
 
+        except OperationReplayError as exc:
+            return self._error(request_id, exc.code, str(exc))
         except PersistentWorldError as exc:
             return self._error(request_id, exc.code, str(exc))
         except WorldLatticeError as exc:
@@ -355,6 +370,10 @@ class PersistentWorldNexusAPI(WallNexusAPI):
                     "status": "ok",
                     "policy": persistent_world_policy_snapshot(),
                     "authority_effect": "none",
+                },
+                "operation_replay": {
+                    "status": "ok",
+                    "policy": operation_replay_policy_snapshot(),
                 },
             }
         if operation == "system.operations" and response.get("status") == "ok":
