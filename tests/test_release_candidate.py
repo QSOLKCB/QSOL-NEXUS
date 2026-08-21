@@ -183,6 +183,22 @@ class NEXUS211ReleaseCandidateTests(unittest.TestCase):
         self.assertFalse(manifest["release_candidate_2_1_1"]["tag_created_in_pr"])
         self.assertFalse(manifest["release_candidate_2_1_1"]["release_authority"])
 
+    def test_operator_architecture_and_security_docs_match_current_candidate(self) -> None:
+        howto = (ROOT / "HOWTO.md").read_text(encoding="utf-8")
+        architecture = (ROOT / "ARCHITECTURE.md").read_text(encoding="utf-8")
+        security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        for text in (howto, architecture, security):
+            self.assertIn("2.1.1", text)
+            self.assertIn("nexus/0.15", text)
+            self.assertIn("v2.0.0", text)
+            self.assertIn("historical", text.casefold())
+        self.assertIn("PR #61", howto)
+        self.assertIn("PR #61", architecture)
+        self.assertIn("PR #61", security)
+        self.assertNotIn("current PR #52 candidate", howto.casefold())
+        self.assertNotIn("release state  release candidate until exact merged #52", architecture)
+        self.assertNotIn("PR #52 is now the final pre-stable", security)
+
     def test_release_runner_is_exact_commit_lockfile_strict_and_non_authoritative(self) -> None:
         source = (ROOT / "tools" / "nexus_2_1_1_release_candidate.py").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "nexus-2.1.1-release-candidate.yml").read_text(encoding="utf-8")
@@ -196,6 +212,14 @@ class NEXUS211ReleaseCandidateTests(unittest.TestCase):
         self.assertIn("fetch-depth: 0", workflow)
         self.assertIn("fetch-tags: true", workflow)
         self.assertIn("PYTHONDONTWRITEBYTECODE: '1'", workflow)
+
+    def test_candidate_workflow_uses_event_range_readme_contract_and_candidate_lifecycle(self) -> None:
+        source = (ROOT / "tools" / "nexus_2_1_1_release_candidate.py").read_text(encoding="utf-8")
+        workflow = (ROOT / ".github" / "workflows" / "nexus-2.1.1-release-candidate.yml").read_text(encoding="utf-8")
+        self.assertIn("uses: ./.github/actions/readme-contract", workflow)
+        self.assertNotIn("tools/validate_readme_contract.py", source)
+        self.assertIn("  workflow_dispatch:", workflow)
+        self.assertNotIn("  push:\n    branches:\n      - main", workflow)
 
     def test_release_runner_rejects_dirty_post_run_tree(self) -> None:
         with mock.patch.object(RELEASE_RUNNER, "_tracked_status", return_value=" M tui/Cargo.lock"):
@@ -217,6 +241,16 @@ class NEXUS211ReleaseCandidateTests(unittest.TestCase):
         self.assertIn("git worktree add --detach", workflow)
         self.assertIn("80cda46e614f44b47861471cb329e29a348cab43", workflow)
         self.assertIn("historical-pr60-merge", workflow)
+
+    def test_v2_0_workflow_verifies_frozen_release_commit_in_detached_worktree(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "release-hardening.yml").read_text(encoding="utf-8")
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("fetch-tags: true", workflow)
+        self.assertIn("git worktree add --detach", workflow)
+        self.assertIn("cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a", workflow)
+        self.assertIn('cd "$HARDENING_ROOT"', workflow)
+        self.assertIn('--expect-commit "$HARDENING_EXPECT"', workflow)
+        self.assertNotIn('--expect-commit "$GITHUB_SHA"', workflow)
 
 
 if __name__ == "__main__":
