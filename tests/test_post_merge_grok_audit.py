@@ -97,10 +97,13 @@ class PostMergeGrokAuditClosureTests(unittest.TestCase):
         self.assertEqual(changed_tree.status, "fail")
         self.assertIn("identity changed", changed_tree.detail)
 
-    def test_f3_ci_requires_github_sha_to_match_checked_commit(self) -> None:
+    def test_f3_ci_binds_historical_hardening_to_frozen_v2_commit(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-hardening.yml").read_text(encoding="utf-8")
-        self.assertIn('--expect-commit "$GITHUB_SHA"', workflow)
+        self.assertIn("git worktree add --detach", workflow)
+        self.assertIn("cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a", workflow)
+        self.assertIn('--expect-commit "$HARDENING_EXPECT"', workflow)
         self.assertIn('--json-out "$HARDENING_REPORT"', workflow)
+        self.assertNotIn('--expect-commit "$GITHUB_SHA"', workflow)
 
     def test_f4_matrix_intentionally_covers_full_python_test_inventory(self) -> None:
         matrix = json.loads((ROOT / "release" / "hardening_matrix.json").read_text(encoding="utf-8"))
@@ -122,27 +125,28 @@ class PostMergeGrokAuditClosureTests(unittest.TestCase):
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
         self.assertNotIn("The alpha10.3 release-prep adds", readme)
 
-    def test_release_surfaces_share_pr52_tag_gate_and_post_stable_sequence(self) -> None:
-        surfaces = {
-            "SECURITY.md": (ROOT / "SECURITY.md").read_text(encoding="utf-8"),
-            "HOWTO.md": (ROOT / "HOWTO.md").read_text(encoding="utf-8"),
-            "release notes": (ROOT / "docs" / "RELEASE_NOTES_2.0.0.md").read_text(encoding="utf-8"),
-            "changelog": (ROOT / "CHANGELOG.md").read_text(encoding="utf-8"),
-        }
-        for name, text in surfaces.items():
-            self.assertIn("PR #52", text, name)
+    def test_historical_pr52_release_evidence_stays_frozen_while_current_docs_advance(self) -> None:
+        security = (ROOT / "SECURITY.md").read_text(encoding="utf-8")
+        howto = (ROOT / "HOWTO.md").read_text(encoding="utf-8")
+        release_notes = (ROOT / "docs" / "RELEASE_NOTES_2.0.0.md").read_text(encoding="utf-8")
+        changelog = (ROOT / "CHANGELOG.md").read_text(encoding="utf-8")
+
+        # Historical 2.0 evidence keeps the original PR #52 / PR #53 / PR #54 sequence.
+        self.assertIn("exact merged PR #52", release_notes)
+        self.assertIn("PR #53 adds runnable Lean 4", release_notes)
+        self.assertIn("PR #54 freezes", release_notes)
+        self.assertIn("cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a", changelog)
+        self.assertIn("post-stable PR #53", changelog)
+        self.assertIn("PR #54", changelog)
+
+        # Current operator/security docs must not masquerade as the pre-v2.0 candidate.
+        for name, text in {"SECURITY.md": security, "HOWTO.md": howto}.items():
+            self.assertIn("2.1.1", text, name)
+            self.assertIn("v2.0.0", text, name)
+            self.assertIn("historical", text.casefold(), name)
             self.assertNotIn("exact merged #51", text, name)
-        self.assertIn("exact merged PR #52", surfaces["SECURITY.md"])
-        self.assertIn("exact merged #52", surfaces["HOWTO.md"])
-        self.assertIn("exact merged PR #52", surfaces["release notes"])
-        self.assertIn("cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a", surfaces["changelog"])
-        self.assertIn("PR #53 adds runnable Lean 4", surfaces["release notes"])
-        self.assertIn("PR #54 freezes", surfaces["release notes"])
-        self.assertIn("post-stable PR #53", surfaces["changelog"])
-        self.assertIn("PR #54", surfaces["changelog"])
-        for text in surfaces.values():
-            self.assertNotIn("post-stable PR #52", text)
-            self.assertNotIn("PR #52 adds runnable Lean 4", text)
+            self.assertNotIn("post-stable PR #52", text, name)
+            self.assertNotIn("PR #52 adds runnable Lean 4", text, name)
 
     def test_post_merge_finding_inventory_is_machine_pinned(self) -> None:
         matrix = json.loads((ROOT / "release" / "hardening_matrix.json").read_text(encoding="utf-8"))
