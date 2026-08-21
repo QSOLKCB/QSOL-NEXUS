@@ -467,6 +467,8 @@ def contextual_get_mode(mode_id: str) -> WorldMode:
     try:
         return _BUILTIN_GET_MODE(mode_id)
     except ValueError as builtin_error:
+        if not isinstance(mode_id, str) or not mode_id.startswith("user:"):
+            raise builtin_error
         service = _CURRENT_USER_MODE_SERVICE.get()
         if service is None:
             raise builtin_error
