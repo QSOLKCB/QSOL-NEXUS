@@ -17,12 +17,14 @@
     "downgrade": "not generically admitted",
     "adapter_registration": "exact kind/source/target identity and separate review required"
   },
-  "public_operations": [
-    "schema.version.policy",
-    "schema.version.classify",
-    "schema.migration.plan",
-    "schema.migration.verify"
+  "library_functions": [
+    "schema_migration_policy_snapshot",
+    "classify_version_change",
+    "build_migration_plan",
+    "verify_migration_plan"
   ],
+  "cli_commands": ["policy", "classify", "plan", "verify"],
+  "jsonl_protocol_effect": "none; admission to the public JSONL API would require a separately reviewed protocol change",
   "registered_adapters": [],
   "boundaries": [
     "VERSION_CHANGE != MIGRATION_AUTHORITY",
