@@ -169,10 +169,14 @@ class ReleaseWiringTests(unittest.TestCase):
         )
         certified = "a5fea299fbe682c9672dc577d2e683cebdb9f8f4"
         self.assertIn(f"NEXUS_211_CERTIFIED_MERGE: {certified}", workflow)
-        self.assertGreaterEqual(workflow.count(certified), 4)
+        self.assertIn(
+            f"ref: ${{{{ github.event_name == 'workflow_dispatch' && '{certified}' || github.sha }}}}",
+            workflow,
+        )
         self.assertIn("Checkout exact candidate subject", workflow)
         self.assertIn("Confirm exact candidate subject", workflow)
-        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$NEXUS_211_EXPECT"', workflow)
+        self.assertIn('test "$NEXUS_211_EXPECT" = "$NEXUS_211_CERTIFIED_MERGE"', workflow)
         self.assertIn('--expect-commit "$NEXUS_211_EXPECT"', workflow)
         self.assertNotIn('--expect-commit "$GITHUB_SHA"', workflow)
 
