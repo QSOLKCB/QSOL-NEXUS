@@ -220,6 +220,8 @@ class NEXUS211ReleaseCandidateTests(unittest.TestCase):
         self.assertNotIn("tools/validate_readme_contract.py", source)
         self.assertIn("  workflow_dispatch:", workflow)
         self.assertNotIn("  push:\n    branches:\n      - main", workflow)
+        self.assertIn("github.event.pull_request.number == 61", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
 
     def test_release_runner_rejects_dirty_post_run_tree(self) -> None:
         with mock.patch.object(RELEASE_RUNNER, "_tracked_status", return_value=" M tui/Cargo.lock"):
