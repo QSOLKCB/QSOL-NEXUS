@@ -1,13 +1,16 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
 
+from nexus_runtime import NexusAPI as PublicNexusAPI
 from nexus_runtime.api import NexusAPI
 from nexus_runtime.council import CouncilCoordinator
 from nexus_runtime.geometry import DEFAULT_WORLD_GEOMETRY, WorldGeometry, WorldRegion
 from nexus_runtime.mock import DeterministicMockActor
 from nexus_runtime.modes import get_mode, list_modes
 from nexus_runtime.types import CouncilMember
+from nexus_runtime.user_modes import USER_MODE_OBJECT_TYPE, USER_MODE_POLICY_ID
 from nexus_runtime.world import WorldStore
 
 
@@ -315,6 +318,172 @@ class ModeGeometryAPITests(unittest.TestCase):
         )
         self.assertEqual(bad["status"], "error")
         self.assertIn("unknown world mode", bad["error"]["message"])
+
+
+class UserDefinedModeTests(unittest.TestCase):
+    @staticmethod
+    def _members() -> list[dict[str, str]]:
+        return [
+            {"member_id": "A", "model_id": "mock-a"},
+            {"member_id": "B", "model_id": "mock-b"},
+            {"member_id": "C", "model_id": "mock-c"},
+        ]
+
+    @staticmethod
+    def _definition(**overrides: str) -> dict[str, str]:
+        request = {
+            "operation": "world.mode.define",
+            "mode_id": "user:formal_methods",
+            "label": "Formal Methods Lab",
+            "description": "Proof-oriented technical framing with explicit assumptions and counterexamples.",
+            "prompt_instruction": "Prefer definitions, invariants, counterexamples, and proof obligations.",
+            "region_id": "observatory",
+        }
+        request.update(overrides)
+        return request
+
+    def test_user_mode_is_world_local_listed_and_used_by_council(self) -> None:
+        api = PublicNexusAPI()
+        created = api.handle(self._definition())
+        self.assertEqual(created["status"], "ok")
+        self.assertTrue(created["created"])
+        self.assertTrue(created["definition_ref"].startswith("object:"))
+        self.assertEqual(created["mode"]["source"], "user_defined")
+        self.assertEqual(created["mode"]["authority_effect"], "none")
+        self.assertIn("NEXUS USER-MODE BOUNDARY", created["mode"]["prompt_instruction"])
+
+        policy = api.handle({"operation": "world.mode.policy"})
+        self.assertEqual(policy["status"], "ok")
+        self.assertEqual(policy["policy"]["schema"], USER_MODE_POLICY_ID)
+        self.assertEqual(policy["defined_user_modes"], 1)
+
+        modes = api.handle({"operation": "world.modes"})
+        custom = [item for item in modes["modes"] if item["mode_id"] == "user:formal_methods"]
+        self.assertEqual(len(custom), 1)
+        self.assertEqual(custom[0]["definition_ref"], created["definition_ref"])
+
+        run = api.handle(
+            {
+                "operation": "council.run",
+                "question": "Which invariant is missing?",
+                "mode": "user:formal_methods",
+                "members": self._members(),
+            }
+        )
+        self.assertEqual(run["status"], "ok")
+        self.assertEqual(run["mode_id"], "user:formal_methods")
+        self.assertEqual(run["geometry_region_id"], "observatory")
+        session = api.world.inspect(run["session_ref"])
+        self.assertEqual(session.payload["world_mode"]["definition_ref"], created["definition_ref"])
+        self.assertEqual(session.payload["world_mode"]["vote_effect"], "none")
+        replay = api.handle({"operation": "receipt.replay", "receipt_ref": run["receipt_ref"]})
+        self.assertEqual(replay["status"], "verified")
+        receipt_check = api.handle({"operation": "receipt.verify", "receipt_ref": run["receipt_ref"]})
+        self.assertEqual(receipt_check["status"], "verified")
+        self.assertEqual(receipt_check["mode_definition_ref"], created["definition_ref"])
+
+    def test_user_mode_does_not_change_vote_mechanics(self) -> None:
+        api = PublicNexusAPI()
+        self.assertEqual(api.handle(self._definition())["status"], "ok")
+        analytical = api.handle(
+            {
+                "operation": "council.run",
+                "question": "same question",
+                "mode": "analytical",
+                "members": self._members(),
+            }
+        )
+        custom = api.handle(
+            {
+                "operation": "council.run",
+                "question": "same question",
+                "mode": "user:formal_methods",
+                "members": self._members(),
+            }
+        )
+        self.assertEqual(analytical["status"], "ok")
+        self.assertEqual(custom["status"], "ok")
+        self.assertEqual(analytical["result"]["tally"], custom["result"]["tally"])
+        self.assertEqual(analytical["result"]["consensus_label"], custom["result"]["consensus_label"])
+
+    def test_user_mode_definition_is_immutable_idempotent_and_secret_scrubbed(self) -> None:
+        api = PublicNexusAPI()
+        secret = "sk-" + "A" * 32
+        request = self._definition(prompt_instruction=f"Study invariants and do not persist {secret}")
+        first = api.handle(request)
+        second = api.handle(request)
+        self.assertEqual(first["status"], "ok")
+        self.assertEqual(second["status"], "ok")
+        self.assertTrue(first["created"])
+        self.assertFalse(second["created"])
+        self.assertEqual(first["definition_ref"], second["definition_ref"])
+        self.assertTrue(first["secret_scrub"]["changed"])
+        stored = api.world.inspect(first["definition_ref"])
+        self.assertNotIn(secret, str(stored.payload))
+
+        conflict = api.handle(self._definition(label="Different immutable label"))
+        self.assertEqual(conflict["status"], "error")
+        self.assertEqual(conflict["error"]["code"], "user_mode_immutable_conflict")
+
+    def test_user_modes_cannot_shadow_builtins_enter_civic_regions_or_use_raw_world_create(self) -> None:
+        api = PublicNexusAPI()
+        shadow = api.handle(self._definition(mode_id="analytical"))
+        self.assertEqual(shadow["status"], "error")
+        self.assertEqual(shadow["error"]["code"], "user_mode_invalid")
+
+        civic = api.handle(self._definition(mode_id="user:civic_costume", region_id="bureaucratic_vote_room"))
+        self.assertEqual(civic["status"], "error")
+        self.assertEqual(civic["error"]["code"], "user_mode_region_reserved")
+
+        parole = api.handle(self._definition(mode_id="user:parole_costume", region_id="upside_down"))
+        self.assertEqual(parole["status"], "error")
+        self.assertEqual(parole["error"]["code"], "user_mode_region_reserved")
+
+        forged = api.handle(
+            {
+                "operation": "world.create",
+                "object_type": USER_MODE_OBJECT_TYPE,
+                "payload": {},
+                "provenance": {"actor": "human_operator"},
+            }
+        )
+        self.assertEqual(forged["status"], "error")
+        self.assertIn("reserved persistent-world", forged["error"]["message"])
+
+    def test_user_mode_survives_restart_and_does_not_leak_between_worlds(self) -> None:
+        isolated = PublicNexusAPI()
+        other = PublicNexusAPI()
+        self.assertEqual(isolated.handle(self._definition())["status"], "ok")
+        self.assertIn("user:formal_methods", {item["mode_id"] for item in isolated.handle({"operation": "world.modes"})["modes"]})
+        self.assertNotIn("user:formal_methods", {item["mode_id"] for item in other.handle({"operation": "world.modes"})["modes"]})
+        denied = other.handle(
+            {
+                "operation": "council.run",
+                "question": "q",
+                "mode": "user:formal_methods",
+                "members": self._members(),
+            }
+        )
+        self.assertEqual(denied["status"], "error")
+        self.assertIn("unknown world mode", denied["error"]["message"])
+
+        with tempfile.TemporaryDirectory() as directory:
+            first = PublicNexusAPI(world_root=directory)
+            defined = first.handle(self._definition(mode_id="user:restartable"))
+            self.assertEqual(defined["status"], "ok")
+            second = PublicNexusAPI(world_root=directory)
+            modes = {item["mode_id"] for item in second.handle({"operation": "world.modes"})["modes"]}
+            self.assertIn("user:restartable", modes)
+            run = second.handle(
+                {
+                    "operation": "council.run",
+                    "question": "Does the persisted mode still resolve?",
+                    "mode": "user:restartable",
+                    "members": self._members(),
+                }
+            )
+            self.assertEqual(run["status"], "ok")
+            self.assertEqual(run["geometry_region_id"], "observatory")
 
 
 if __name__ == "__main__":
