@@ -270,11 +270,6 @@ class OperationReplayService:
         region_id = self._require_text(geometry_region.get("region_id"), "geometry region id")
         if presence_payload.get("mode_id") != mode_id or presence_payload.get("region_id") != region_id:
             raise OperationReplayError("replay_invalid", "world presence mode/region does not match the Council session")
-        if presence_payload.get("geometry_id") != session_payload.get("world_mode", {}).get("geometry_id"):
-            # Current mode snapshots do not carry geometry_id. The authoritative check is
-            # against the regenerated presence identity below, while this branch only
-            # avoids inventing a second geometry authority here.
-            pass
 
         replay_world = WorldStore()
         for ref in evidence_refs:
@@ -284,6 +279,15 @@ class OperationReplayService:
             policy=policy,
             max_parallel_workers=1,
         )
+        geometry_snapshot = coordinator.geometry.snapshot()
+        if (
+            presence_payload.get("geometry_id") != geometry_snapshot.get("geometry_id")
+            or presence_payload.get("geometry_topology_ref") != geometry_snapshot.get("topology_ref")
+        ):
+            raise OperationReplayError(
+                "replay_protocol_mismatch",
+                "stored Council world presence geometry differs from the current replay runtime",
+            )
         if session_payload.get("failsafe_policy") != coordinator.failsafe.policy_dict():
             raise OperationReplayError(
                 "replay_protocol_mismatch",
