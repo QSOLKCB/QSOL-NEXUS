@@ -2,7 +2,7 @@ cff-version: 1.2.0
 message: "If you use QSOL NEXUS in research, software, or architecture work, please cite the applicable tagged release."
 title: "QSOL NEXUS: Model-Independent Cognitive Substrate, AI Council, and Persistent Shared World"
 type: software
-version: 2.0.0
+version: 2.1.1
 authors:
   - family-names: Slade
     given-names: Trent
@@ -11,15 +11,17 @@ repository-code: "https://github.com/QSOLKCB/QSOL-NEXUS"
 url: "https://github.com/QSOLKCB/QSOL-NEXUS"
 license: Apache-2.0
 abstract: >-
-  QSOL NEXUS 2.0 is a model-independent cognitive substrate and persistent
-  shared computational world with an equal-vote De Bono-style AI Council,
-  content-addressed WorldStore and Ark recovery, local and fixed-host model
-  adapters, a Rust IRC-style operator TUI, deterministic games, civic and
-  progression/culture systems, defensive Trap and passive Stenographer domains,
-  and an append-only BBS Wall. Provider identity, model size, deployment class,
-  citizenship, progression, culture, social history, and storage redundancy do
-  not create additional Council authority. The 2.0.0 version metadata is aligned
-  during the final release-candidate pass; cite the tagged release when available.
+  QSOL NEXUS 2.1.1 is the release-candidate line for the post-v2.0 extension
+  surface: LATTICE-backed world presence, default-deny admitted instruments,
+  typed persistent-world relations/hypotheses/experiments and quarantined
+  exchange, secure remote-operator setup, and the completed Three Minds, One
+  World integration. It preserves the equal-vote Council, content-addressed
+  WorldStore/Ark continuity, reviewed local and fixed-host model adapters,
+  defensive/civic/culture boundaries, and the rule that provider identity,
+  persistence, instrument output, geometry, consensus, and social history do
+  not create additional epistemic or governance authority. Cite the tagged
+  release applicable to the software actually used; the historical v2.1.0 tag
+  is not moved by the v2.1.1 release process.
 keywords:
   - cognitive substrate
   - AI council

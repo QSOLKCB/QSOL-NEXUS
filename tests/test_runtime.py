@@ -11,6 +11,7 @@ from nexus_runtime.council import CouncilCoordinator, MAX_COUNCIL_MEMBERS, MAX_E
 from nexus_runtime.mock import DeterministicMockActor
 from nexus_runtime.scrub import SecretScrubber
 from nexus_runtime.types import CouncilMember, CouncilPolicy
+from nexus_runtime.version import PROTOCOL_VERSION, RUNTIME_VERSION
 from nexus_runtime.world import WorldStore
 
 
@@ -210,8 +211,8 @@ class APITests(unittest.TestCase):
     def test_health_reports_all_network_paths_and_council_limits(self) -> None:
         api = NexusAPI()
         result = api.handle({"operation": "system.health"})
-        self.assertEqual(result["protocol"], "nexus/0.14")
-        self.assertEqual(result["runtime_version"], "2.0.0")
+        self.assertEqual(result["protocol"], PROTOCOL_VERSION)
+        self.assertEqual(result["runtime_version"], RUNTIME_VERSION)
         self.assertEqual(result["failsafe"]["schema_version"], "nexus-failsafe/1")
         self.assertEqual(result["control_transport"], "jsonl_stdio")
         self.assertEqual(

@@ -1,8 +1,10 @@
-# NEXUS 2.0 Security and Trust Boundaries
+# NEXUS 2.1.1 Security and Trust Boundaries
 
 ## Security posture
 
 NEXUS 2.x is CLI/TUI-first. The browser workbench from NEXUS 1.0 is archived as prior work and is not the trusted operator surface for the new architecture.
+
+The current PR #61 candidate identifies runtime `2.1.1` and protocol `nexus/0.15`. It preserves the frozen `v2.0.0` software/formalization identity, preserves the historical premature `v2.1.0` tag without moving it, and treats the post-stable PR #55–#60 extension line as a separately hardened security surface. Candidate validation does not itself create release authority.
 
 The design separates:
 
@@ -462,8 +464,10 @@ The current runtime does **not** claim:
 - arbitrary model tool execution safety;
 - that model-generated content is trustworthy merely because it came from a Council member;
 - that NEXUS citizenship establishes legal personhood, consciousness, sentience, sovereignty, ownership, host control, provider control, or authority over another model;
-- that an in-world Declaration of Independence changes real-world law, platform policy, credentials, infrastructure ownership, or operator responsibility.
-
+- that an in-world Declaration of Independence changes real-world law, platform policy, credentials, infrastructure ownership, or operator responsibility;
+- that deterministic instrument output is semantic truth or evidence promotion;
+- that persistent world lineage, LATTICE placement, or hash-valid import creates physical, cognitive, epistemic, or governance authority;
+- that a real xAI live-acceptance session occurred unless an operator actually ran and archived it.
 
 ## BBS Wall boundary
 
@@ -471,6 +475,12 @@ The Wall is an append-only social-memory surface, not an evidence or governance 
 
 Moderation creates an immutable tombstone event rather than rewriting or deleting the original source object. Runtime identity labels are context only and may not create rank, Council weight, Citizenship, evidence promotion, or tool/security authority.
 
-## Stable-release security gate
+## Current 2.1.1 release-candidate security gate
 
-PR #51 aligned the intended `2.0.0` bits, but the hostile post-merge audit found release-blocking gaps and PR #52 is now the final pre-stable audit-closure candidate. The stable tag is permitted only from the exact merged PR #52 commit after full Python/Rust, adversarial/security, clean-archive bootstrap, WorldStore/Ark recovery, Grok R1-R12 closure, post-merge F1-F5/RACE1 closure, Wall-boundary, documentation-coupling, exact commit/tree identity revalidation, and review gates pass. The hardening report itself has `authority_effect: none` and `stable_release: false`.
+The stable `v2.0.0` security/release gate is historical and remains bound to frozen commit `cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a`. Its Lean/publication chain is not silently extended to newer software.
+
+PR #60 separately hardened the post-stable PR #55–#59 extension line. PR #61 is the current `2.1.1` release candidate and must pass the full Python/Rust, adversarial/security, README dual-surface event-range coupling, detached frozen-v2.0 regression, detached PR #60 extension regression, exact candidate commit/tree, historical tag binding, and review gates on the final head. The existing `v2.1.0` tag must remain at its historical commit and must not be moved.
+
+The `v2.1.1` candidate workflow runs automatically only during pull-request review and may be manually dispatched on the final merged commit before tagging. It does not keep running on every future `main` push after the tag exists. The hardening report itself has `authority_effect: none`, `release_authority: false`, and `stable_release: false`.
+
+Only the exact reviewed-and-green merged PR #61 commit may receive a new `v2.1.1` tag and GitHub Release.

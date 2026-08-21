@@ -1,0 +1,88 @@
+{
+  "schema": "nexus-release-candidate-2-1-1/1",
+  "candidate_pr": 61,
+  "target_version": "2.1.1",
+  "target_tag": "v2.1.1",
+  "protocol": "nexus/0.15",
+  "release_posture": "release_candidate",
+  "stable_release": false,
+  "release_authority": false,
+  "authority_effect": "none",
+  "candidate_base": {
+    "pr": 60,
+    "merge_commit": "80cda46e614f44b47861471cb329e29a348cab43",
+    "purpose": "post-stable extension hardening"
+  },
+  "frozen_v2_0_publication": {
+    "tag": "v2.0.0",
+    "commit": "cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a",
+    "formalization_pr": 53,
+    "publication_pr": 54,
+    "publication_doi": "10.5281/zenodo.21895577",
+    "immutable": true
+  },
+  "historical_v2_1_0_tag": {
+    "tag": "v2.1.0",
+    "commit": "839303ea512631e527073682343341742cead975",
+    "status": "premature_post_stable_extension_marker",
+    "release_target": false,
+    "move_or_rewrite": "forbidden",
+    "explanation": "The existing tag predates PRs #56-#60 and still reports runtime 2.0.0; preserve it as historical provenance rather than moving it."
+  },
+  "extension_hardening": {
+    "pr": 60,
+    "reviewed_head": "0e3b0e94053081ee77a1d969d3d60b81aeeb997c",
+    "merge_commit": "80cda46e614f44b47861471cb329e29a348cab43",
+    "workflow": "NEXUS 2.1 extension hardening",
+    "artifact_id": 9421970922,
+    "artifact_digest": "sha256:16674e62495ed5b66f69269ec2e5fb9cdb300b39bf2b45212f00085daa83ffbb",
+    "artifact_bound_to_reviewed_head": true
+  },
+  "included_extension_prs": [55, 56, 57, 58, 59, 60],
+  "release_surfaces": {
+    "runtime": "2.1.1",
+    "python_package": "2.1.1",
+    "rust_tui": "2.1.1",
+    "protocol": "nexus/0.15"
+  },
+  "protocol_change": {
+    "from": "nexus/0.14",
+    "to": "nexus/0.15",
+    "classification": "additive_minor_protocol_surface",
+    "breaking_change_claimed": false,
+    "reason": "PRs #55-#59 add public world-presence, instrument, persistent-world, and integration operations while preserving existing operation semantics."
+  },
+  "empirical_gates": {
+    "live_xai_acceptance": "operator-run-required",
+    "blocking_for_2_1_1_software_release": false,
+    "live_success_claimed_by_ci": false
+  },
+  "required_workflows": [
+    "README dual-surface contract",
+    "Python mock runtime tests",
+    "Rust IRC TUI tests",
+    "NEXUS security regression",
+    "NEXUS adversarial gauntlet",
+    "NEXUS 2.0 release candidate",
+    "NEXUS 2.1 extension hardening",
+    "NEXUS 2.1.1 release candidate"
+  ],
+  "tag_rule": "Only the exact merged PR #61 commit may be tagged v2.1.1, and only after all required workflows pass on the final reviewed head and no substantive release-blocking review thread remains unresolved.",
+  "forbidden_actions_in_pr": [
+    "move_v2.1.0",
+    "create_v2.1.1_tag",
+    "publish_github_release",
+    "rewrite_v2.0.0_publication",
+    "claim_live_xai_acceptance"
+  ],
+  "boundaries": [
+    "HISTORICAL_TAG != RELEASE_TARGET",
+    "RELEASE_CANDIDATE != RELEASE_AUTHORITY",
+    "PROTOCOL_MINOR_BUMP != BREAKING_CHANGE",
+    "HARDENING_PASS != SEMANTIC_TRUTH",
+    "INSTRUMENT_RESULT != TRUTH",
+    "PERSISTENT_LINEAGE != TRUTH",
+    "MULTI_MODEL_CONSENSUS != EVIDENCE",
+    "LIVE_ACCEPTANCE != SCIENTIFIC_VALIDATION"
+  ]
+}

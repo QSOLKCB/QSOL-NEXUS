@@ -27,10 +27,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     steps:
-      - name: Checkout
+      - name: Checkout complete release history
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
-          fetch-depth: 1
+          fetch-depth: 0
+          fetch-tags: true
           persist-credentials: false
 
       - name: Initialize job-unique hardening report path
@@ -38,6 +39,16 @@ jobs:
         run: |
           set -euo pipefail
           printf 'HARDENING_REPORT=%s\n' "$RUNNER_TEMP/nexus-release-hardening-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json" >> "$GITHUB_ENV"
+
+      - name: Select frozen v2.0 hardening subject
+        shell: bash
+        run: |
+          set -euo pipefail
+          root="$RUNNER_TEMP/nexus-v2.0-hardening-baseline"
+          git worktree add --detach "$root" cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a
+          printf 'HARDENING_ROOT=%s\n' "$root" >> "$GITHUB_ENV"
+          printf 'HARDENING_EXPECT=%s\n' 'cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a' >> "$GITHUB_ENV"
+          printf 'HARDENING_SUBJECT=%s\n' 'frozen-v2.0.0-commit' >> "$GITHUB_ENV"
 
       - name: Toolchain versions
         shell: bash
@@ -49,20 +60,21 @@ jobs:
           test "$(cargo --version | awk '{print $2}')" = "1.97.1"
           test "$(rustc --version | awk '{print $2}')" = "1.97.1"
 
-      - name: Run exact-commit final release-candidate matrix
-        env:
-          PYTHONPATH: src
+      - name: Run frozen v2.0 exact-commit release-candidate matrix
+        shell: bash
         run: |
           set -euo pipefail
-          python3 tools/nexus_release_hardening.py \
+          cd "$HARDENING_ROOT"
+          PYTHONPATH=src python3 tools/nexus_release_hardening.py \
             --iterations 128 \
-            --expect-commit "$GITHUB_SHA" \
+            --expect-commit "$HARDENING_EXPECT" \
             --json-out "$HARDENING_REPORT"
 
-      - name: Show machine-readable report
+      - name: Show verification subject and machine-readable report
         if: always()
         shell: bash
         run: |
+          echo "release-hardening subject: ${HARDENING_SUBJECT:-unknown}"
           if test -f "$HARDENING_REPORT"; then
             cat "$HARDENING_REPORT"
           else

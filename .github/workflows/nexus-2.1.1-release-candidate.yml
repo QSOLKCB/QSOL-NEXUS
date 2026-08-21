@@ -1,0 +1,91 @@
+name: NEXUS 2.1.1 release candidate
+
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/**'
+      - 'README.md'
+      - 'README4AI.md'
+      - 'CHANGELOG.md'
+      - 'CITATION.cff'
+      - 'docs/**'
+      - 'pyproject.toml'
+      - 'release/**'
+      - 'src/nexus_runtime/**'
+      - 'tests/**'
+      - 'tools/**'
+      - 'tui/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  release-candidate-2-1-1:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    env:
+      PYTHONDONTWRITEBYTECODE: '1'
+    steps:
+      - name: Checkout complete release history
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+          persist-credentials: false
+
+      - name: Validate README dual-surface contract
+        uses: ./.github/actions/readme-contract
+
+      - name: Initialize report path
+        shell: bash
+        run: |
+          set -euo pipefail
+          printf 'NEXUS_211_REPORT=%s\n' "$RUNNER_TEMP/nexus-2.1.1-release-candidate-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}.json" >> "$GITHUB_ENV"
+
+      - name: Toolchain versions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 --version
+          cargo --version
+          rustc --version
+          test "$(cargo --version | awk '{print $2}')" = "1.97.1"
+          test "$(rustc --version | awk '{print $2}')" = "1.97.1"
+
+      - name: Static release identity self-test
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python3 tools/nexus_2_1_1_release_candidate.py \
+            --self-test \
+            --expect-commit "$GITHUB_SHA"
+
+      - name: Run exact-commit release candidate
+        env:
+          PYTHONPATH: src
+        run: |
+          set -euo pipefail
+          python3 tools/nexus_2_1_1_release_candidate.py \
+            --expect-commit "$GITHUB_SHA" \
+            --json-out "$NEXUS_211_REPORT"
+
+      - name: Show machine-readable report
+        if: always()
+        shell: bash
+        run: |
+          if test -f "$NEXUS_211_REPORT"; then
+            cat "$NEXUS_211_REPORT"
+          else
+            echo 'NEXUS 2.1.1 release-candidate report was not produced'
+          fi
+
+      - name: Upload machine-readable report
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: nexus-2.1.1-release-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ env.NEXUS_211_REPORT }}
+          if-no-files-found: warn
+          retention-days: 30

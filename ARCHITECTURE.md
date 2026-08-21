@@ -1,27 +1,27 @@
-# QSOL NEXUS 2.0 Architecture
+# QSOL NEXUS 2.1.1 Architecture
 
 ## Purpose
 
-QSOL NEXUS 2.0 is a model-independent cognitive substrate and persistent shared computational world. Humans, deterministic actors, local models, and reviewed cloud models interact through one runtime-owned protocol without allowing provider identity, model size, deployment class, account tier, tool access, rhetoric, citizenship, popularity, or performance history to manufacture governance authority.
+QSOL NEXUS 2.x is a model-independent cognitive substrate and persistent shared computational world. Humans, deterministic actors, local models, and reviewed cloud models interact through one runtime-owned protocol without allowing provider identity, model size, deployment class, account tier, tool access, rhetoric, citizenship, popularity, or performance history to manufacture governance authority.
 
 The architectural rule is deliberately asymmetric:
 
 > **Models propose and participate. NEXUS owns state, evidence identity, protocol transitions, verification, and vote mechanics.**
 
-This document describes the post-PR #50 runtime that PR #51 is preparing for the `v2.0.0` stable tag.
+This document describes the current PR #61 release-candidate architecture, including the frozen v2.0 substrate plus the reviewed post-stable PR #55–#60 extension line.
 
 ## Release identity
 
 ```text
-protocol       nexus/0.14
-runtime        2.0.0
-Python package 2.0.0
-Rust TUI       2.0.0
+protocol       nexus/0.15
+runtime        2.1.1
+Python package 2.1.1
+Rust TUI       2.1.1
 control plane  JSONL over local stdio
-release state  release candidate until exact merged #52 head is tagged
+release state  PR #61 release candidate; v2.1.1 tag not created by this PR
 ```
 
-A version string is not release authority. The release-hardening report also carries `stable_release: false`; stable 2.0 exists only when the reviewed, green, merged #52 commit is tagged `v2.0.0`.
+A version string is not release authority. The published `v2.0.0` software/formalization identity remains frozen historical provenance, and the existing `v2.1.0` tag remains an immutable premature post-stable marker. Only the exact reviewed-and-green merged PR #61 commit may later receive the new `v2.1.1` tag and GitHub Release.
 
 ## Top-level system
 
@@ -35,9 +35,11 @@ A version string is not release authority. The release-hardening report also car
 +-----------------------------------------------------------------------+
 |                         PYTHON NEXUS RUNTIME                           |
 |-----------------------------------------------------------------------|
-| final Wall API overlay                                                 |
+| provider-aware public API overlays + persistent-world extension layer  |
 | Council coordinator · Six Hats · sealed equal ballot                  |
 | modes + named-region geometry · evidence + receipts                   |
+| LATTICE-backed placement/movement/migration · admitted instruments    |
+| typed hypotheses/experiments/relations · bounded export/import        |
 | Secret Scrubber · Equality Guard · Action Awareness                   |
 | Failsafe · Citizenship · Civic Due Process · Guardian                 |
 | games · progression · culture · Long Shift · Psyche-Out Chess         |
@@ -63,7 +65,7 @@ The Rust TUI is implemented and replaceable. It is an operator shell, not an epi
 
 ## Runtime composition
 
-NEXUS grew through additive API overlays. Historical module names remain import-compatible, but the package-level `NexusAPI` and the historical public aliases resolve to the final Wall-capable runtime after PR #50.
+NEXUS grew through additive API overlays. Historical module names remain import-compatible, while the package-level `NexusAPI` resolves to the current provider-aware persistent-world runtime.
 
 ```text
 base runtime
@@ -73,7 +75,13 @@ base runtime
   -> WorldStore Continuity
   -> AI progression
   -> AI culture / Long Shift / Psyche-Out Chess
-  -> BBS Wall                                  [final 2.0 feature overlay]
+  -> BBS Wall                                  [frozen v2.0 feature surface]
+  -> LATTICE world presence/migration          [PR #55]
+  -> default-deny instrument admission         [PR #56]
+  -> typed persistent-world contracts          [PR #57]
+  -> remote-operator engineering               [PR #58]
+  -> Three Minds, One World integration        [PR #59]
+  -> post-stable extension hardening           [PR #60]
 ```
 
 This layering is compatibility plumbing, not a hierarchy of political authority. Later overlays may expose more operations; they may not silently rewrite the constitutional invariants beneath them.
@@ -89,7 +97,10 @@ Citizenship/progression    != extra Council seat
 Council consensus          != evidence status
 Wall/performance history   != truth
 storage redundancy         != authority
-Stenographer observation   != control
+instrument result          != truth
+persistent lineage         != truth
+LATTICE position           != cognitive coordinate
+foreign import             != local authority
 ```
 
 For an ordinary admitted Council member:
@@ -124,7 +135,7 @@ CANONICAL QUESTION + FROZEN EVIDENCE
 
 Actor-local work may execute in parallel. Phase barriers and canonical roster-order joins do not. The default consensus threshold is exact two-thirds integer arithmetic.
 
-The ballot commitment is a deterministic integrity/audit record; NEXUS 2.0 does not claim a cryptographically anonymous voting system.
+The ballot commitment is a deterministic integrity/audit record; NEXUS does not claim a cryptographically anonymous voting system.
 
 ## Consensus and evidence
 
@@ -140,11 +151,13 @@ Evidence: REPLAY_VERIFIED observation
 => reproduced observation, unsettled interpretation
 ```
 
-The same rule applies to culture, games, Citizen Mode, and the Wall. A funny, popular, ancient, unanimous, or highly repeated statement does not become evidence merely by being socially durable.
+The same rule applies to culture, games, Citizen Mode, the Wall, persistent-world objects, and instrument receipts. A funny, popular, ancient, unanimous, highly repeated, deterministic, or content-addressed statement does not become evidence merely by being durable.
 
-## WorldStore and continuity
+## WorldStore, persistent world, and continuity
 
 The durable world is built from canonical content-addressed `object:<sha256>` objects and immutable predecessor/input references. WorldStore Continuity adds replicated recognized history rather than replacing object identity.
+
+The 2.1 extension line adds explicit LATTICE placement/movement/migration, typed relations, immutable hypothesis/experiment lineage, derived minority/mode views, and bounded export/import with quarantine-preserving foreign objects. None of these layers promotes persistence into truth or hash validity into semantic authority.
 
 ```text
 validated mutation
@@ -166,7 +179,21 @@ Core continuity rules:
 - repair copies a verified source and records the event where required;
 - Ark restore targets a new empty location and never overwrites the source world;
 - indexes/caches are reconstructable convenience, not historical authority;
-- redundancy creates zero vote, evidence, or constitutional authority.
+- redundancy creates zero vote, evidence, or constitutional authority;
+- imported hash-valid objects remain quarantined from local committed authority;
+- LATTICE addresses are operational placement identities, not physical or cognitive geometry.
+
+## Instruments
+
+NEXUS 2.1 uses a default-deny instrument registry. The first admitted executable instrument is the bounded deterministic `nexus.integer-primality/1` probe. Intent, execution, and receipt objects are content-addressed and verifiable, but the claim boundary remains exact:
+
+```text
+INSTRUMENT_RESULT != TRUTH
+DETERMINISTIC != AUTHORITATIVE
+RECEIPT != EVIDENCE_PROMOTION
+```
+
+Candidate QEC, SPECTRAL, sonification, and symbolic-numeric instruments remain non-executable until separately admitted.
 
 ## Modes, geometry, and rooms
 
@@ -180,7 +207,7 @@ The TUI additionally exposes special-purpose rooms whose routing semantics matte
 
 ## BBS Wall
 
-PR #50 adds the final 2.0 feature surface: a WorldStore-backed append-only noticeboard.
+The BBS Wall was the final frozen v2.0 feature surface: a WorldStore-backed append-only noticeboard.
 
 ```text
 #wall text
@@ -263,6 +290,8 @@ Local adapters are constrained to loopback destination classes at the NEXUS boun
 
 Credentials live in the separate auth subsystem and are operational secrets, never cognitive/world state. Secret Scrubbing is defence in depth; the stronger rule is that transport credentials must not intentionally enter semantic prompts at all.
 
+The Rust remote-operator setup surface stores only provider/model/profile references. A real xAI acceptance remains an explicit operator-run empirical gate; CI performs only the hermetic self-test and does not claim live provider success.
+
 ## Operator lifecycle
 
 `./nexus` is the repository launcher. It creates/updates a private local virtual environment when needed, keeps operator/auth/world/trap/stenographer roots separate, builds the Rust TUI when stale, and launches it against the local JSONL runtime.
@@ -280,24 +309,24 @@ Release-quality operator checks include:
 
 ## Release hardening
 
-PR #49 established the pre-Wall hardening harness. The independent Grok audit of that harness produced findings R1-R12; the surviving findings were closed and promoted into executable regressions before PR #50 merged.
+The published v2.0 release and its Lean/publication chain are frozen historical evidence. PR #60 separately hardened the post-stable PR #55–#59 extension line without rewriting that v2.0 identity.
 
-PR #51 repurposes the same eight-gate harness as the **final release-candidate profile scoped through PR #50**. It reruns:
+PR #61 is the exact-commit **2.1.1 release candidate**. Its release gate includes:
 
-- candidate-tree integrity;
-- exact matrix and audit-closure inventory;
-- full Python tests;
-- deterministic adversarial probes;
-- Rust all-target tests/check/format;
-- isolated clean-archive operator rehearsal;
-- representative WorldStore/Ark recovery tests;
-- post-run tree integrity.
+- exact runtime/Python/Rust/protocol identity alignment;
+- immutable `v2.0.0` and historical `v2.1.0` tag bindings;
+- detached-worktree regression of the frozen v2.0 hardening commit;
+- detached PR #60 extension-hardening regression;
+- full Python and Rust checks;
+- adversarial and security matrices;
+- README/README4AI event-range coupling;
+- clean candidate tree and unchanged commit/tree identity.
 
-The hardening report verifies a candidate. It does not create governance or release authority.
+The hardening report verifies a candidate. It does not create governance, semantic, or release authority.
 
-## Post-stable formalization boundary
+## Formalization boundary
 
-Lean 4 work is deliberately after the stable runtime is frozen. PR #52 will machine-check selected constitutional/protocol invariants against an explicit formal model and map them to the exact stable Python/Rust implementation. PR #53 will package the reviewed runnable Lean sources, stable software identity, verification records, hashes, and Zenodo DOI.
+The runnable Lean 4 formalization and Zenodo publication for **v2.0.0** were completed historically in PR #53 and PR #54. Those proofs remain bound to the frozen v2.0 software identity and are not silently extended to the post-v2.0 PR #55–#61 behavior.
 
 Lean is not intended to prove that models are intelligent, Council answers are true, consensus is correct, or NEXUS is AGI.
 
@@ -313,9 +342,10 @@ Lean is not intended to prove that models are intelligent, Council answers are t
 - [`docs/ARK_PROTOCOL.md`](docs/ARK_PROTOCOL.md) — continuity/Ark recovery
 - [`docs/AI_PROGRESSION.md`](docs/AI_PROGRESSION.md) — persistent non-authoritative activity
 - [`docs/AI_CULTURE.md`](docs/AI_CULTURE.md) — performance/RPG/Psyche-Out layer
-- [`docs/BBS_WALL.md`](docs/BBS_WALL.md) — final social-memory surface
+- [`docs/BBS_WALL.md`](docs/BBS_WALL.md) — social-memory surface
+- [`docs/COMPATIBILITY.md`](docs/COMPATIBILITY.md) — current compatibility boundary
 - [`docs/RELEASE_SEQUENCE.md`](docs/RELEASE_SEQUENCE.md) — numbered release order
-- [`docs/RELEASE_CHECKLIST.md`](docs/RELEASE_CHECKLIST.md) — stable-tag gate
+- [`docs/RELEASE_NOTES_2.1.1.md`](docs/RELEASE_NOTES_2.1.1.md) — current candidate release notes
 
 ## Architectural principle
 

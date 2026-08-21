@@ -6,6 +6,7 @@ import unittest
 
 from nexus_runtime.api import NexusAPI
 from nexus_runtime.game_mud import MUD_SCHEMA, _board_content, apply_action, inspect_mud, new_mud, player_view
+from nexus_runtime.version import PROTOCOL_VERSION
 from nexus_runtime.world import WorldStore
 
 
@@ -173,7 +174,7 @@ class CursedMUDAPITests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as root:
             api = NexusAPI(root)
             health = api.handle({"operation": "system.health"})
-            self.assertEqual(health["protocol"], "nexus/0.14")
+            self.assertEqual(health["protocol"], PROTOCOL_VERSION)
             games = {game["game_id"]: game for game in health["games"]}
             self.assertEqual(games["mud"]["room"], "#mud")
             self.assertEqual(games["mud"]["schema"], MUD_SCHEMA)

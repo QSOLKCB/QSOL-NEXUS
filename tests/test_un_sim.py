@@ -6,6 +6,7 @@ import unittest
 from nexus_runtime.api import NexusAPI
 from nexus_runtime.council import CouncilCoordinator, MAX_EVIDENCE_OBJECT_CHARS
 from nexus_runtime.game_un import GAME_SCHEMA, MAX_EVENT_LOG, advance_turn, apply_action, inspect_game, new_game
+from nexus_runtime.version import PROTOCOL_VERSION, RUNTIME_VERSION
 from nexus_runtime.world import WorldStore
 
 
@@ -159,8 +160,8 @@ class UNSimulationAPITests(unittest.TestCase):
     def test_api_exposes_game_mode_region_and_operations(self) -> None:
         api = NexusAPI()
         health = api.handle({"operation": "system.health"})
-        self.assertEqual(health["protocol"], "nexus/0.14")
-        self.assertEqual(health["runtime_version"], "2.0.0")
+        self.assertEqual(health["protocol"], PROTOCOL_VERSION)
+        self.assertEqual(health["runtime_version"], RUNTIME_VERSION)
         self.assertIn("game_un", health["world_modes"])
         self.assertEqual(health["geometry"], "named-regions-v4")
         self.assertIn("#un-sim", {game["room"] for game in health["games"]})

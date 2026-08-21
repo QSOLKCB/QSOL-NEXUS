@@ -1,0 +1,96 @@
+{
+  "schema": "nexus-release-matrix-2-1-1/1",
+  "candidate_pr": 61,
+  "profile": "nexus_2_1_1_release_candidate",
+  "target_version": "2.1.1",
+  "target_tag": "v2.1.1",
+  "protocol": "nexus/0.15",
+  "stable_release": false,
+  "release_authority": false,
+  "authority_effect": "none",
+  "expected_python_test_files": 83,
+  "candidate_base_merge": "80cda46e614f44b47861471cb329e29a348cab43",
+  "historical_tag": {
+    "tag": "v2.1.0",
+    "commit": "839303ea512631e527073682343341742cead975",
+    "must_remain_unchanged": true
+  },
+  "required_gates": [
+    {
+      "id": "release_identity",
+      "required": true,
+      "checks": [
+        "version_alignment",
+        "protocol_alignment",
+        "readme_alignment",
+        "candidate_manifest_alignment",
+        "v2_1_0_historical_tag_binding",
+        "v2_1_1_tag_absent_during_candidate_review"
+      ]
+    },
+    {
+      "id": "post_stable_extension",
+      "required": true,
+      "python_patterns": [
+        "test_world_lattice.py",
+        "test_instruments.py",
+        "test_three_minds_demo.py"
+      ],
+      "checks": [
+        "pr60_merge_is_ancestor",
+        "extension_contracts_present",
+        "live_xai_self_test_only"
+      ]
+    },
+    {
+      "id": "historical_release_regression",
+      "required": true,
+      "python_patterns": [
+        "test_release_hardening.py",
+        "test_release_hardening_grok_audit.py",
+        "test_post_merge_grok_audit.py",
+        "test_release_upgrade_rehearsal.py",
+        "test_release_candidate.py"
+      ],
+      "checks": [
+        "v2_0_publication_unchanged",
+        "old_release_metadata_remains_historical"
+      ]
+    },
+    {
+      "id": "rust_release_surface",
+      "required": true,
+      "checks": [
+        "cargo_test_locked",
+        "cargo_check_locked",
+        "cargo_fmt_check",
+        "cargo_lock_package_version_alignment"
+      ]
+    },
+    {
+      "id": "candidate_integrity",
+      "required": true,
+      "checks": [
+        "candidate_tree_clean_before",
+        "candidate_commit_binding",
+        "candidate_tree_clean_after",
+        "candidate_identity_unchanged"
+      ]
+    }
+  ],
+  "required_external_workflows": [
+    "README dual-surface contract",
+    "Python mock runtime tests",
+    "Rust IRC TUI tests",
+    "NEXUS security regression",
+    "NEXUS adversarial gauntlet",
+    "NEXUS 2.0 release candidate",
+    "NEXUS 2.1 extension hardening"
+  ],
+  "release_rule": "A green PR #61 candidate does not create release authority. After merge, rerun/verify the required exact-commit checks on the merged commit; only that exact merged commit may then receive the new v2.1.1 tag and GitHub Release.",
+  "live_xai_gate": {
+    "status": "open_operator_empirical_gate",
+    "blocking": false,
+    "ci_may_claim_success": false
+  }
+}
