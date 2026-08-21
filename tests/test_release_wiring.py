@@ -73,6 +73,14 @@ class ReleaseWiringTests(unittest.TestCase):
             }.issubset(operations)
         )
 
+    @staticmethod
+    def _mock_members(*, first_profile: str = "balanced") -> list[dict[str, str]]:
+        return [
+            {"member_id": "A", "model_id": "mock-a", "adapter_id": "mock", "profile": first_profile},
+            {"member_id": "B", "model_id": "mock-b", "adapter_id": "mock", "profile": "skeptical"},
+            {"member_id": "C", "model_id": "mock-c", "adapter_id": "mock", "profile": "supportive"},
+        ]
+
     def test_generalized_replay_reconstructs_mock_council_without_source_mutation(self) -> None:
         api = PackageNexusAPI()
         evidence = api.handle(
@@ -88,11 +96,7 @@ class ReleaseWiringTests(unittest.TestCase):
             {
                 "operation": "council.run",
                 "question": "Can this deterministic stored Council be replayed?",
-                "members": [
-                    {"member_id": "A", "model_id": "mock-a", "adapter_id": "mock", "profile": "balanced"},
-                    {"member_id": "B", "model_id": "mock-b", "adapter_id": "mock", "profile": "skeptical"},
-                    {"member_id": "C", "model_id": "mock-c", "adapter_id": "mock", "profile": "supportive"},
-                ],
+                "members": self._mock_members(),
                 "evidence_refs": [evidence_ref],
                 "evidence_state": "UNTESTED",
                 "mode": "analytical",
@@ -120,6 +124,57 @@ class ReleaseWiringTests(unittest.TestCase):
         self.assertEqual(replay["authority_effect"], "none")
         self.assertEqual(replay["evidence_effect"], "none")
         self.assertEqual(set(api.world._objects), before)
+
+    def test_generalized_replay_rejects_missing_presence_direct_input(self) -> None:
+        api = PackageNexusAPI()
+        run = api.handle(
+            {
+                "operation": "council.run",
+                "question": "Presence must remain available for replay.",
+                "members": self._mock_members(),
+            }
+        )
+        self.assertEqual(run["status"], "ok")
+        presence_ref = run["world_presence_ref"]
+        api.world._objects.pop(presence_ref)
+
+        verified = api.handle({"operation": "receipt.verify", "receipt_ref": run["receipt_ref"]})
+        self.assertEqual(verified["status"], "failed")
+        self.assertIn(presence_ref, verified["missing_refs"])
+
+        replay = api.handle({"operation": "receipt.replay", "receipt_ref": run["receipt_ref"]})
+        self.assertEqual(replay["status"], "error")
+        self.assertEqual(replay["error"]["code"], "replay_context_not_reconstructible")
+        self.assertIn("world presence", replay["error"]["message"].casefold())
+
+    def test_generalized_replay_accepts_empty_mock_profile_admitted_by_council(self) -> None:
+        api = PackageNexusAPI()
+        run = api.handle(
+            {
+                "operation": "council.run",
+                "question": "An empty mock profile is still an admitted exact string.",
+                "members": self._mock_members(first_profile=""),
+            }
+        )
+        self.assertEqual(run["status"], "ok")
+        self.assertTrue(run["execution_replayable"])
+        replay = api.handle({"operation": "receipt.replay", "receipt_ref": run["receipt_ref"]})
+        self.assertEqual(replay["status"], "verified")
+        self.assertEqual(replay["replayed_result_ref"], run["session_ref"])
+        self.assertEqual(replay["replayed_receipt_ref"], run["receipt_ref"])
+
+    def test_manual_2_1_1_dispatch_is_pinned_to_certified_pr61_merge(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "nexus-2.1.1-release-candidate.yml").read_text(
+            encoding="utf-8"
+        )
+        certified = "a5fea299fbe682c9672dc577d2e683cebdb9f8f4"
+        self.assertIn(f"NEXUS_211_CERTIFIED_MERGE: {certified}", workflow)
+        self.assertGreaterEqual(workflow.count(certified), 4)
+        self.assertIn("Checkout exact candidate subject", workflow)
+        self.assertIn("Confirm exact candidate subject", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn('--expect-commit "$NEXUS_211_EXPECT"', workflow)
+        self.assertNotIn('--expect-commit "$GITHUB_SHA"', workflow)
 
     def test_generalized_replay_fails_closed_for_non_replayable_and_unknown_receipts(self) -> None:
         api = PackageNexusAPI()
