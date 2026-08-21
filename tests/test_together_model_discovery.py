@@ -5,8 +5,11 @@ import json
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 import unittest
+from unittest.mock import patch
 
+from nexus_runtime import NexusAPI
 from nexus_runtime.adapters.third_party import ThirdPartyTransport
 from nexus_runtime.auth import SecretMaterial
 from nexus_runtime.schema_migration import (
@@ -15,6 +18,7 @@ from nexus_runtime.schema_migration import (
     classify_version_change,
     verify_migration_plan,
 )
+from nexus_runtime.world_continuity import WorldContinuityError
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -169,6 +173,105 @@ class SchemaMigrationCodexReviewTests(unittest.TestCase):
                     result.stdout,
                     json.dumps(decoded, sort_keys=True, separators=(",", ":"), ensure_ascii=False) + "\n",
                 )
+
+
+class UserModeCodexReviewTests(unittest.TestCase):
+    """PR #64 review regressions also reuse this file to keep the 83-file inventory frozen."""
+
+    @staticmethod
+    def _definition(**overrides: str) -> dict[str, str]:
+        request = {
+            "operation": "world.mode.define",
+            "mode_id": "user:codex_review",
+            "label": "Codex Review",
+            "description": "Bounded review framing.",
+            "prompt_instruction": "Keep the review explicit and non-authoritative.",
+            "region_id": "observatory",
+        }
+        request.update(overrides)
+        return request
+
+    @staticmethod
+    def _members() -> list[dict[str, str]]:
+        return [
+            {"member_id": "A", "model_id": "mock-a"},
+            {"member_id": "B", "model_id": "mock-b"},
+            {"member_id": "C", "model_id": "mock-c"},
+        ]
+
+    def test_redaction_expansion_is_rejected_before_definition_persistence(self) -> None:
+        secret = "sk-" + "A" * 20
+        raw_label = "L" * 71 + secret
+        self.assertLessEqual(len(raw_label), 96)
+        with tempfile.TemporaryDirectory() as directory:
+            api = NexusAPI(world_root=directory)
+            denied = api.handle(
+                self._definition(mode_id="user:redaction_bound", label=raw_label)
+            )
+            self.assertEqual(denied["status"], "error")
+            self.assertEqual(denied["error"]["code"], "user_mode_invalid")
+            self.assertEqual(
+                api.handle({"operation": "world.mode.policy"})["defined_user_modes"],
+                0,
+            )
+
+            restarted = NexusAPI(world_root=directory)
+            policy = restarted.handle({"operation": "world.mode.policy"})
+            self.assertEqual(policy["status"], "ok")
+            self.assertEqual(policy["defined_user_modes"], 0)
+            self.assertEqual(restarted.handle({"operation": "world.modes"})["status"], "ok")
+
+    def test_custom_mode_council_proceeding_uses_contextual_mode_resolver(self) -> None:
+        api = NexusAPI()
+        defined = api.handle(self._definition(mode_id="user:proceedings"))
+        self.assertEqual(defined["status"], "ok")
+        run = api.handle(
+            {
+                "operation": "council.run",
+                "question": "Can this custom-mode proceeding be observed?",
+                "mode": "user:proceedings",
+                "members": self._members(),
+            }
+        )
+        self.assertEqual(run["status"], "ok")
+        view = api.handle(
+            {
+                "operation": "council.proceedings.view",
+                "session_ref": run["session_ref"],
+                "source_mode_id": "user:proceedings",
+            }
+        )
+        self.assertEqual(view["status"], "ok")
+        self.assertEqual(view["source_mode_id"], "user:proceedings")
+        self.assertEqual(view["source_region_id"], "observatory")
+        self.assertEqual(view["access_tier"], "public_gallery")
+
+    def test_receipt_verify_keeps_post_lookup_continuity_failure_structured(self) -> None:
+        api = NexusAPI()
+        self.assertEqual(api.handle(self._definition(mode_id="user:continuity"))["status"], "ok")
+        run = api.handle(
+            {
+                "operation": "council.run",
+                "question": "Keep continuity failure inside the API boundary.",
+                "mode": "user:continuity",
+                "members": self._members(),
+            }
+        )
+        self.assertEqual(run["status"], "ok")
+        with patch.object(
+            api.user_modes,
+            "receipt_definition_ref",
+            side_effect=WorldContinuityError(
+                "world_continuity_quorum_unavailable",
+                "fixture continuity quorum unavailable",
+            ),
+        ):
+            checked = api.handle(
+                {"operation": "receipt.verify", "receipt_ref": run["receipt_ref"]}
+            )
+        self.assertEqual(checked["status"], "error")
+        self.assertEqual(checked["error"]["code"], "world_continuity_quorum_unavailable")
+        self.assertIn("continuity quorum unavailable", checked["error"]["message"])
 
 
 if __name__ == "__main__":

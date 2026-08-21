@@ -22,6 +22,13 @@ from .replay import (
 from .trap import TrapError
 from .wall import WallError
 from .wall_api import WallNexusAPI
+from .user_modes import (
+    USER_MODE_OBJECT_TYPE,
+    UserModeError,
+    UserModeService,
+    user_mode_contextual,
+    user_mode_policy_snapshot,
+)
 from .world_continuity import WorldContinuityError
 from .world_lattice import WorldLatticeError
 
@@ -30,6 +37,8 @@ _PERSISTENT_WORLD_OPERATIONS = frozenset(
     {
         "receipt.replay",
         "world.persistence.policy",
+        "world.mode.policy",
+        "world.mode.define",
         "world.relation.create",
         "world.relation.search",
         "world.hypothesis.create",
@@ -44,6 +53,7 @@ _PERSISTENT_WORLD_OPERATIONS = frozenset(
 )
 _PERSISTENT_WORLD_MUTATIONS = frozenset(
     {
+        "world.mode.define",
         "world.relation.create",
         "world.hypothesis.create",
         "world.experiment.create",
@@ -59,6 +69,12 @@ class PersistentWorldNexusAPI(WallNexusAPI):
         super().__init__(world_root, **kwargs)
         self.persistent_world = PersistentWorldService(self.world, scrubber=self.scrubber)
         self.operation_replay = OperationReplayService(self.world)
+        self.user_modes = UserModeService(
+            self.world,
+            self.geometry,
+            scrubber=self.scrubber,
+            ordered_refs_provider=self.persistent_world._ordered_refs,
+        )
 
     @staticmethod
     def _optional_text(request: dict[str, Any], field: str) -> str | None:
@@ -97,6 +113,33 @@ class PersistentWorldNexusAPI(WallNexusAPI):
                 response = {
                     "status": "ok",
                     "policy": persistent_world_policy_snapshot(),
+                }
+
+            elif operation == "world.mode.policy":
+                self._require_exact_fields(request, operation, set())
+                response = {
+                    "status": "ok",
+                    "policy": user_mode_policy_snapshot(),
+                    "defined_user_modes": len(self.user_modes.list_user_modes()),
+                }
+
+            elif operation == "world.mode.define":
+                self._require_exact_fields(
+                    request,
+                    operation,
+                    {"mode_id", "label", "description", "prompt_instruction", "region_id"},
+                )
+                response = {
+                    "status": "ok",
+                    **self._run_real_mutation(
+                        lambda: self.user_modes.define_mode(
+                            mode_id=self._require_str(request, "mode_id"),
+                            label=self._require_str(request, "label"),
+                            description=self._require_str(request, "description"),
+                            prompt_instruction=self._require_str(request, "prompt_instruction"),
+                            region_id=self._require_str(request, "region_id"),
+                        )
+                    ),
                 }
 
             elif operation == "world.relation.create":
@@ -301,6 +344,8 @@ class PersistentWorldNexusAPI(WallNexusAPI):
                 response = {"request_id": request_id, **response}
             return response
 
+        except UserModeError as exc:
+            return self._error(request_id, exc.code, str(exc))
         except OperationReplayError as exc:
             return self._error(request_id, exc.code, str(exc))
         except PersistentWorldError as exc:
@@ -330,6 +375,7 @@ class PersistentWorldNexusAPI(WallNexusAPI):
         except (KeyError, TypeError, ValueError, RecursionError) as exc:
             return self._error(request_id, "invalid_request", str(exc))
 
+    @user_mode_contextual
     def handle(self, request: dict[str, Any]) -> dict[str, Any]:
         operation = request.get("operation") if isinstance(request, dict) else None
         request_id = request.get("request_id") if isinstance(request, dict) else None
@@ -355,7 +401,10 @@ class PersistentWorldNexusAPI(WallNexusAPI):
 
         if operation == "world.create" and isinstance(request, dict):
             object_type = request.get("object_type")
-            if isinstance(object_type, str) and object_type in PERSISTENT_WORLD_RESERVED_OBJECT_TYPES:
+            if isinstance(object_type, str) and (
+                object_type in PERSISTENT_WORLD_RESERVED_OBJECT_TYPES
+                or object_type == USER_MODE_OBJECT_TYPE
+            ):
                 return self._error(
                     safe_request_id,
                     "invalid_request",
@@ -363,6 +412,40 @@ class PersistentWorldNexusAPI(WallNexusAPI):
                 )
 
         response = super().handle(request)
+
+        if operation == "receipt.verify" and response.get("status") in {"verified", "failed"}:
+            receipt_ref = request.get("receipt_ref") if isinstance(request, dict) else None
+            if isinstance(receipt_ref, str):
+                try:
+                    definition_ref = self.user_modes.receipt_definition_ref(receipt_ref)
+                    if definition_ref is not None:
+                        try:
+                            self.user_modes.validate_definition_ref(definition_ref)
+                        except UserModeError as exc:
+                            if exc.code != "user_mode_definition_not_found":
+                                return self._error(safe_request_id, exc.code, str(exc))
+                            missing = list(response.get("missing_refs", []))
+                            if definition_ref not in missing:
+                                missing.append(definition_ref)
+                            response = {
+                                **response,
+                                "status": "failed",
+                                "missing_refs": missing,
+                                "mode_definition_ref": definition_ref,
+                            }
+                        else:
+                            response = {**response, "mode_definition_ref": definition_ref}
+                except UserModeError as exc:
+                    return self._error(safe_request_id, exc.code, str(exc))
+                except WorldContinuityError as exc:
+                    return self._error(safe_request_id, exc.code, str(exc))
+                except OSError:
+                    return self._error(
+                        safe_request_id,
+                        "world_persistence_unavailable",
+                        "persistent world storage is unavailable",
+                    )
+
         if operation == "system.health" and response.get("status") == "ok":
             return {
                 **response,
@@ -374,6 +457,11 @@ class PersistentWorldNexusAPI(WallNexusAPI):
                 "operation_replay": {
                     "status": "ok",
                     "policy": operation_replay_policy_snapshot(),
+                },
+                "user_modes": {
+                    "status": "ok",
+                    "policy": user_mode_policy_snapshot(),
+                    "defined_user_modes": len(self.user_modes.list_user_modes()),
                 },
             }
         if operation == "system.operations" and response.get("status") == "ok":
