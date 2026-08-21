@@ -1,10 +1,12 @@
 # QSOL NEXUS — Easy Use Guide
 
-The repository itself is the NEXUS 2.0 launcher. PR #45 introduced the operator tooling; PR #51 reconciled it with the post-Wall release candidate, and PR #52 closes the hostile post-merge audit findings before stable release.
+The repository itself is the NEXUS launcher. The current PR #61 release candidate identifies runtime, Python package and Rust TUI as `2.1.1` with protocol `nexus/0.15`. It includes the post-stable PR #55–#60 extension line while preserving the published `v2.0.0` identity and the premature historical `v2.1.0` tag unchanged.
 
 ## Release-candidate note
 
-The current PR #52 candidate identifies the intended stable bits as `2.0.0`, but the stable tag is not implied by a version string. Use `./nexus version` and `./nexus doctor` to verify the local checkout; the repository release is stable only once the exact merged #52 head passes the complete commit/tree-bound release and review gates and is tagged `v2.0.0`.
+PR #61 is a **2.1.1 release candidate**, not release authority. Use `./nexus version` and `./nexus doctor` to verify the local checkout. Only the exact reviewed-and-green merged PR #61 commit may later receive a new `v2.1.1` tag and GitHub Release. The old `v2.0.0` release remains frozen historical provenance, and `v2.1.0` must not be moved.
+
+Historical 2.0 release instructions and evidence remain valid only for the frozen `v2.0.0` commit; they are not instructions for tagging the current checkout.
 
 ## First launch
 
