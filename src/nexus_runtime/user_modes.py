@@ -230,7 +230,8 @@ class UserModeService:
     def _scrub_text(self, value: Any, *, field: str, maximum: int) -> tuple[str, list[str]]:
         text = _bounded_text(value, field=field, maximum=maximum)
         result = self.scrubber.scrub(text)
-        return result.text, [event.secret_type for event in result.events]
+        clean = _bounded_text(result.text, field=field, maximum=maximum)
+        return clean, [event.secret_type for event in result.events]
 
     def _payload_from_inputs(
         self,
@@ -499,12 +500,15 @@ def _install_context_dispatch() -> None:
     if getattr(_modes, "_nexus_user_mode_dispatch_installed", False):
         return
     from . import api as _api
+    from . import civic_observation as _civic_observation
     from . import council as _council
 
     _modes.get_mode = contextual_get_mode  # type: ignore[assignment]
     _modes.list_modes = contextual_list_modes  # type: ignore[assignment]
     _api.get_mode = contextual_get_mode  # type: ignore[assignment]
     _api.list_modes = contextual_list_modes  # type: ignore[assignment]
+    _civic_observation.get_mode = contextual_get_mode  # type: ignore[assignment]
+    _civic_observation.list_modes = contextual_list_modes  # type: ignore[assignment]
     _council.get_mode = contextual_get_mode  # type: ignore[assignment]
     setattr(_modes, "_nexus_user_mode_dispatch_installed", True)
 
