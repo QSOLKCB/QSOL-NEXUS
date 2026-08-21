@@ -10,14 +10,14 @@ The policy is intentionally conservative. It classifies change. It does **not** 
 nexus-schema-migration/1
 ```
 
-Public operations:
+Reference interfaces:
 
 ```text
-schema.version.policy
-schema.version.classify
-schema.migration.plan
-schema.migration.verify
+Python library -> nexus_runtime.schema_migration
+CLI            -> python3 tools/schema_migration.py {policy,classify,plan,verify}
 ```
+
+These are **not** new `nexus/0.15` JSONL operations. Admission to the public JSONL API would itself be a protocol-surface change and therefore requires a separate reviewed protocol bump/change decision.
 
 ## Three different identities
 
@@ -86,7 +86,7 @@ Generic downgrades are not admitted.
 
 ## Migration plans
 
-`schema.migration.plan` produces a canonical content-addressed plan:
+The library function `build_migration_plan(...)` and CLI `plan` command produce a canonical content-addressed plan:
 
 ```text
 schema-migration-plan:<sha256>
@@ -110,7 +110,23 @@ A plan is inert. It cannot execute code or mutate the world.
 PLAN != EXECUTION
 ```
 
-`schema.migration.verify` recomputes the plan under the current policy and rejects shape, identity, classification, or digest drift.
+The library function `verify_migration_plan(...)` and CLI `verify` command recompute the plan under the current policy and reject shape, identity, classification, or digest drift.
+
+Example:
+
+```bash
+python3 tools/schema_migration.py classify \
+  --kind protocol \
+  --source nexus/0.14 \
+  --target nexus/0.15
+
+python3 tools/schema_migration.py plan \
+  --kind schema \
+  --source nexus-example/1 \
+  --target nexus-example/2
+```
+
+All CLI output is canonical compact JSON. `verify` reads one bounded UTF-8 JSON object from stdin and rejects duplicate keys and non-finite numbers.
 
 ## Source preservation
 
