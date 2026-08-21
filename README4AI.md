@@ -31,7 +31,7 @@
     "rust_tui": "2.1.1",
     "stable_2_0": true,
     "release_posture": "release_candidate_2_1_1",
-    "note": "PR #61 is the 2.1.1 release candidate over merged PR #60. Existing tag v2.1.0 is preserved at PR #55 merge 839303ea512631e527073682343341742cead975 and is not moved. Only the exact reviewed-and-green merged PR #61 commit may later receive v2.1.1."
+    "note": "PR #61 merged at a5fea299fbe682c9672dc577d2e683cebdb9f8f4 as the reviewed 2.1.1 candidate, but v2.1.1 is still absent. PR #62 is post-candidate replay development and must not be merged before that exact PR #61 merge commit receives the intended v2.1.1 release identity. Existing v2.1.0 remains historical and must not move."
   },
   "normative_precedence": [
     "executable_runtime_behavior_and_validation",
@@ -68,6 +68,7 @@
     "credentials_are_operational_secrets_not_cognitive_state",
     "model_output_is_untrusted_input",
     "live_stochastic_inference_is_not_falsely_marked_replayable",
+    "replay_match_does_not_create_truth_evidence_or_authority",
     "wall_social_memory_is_not_evidence_or_authority",
     "instrument_result_is_not_truth",
     "persistent_lineage_is_not_truth",
@@ -77,7 +78,7 @@
   "runtime": {
     "public_api": {
       "canonical_imports": ["from nexus_runtime import NexusAPI", "from nexus_runtime.api import NexusAPI"],
-      "implementation": "PersistentWorldNexusAPI alpha8 additive final overlay",
+      "implementation": "PersistentWorldNexusAPI alpha8 additive final overlay with post-candidate closed receipt replay",
       "discovery_operations": ["system.health", "system.operations"]
     },
     "control_transport": "jsonl_stdio",
@@ -88,7 +89,22 @@
       "file_backed_reload": "strict canonical-byte and object-identity validation",
       "continuity": "quorum-aware WorldStore Continuity with Ark recovery"
     },
-    "receipt_rule": "receipts bind operation inputs to result refs; verification never turns live stochastic generation into deterministic replay"
+    "receipt_rule": "receipts bind operation inputs to result refs; receipt.replay is default-deny and only admitted reconstruction adapters may execute; verification or replay never turns live stochastic generation into deterministic replay or semantic truth"
+  },
+  "operation_replay": {
+    "policy": "nexus-operation-replay/1",
+    "public_operation": "receipt.replay",
+    "admission": "default_deny_per_operation_replay_adapter",
+    "registered_operations": ["council.run"],
+    "first_adapter": "deterministic stored mock Council only, with reconstructible public durable inputs and no preexisting Failsafe state",
+    "execution_world": "fresh isolated in-memory WorldStore",
+    "success": "replayed council_session and replayed receipt content addresses exactly equal the stored result_ref and source receipt_ref",
+    "non_replayable": "reject",
+    "protocol_mismatch": "reject until a separately reviewed migration adapter exists",
+    "discarded_secret_source": "reject rather than retain or guess the raw pre-scrub question",
+    "source_world_write_effect": "none",
+    "evidence_effect": "none",
+    "authority_effect": "none"
   },
   "adapters": {
     "deterministic_or_local_baseline": ["mock", "ollama"],
@@ -228,7 +244,7 @@
     "model_output": "untrusted input",
     "network": "local stdio control plane plus reviewed loopback/fixed-remote model transports",
     "sandbox_claim": "do not claim stronger isolation than implemented and tested",
-    "new_boundary_rule": "new provider, credential flow, tool execution path, storage surface, sandbox assumption, authority-bearing role, instrument admission, or release identity requires explicit review and regression coverage",
+    "new_boundary_rule": "new provider, credential flow, tool execution path, storage surface, sandbox assumption, authority-bearing role, instrument admission, operation replay adapter, or release identity requires explicit review and regression coverage",
     "wall": "Wall input is bounded, secret-scrubbed social data; history validation fails closed and cannot promote evidence or authority"
   },
   "epistemic_labels": ["observed", "executed", "verified", "inferred", "simulated", "not_tested", "unknown"],
@@ -240,6 +256,7 @@
     "derive_empirical_scientific_truth_from_mode_geometry_telemetry_instruments_or_council_vote",
     "derive_legal_personhood_or_sovereignty_from_citizen_mode",
     "claim_replayability_for_live_stochastic_generation",
+    "treat_replay_identity_match_as_semantic_truth_or_evidence_promotion",
     "claim_arbitrary_mcp_or_remote_endpoint_authority",
     "claim_hidden_chain_of_thought_capture_by_stenographer",
     "treat_historical_v2_1_0_tag_as_the_hardened_release_target",
@@ -250,7 +267,8 @@
       "one_member_one_vote", "provider_identity_no_authority", "mode_no_vote_change",
       "council_consensus_not_evidence_status", "credentials_outside_cognitive_world_state",
       "model_output_untrusted", "canonical_ordering_survives_parallel_execution",
-      "live_inference_not_falsely_replayable", "failsafe_triggers_procedural_not_ideological",
+      "live_inference_not_falsely_replayable", "replay_match_not_truth_or_authority",
+      "failsafe_triggers_procedural_not_ideological",
       "local_role_models_cannot_alter_deterministic_ballots", "citizen_proxy_no_second_seat",
       "trap_output_cannot_become_commands", "stenographer_zero_authority", "rust_tui_replaceable",
       "wall_social_memory_not_evidence", "instrument_result_not_truth", "persistent_import_not_authority"
@@ -272,13 +290,15 @@
   },
   "release_candidate_2_1_1": {
     "candidate_pr": 61,
+    "merge_commit": "a5fea299fbe682c9672dc577d2e683cebdb9f8f4",
     "target_tag": "v2.1.1",
     "candidate_base_merge": "80cda46e614f44b47861471cb329e29a348cab43",
     "protocol_change": "nexus/0.14 -> nexus/0.15 additive public operation surface",
     "tag_created_in_pr": false,
+    "tag_present_at_pr62_start": false,
     "release_authority": false,
     "live_xai_acceptance_blocking": false,
-    "tag_rule": "only exact reviewed-and-green merged PR #61 commit may receive v2.1.1"
+    "tag_rule": "only exact reviewed-and-green merged PR #61 commit a5fea299fbe682c9672dc577d2e683cebdb9f8f4 may receive v2.1.1 before PR #62 merges"
   },
   "read_next": {
     "human_entry": "README.md",
@@ -287,6 +307,7 @@
     "threat_model": "THREAT_MODEL.md",
     "roadmap": "ROADMAP.md",
     "api": "docs/API.md",
+    "operation_replay": "docs/OPERATION_REPLAY.md",
     "adapters": "docs/ADAPTERS.md",
     "third_party_providers": "docs/THIRD_PARTY_PROVIDERS.md",
     "local_mcp": "docs/LOCAL_MCP.md",

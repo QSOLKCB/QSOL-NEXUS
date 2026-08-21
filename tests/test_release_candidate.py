@@ -202,13 +202,16 @@ class NEXUS211ReleaseCandidateTests(unittest.TestCase):
     def test_release_runner_is_exact_commit_lockfile_strict_and_non_authoritative(self) -> None:
         source = (ROOT / "tools" / "nexus_2_1_1_release_candidate.py").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "nexus-2.1.1-release-candidate.yml").read_text(encoding="utf-8")
+        certified = "a5fea299fbe682c9672dc577d2e683cebdb9f8f4"
         self.assertIn('TARGET_TAG = "v2.1.1"', source)
         self.assertIn('HISTORICAL_TAG = "v2.1.0"', source)
         self.assertIn('"test", "--locked"', source)
         self.assertIn('"check", "--locked"', source)
         self.assertIn('"release_authority": False', source)
         self.assertIn('"tag_created": False', source)
-        self.assertIn('--expect-commit "$GITHUB_SHA"', workflow)
+        self.assertIn('--expect-commit "$NEXUS_211_EXPECT"', workflow)
+        self.assertNotIn('--expect-commit "$GITHUB_SHA"', workflow)
+        self.assertIn(f"NEXUS_211_CERTIFIED_MERGE: {certified}", workflow)
         self.assertIn("fetch-depth: 0", workflow)
         self.assertIn("fetch-tags: true", workflow)
         self.assertIn("PYTHONDONTWRITEBYTECODE: '1'", workflow)
@@ -216,10 +219,16 @@ class NEXUS211ReleaseCandidateTests(unittest.TestCase):
     def test_candidate_workflow_uses_event_range_readme_contract_and_candidate_lifecycle(self) -> None:
         source = (ROOT / "tools" / "nexus_2_1_1_release_candidate.py").read_text(encoding="utf-8")
         workflow = (ROOT / ".github" / "workflows" / "nexus-2.1.1-release-candidate.yml").read_text(encoding="utf-8")
+        certified = "a5fea299fbe682c9672dc577d2e683cebdb9f8f4"
         self.assertIn("uses: ./.github/actions/readme-contract", workflow)
         self.assertNotIn("tools/validate_readme_contract.py", source)
         self.assertIn("  workflow_dispatch:", workflow)
         self.assertNotIn("  push:\n    branches:\n      - main", workflow)
+        self.assertIn("github.event.pull_request.number == 61", workflow)
+        self.assertIn("github.event_name == 'workflow_dispatch'", workflow)
+        self.assertIn(f"ref: ${{{{ github.event_name == 'workflow_dispatch' && '{certified}' || github.sha }}}}", workflow)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$NEXUS_211_EXPECT"', workflow)
+        self.assertIn('test "$NEXUS_211_EXPECT" = "$NEXUS_211_CERTIFIED_MERGE"', workflow)
 
     def test_release_runner_rejects_dirty_post_run_tree(self) -> None:
         with mock.patch.object(RELEASE_RUNNER, "_tracked_status", return_value=" M tui/Cargo.lock"):

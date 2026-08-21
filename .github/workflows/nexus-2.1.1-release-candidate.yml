@@ -22,17 +22,30 @@ permissions:
 
 jobs:
   release-candidate-2-1-1:
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event.pull_request.number == 61 }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
     env:
       PYTHONDONTWRITEBYTECODE: '1'
+      NEXUS_211_CERTIFIED_MERGE: a5fea299fbe682c9672dc577d2e683cebdb9f8f4
+      NEXUS_211_EXPECT: ${{ github.event_name == 'workflow_dispatch' && 'a5fea299fbe682c9672dc577d2e683cebdb9f8f4' || github.sha }}
     steps:
-      - name: Checkout complete release history
+      - name: Checkout exact candidate subject
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && 'a5fea299fbe682c9672dc577d2e683cebdb9f8f4' || github.sha }}
           fetch-depth: 0
           fetch-tags: true
           persist-credentials: false
+
+      - name: Confirm exact candidate subject
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$NEXUS_211_EXPECT"
+          if test "$GITHUB_EVENT_NAME" = "workflow_dispatch"; then
+            test "$NEXUS_211_EXPECT" = "$NEXUS_211_CERTIFIED_MERGE"
+          fi
 
       - name: Validate README dual-surface contract
         uses: ./.github/actions/readme-contract
@@ -60,7 +73,7 @@ jobs:
           set -euo pipefail
           python3 tools/nexus_2_1_1_release_candidate.py \
             --self-test \
-            --expect-commit "$GITHUB_SHA"
+            --expect-commit "$NEXUS_211_EXPECT"
 
       - name: Run exact-commit release candidate
         env:
@@ -68,7 +81,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 tools/nexus_2_1_1_release_candidate.py \
-            --expect-commit "$GITHUB_SHA" \
+            --expect-commit "$NEXUS_211_EXPECT" \
             --json-out "$NEXUS_211_REPORT"
 
       - name: Show machine-readable report

@@ -1,0 +1,46 @@
+{
+  "schema": "nexus-operation-replay-contract/1",
+  "policy": "nexus-operation-replay/1",
+  "roadmap_target": "2.0-alpha1 generalized operation replay beyond deterministic fixtures",
+  "source_authority": {
+    "receipt_type": "receipt",
+    "source_world_access": "read_only",
+    "replay_world": "isolated_in_memory_world",
+    "source_world_write_effect": "none"
+  },
+  "admission": {
+    "rule": "default_deny_per_operation_replay_adapter",
+    "receipt_replayable_required": true,
+    "current_protocol_required": true,
+    "silent_protocol_migration": false,
+    "registered_operations": [
+      "council.run"
+    ]
+  },
+  "council_run": {
+    "admitted_actor_kind": "deterministic_mock_only",
+    "preexisting_failsafe_state": "forbidden",
+    "civic_or_failsafe_substitution": "not_reconstructible_and_rejected",
+    "question_with_discarded_raw_secret": "not_reconstructible_and_rejected",
+    "evidence_objects": "copied_by_exact_content_address_into_isolated_replay_world",
+    "parallelism": "scalar_reference_replay",
+    "success_rule": "replayed council_session and receipt content addresses exactly equal stored result_ref and receipt_ref"
+  },
+  "failure_policy": {
+    "non_replayable": "reject",
+    "unknown_operation": "reject",
+    "protocol_mismatch": "reject_until_reviewed_migration_adapter_exists",
+    "stateful_unreconstructible_input": "reject",
+    "identity_mismatch": "reject"
+  },
+  "boundaries": [
+    "REPLAYABLE != REPLAYED",
+    "REPLAY_MATCH != SEMANTIC_TRUTH",
+    "DETERMINISTIC != AUTHORITATIVE",
+    "REPLAY != EVIDENCE_PROMOTION",
+    "SOURCE_WORLD != REPLAY_WORLD",
+    "PROTOCOL_MIGRATION != SILENT_REPLAY"
+  ],
+  "evidence_effect": "none",
+  "authority_effect": "none"
+}

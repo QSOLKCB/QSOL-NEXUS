@@ -19,11 +19,12 @@ Runtime identifier:
 Release posture:
 
 ```text
-PR #61 release candidate
-future tag -> v2.1.1 only after exact merged-head verification
+PR #61 merged as the reviewed 2.1.1 release candidate
+v2.1.1 tag -> still pending on the exact PR #61 merge commit
+PR #62     -> post-candidate generalized operation replay; do not merge before the tag
 ```
 
-The protocol minor bump from `nexus/0.14` to `nexus/0.15` records additive post-v2.0 public surfaces: explicit LATTICE world presence, admitted instruments, typed persistent-world lineage/exchange, and the completed Three Minds integration. It does not intentionally redefine established operation semantics.
+The protocol minor bump from `nexus/0.14` to `nexus/0.15` records additive post-v2.0 public surfaces: explicit LATTICE world presence, admitted instruments, typed persistent-world lineage/exchange, and the completed Three Minds integration. It does not intentionally redefine established operation semantics. PR #62 adds a closed `receipt.replay` operation within the existing `nexus/0.15` request envelope; replay eligibility remains per-operation and fail-closed rather than a blanket promise that every historical operation can be rerun.
 
 ## Executable discovery is authoritative
 
@@ -51,6 +52,7 @@ world storage     -> content-addressed WorldStore + Continuity/Ark
 world presence    -> explicit named-region + LATTICE placement/movement lineage
 persistent world  -> typed relations, hypotheses, experiments, minority/mode views, bounded exchange
 instruments       -> default-deny; nexus.integer-primality/1 currently admitted
+operation replay  -> default-deny; deterministic stored mock council.run is first admitted adapter
 Three Minds       -> completed shared-world integration/restart demonstration
 BBS Wall          -> append-only social memory with zero evidence/authority effect
 ```
@@ -100,7 +102,7 @@ Illustrative identity fields:
 }
 ```
 
-The real response additionally publishes bounded runtime/provider/civic/security/storage metadata. Do not treat this abbreviated example as a closed response schema.
+The real response additionally publishes bounded runtime/provider/civic/security/storage metadata. PR #62 also publishes the `nexus-operation-replay/1` policy under `operation_replay`. Do not treat this abbreviated example as a closed response schema.
 
 ## Operation families
 
@@ -111,8 +113,22 @@ system.health
 system.operations
 security.scrub_preview
 receipt.verify
+receipt.replay
 telemetry.verify
 ```
+
+`receipt.verify` checks stored reference integrity under the receipt's own verification rules. `receipt.replay` is stricter and default-deny: the receipt must explicitly declare replayability, match the current protocol, and name an operation with an admitted reconstruction adapter. The first admitted adapter is deterministic stored `council.run` with mock-only seats and fully reconstructible durable inputs.
+
+A successful replay executes in a fresh in-memory WorldStore and must reproduce both the stored result ref and the source receipt ref exactly. It does not write to the source world and does not promote evidence or authority.
+
+```text
+REPLAYABLE != REPLAYED
+REPLAY_MATCH != SEMANTIC_TRUTH
+REPLAY != EVIDENCE_PROMOTION
+SOURCE_WORLD != REPLAY_WORLD
+```
+
+Live local/cloud model Councils, protocol-mismatched receipts, stateful Council runs that cannot be reconstructed, and questions whose raw secret-bearing source text was intentionally discarded are rejected rather than guessed. See [`OPERATION_REPLAY.md`](OPERATION_REPLAY.md).
 
 ### Authentication and model discovery
 
@@ -359,9 +375,12 @@ The runtime validates referenced objects and derives bounded model-readable repr
 
 ## Replay status
 
-- deterministic runtime/game/instrument fixtures may claim replayability only within their exact declared contracts;
+- `receipt.replay` is default-deny and currently admits only reconstructible deterministic stored mock `council.run` receipts;
+- deterministic runtime/game/instrument fixtures may claim replayability only within their exact declared contracts and are not automatically registered with generalized replay;
 - Councils containing live local or cloud model inference are non-replayable;
 - a provider seed is not treated as a cross-runtime replay guarantee;
+- a successful replay proves content-address identity reproduction under the admitted contract, not semantic truth;
+- protocol changes require an explicit reviewed replay/migration adapter rather than silent reinterpretation;
 - receipt/hash integrity does not imply semantic truth.
 
 ## Error shape
@@ -376,20 +395,20 @@ The runtime validates referenced objects and derives bounded model-readable repr
 }
 ```
 
-Subsystems with more specific stable error codes preserve them where the public overlay contract requires it.
+Subsystems with more specific stable error codes preserve them where the public overlay contract requires it. Replay-specific fail-closed codes include `replay_not_replayable`, `replay_unsupported_operation`, `replay_protocol_mismatch`, `replay_context_not_reconstructible`, and `replay_mismatch`.
 
 ## Release boundary
 
-The `2.1.1` / `nexus/0.15` identity in this document is the PR #61 candidate identity. During review:
+The `2.1.1` / `nexus/0.15` identity in this document is the identity certified by merged PR #61. At the start of PR #62 development:
 
 ```text
 v2.0.0 -> frozen stable/publication commit
 v2.1.0 -> historical PR #55 tag, never moved
-v2.1.1 -> must not exist yet
+v2.1.1 -> still absent; intended exact target is PR #61 merge a5fea299fbe682c9672dc577d2e683cebdb9f8f4
 ```
 
-Only the exact reviewed-and-green merged PR #61 commit may later receive `v2.1.1`.
+PR #62 is post-candidate development and must not be merged before the exact PR #61 merge commit receives the intended `v2.1.1` release identity. That preserves the release candidate boundary instead of silently adding generalized replay to the already-certified artifact.
 
 The live-xAI acceptance remains an operator-run empirical gate and is non-blocking for the software release. CI may not claim it completed a real provider session.
 
-> **Executable discovery outranks prose. Integrity outranks convenience. Consensus, persistence, instruments and geometry do not create truth authority.**
+> **Executable discovery outranks prose. Integrity outranks convenience. Replay, consensus, persistence, instruments and geometry do not create truth authority.**

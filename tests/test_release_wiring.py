@@ -13,6 +13,7 @@ from nexus_runtime.adapters.xai import XAITransport
 from nexus_runtime.auth.types import SecretMaterial
 from nexus_runtime.local_roles import LocalRoleBackendConfig
 from nexus_runtime.provider_api import ProviderNexusAPI
+from nexus_runtime.replay import OPERATION_REPLAY_POLICY_ID
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +43,14 @@ class ReleaseWiringTests(unittest.TestCase):
         self.assertTrue(health["remote_provider_auth"])
         self.assertTrue(health["local_roles"]["local_only"])
         self.assertFalse(health["local_roles"]["persistent"])
+        self.assertEqual(
+            health["operation_replay"]["policy"]["schema"],
+            OPERATION_REPLAY_POLICY_ID,
+        )
+        self.assertEqual(
+            health["operation_replay"]["policy"]["authority_effect"],
+            "none",
+        )
 
         operations = set(api.handle({"operation": "system.operations"})["operations"])
         self.assertTrue(
@@ -49,6 +58,7 @@ class ReleaseWiringTests(unittest.TestCase):
                 "models.list",
                 "actor.chat",
                 "council.run",
+                "receipt.replay",
                 "local.roles.status",
                 "local.roles.configure",
                 "local.roles.clear",
@@ -61,6 +71,174 @@ class ReleaseWiringTests(unittest.TestCase):
                 "world.export",
                 "world.import",
             }.issubset(operations)
+        )
+
+    @staticmethod
+    def _mock_members(*, first_profile: str = "balanced") -> list[dict[str, str]]:
+        return [
+            {"member_id": "A", "model_id": "mock-a", "adapter_id": "mock", "profile": first_profile},
+            {"member_id": "B", "model_id": "mock-b", "adapter_id": "mock", "profile": "skeptical"},
+            {"member_id": "C", "model_id": "mock-c", "adapter_id": "mock", "profile": "supportive"},
+        ]
+
+    def test_generalized_replay_reconstructs_mock_council_without_source_mutation(self) -> None:
+        api = PackageNexusAPI()
+        evidence = api.handle(
+            {
+                "operation": "world.create",
+                "object_type": "note",
+                "payload": {"content": "bounded replay evidence"},
+                "provenance": {"actor": "fixture"},
+            }
+        )
+        evidence_ref = evidence["object"]["object_id"]
+        run = api.handle(
+            {
+                "operation": "council.run",
+                "question": "Can this deterministic stored Council be replayed?",
+                "members": self._mock_members(),
+                "evidence_refs": [evidence_ref],
+                "evidence_state": "UNTESTED",
+                "mode": "analytical",
+            }
+        )
+        self.assertEqual(run["status"], "ok")
+        self.assertTrue(run["execution_replayable"])
+        before = set(api.world._objects)
+
+        replay = api.handle(
+            {
+                "operation": "receipt.replay",
+                "receipt_ref": run["receipt_ref"],
+            }
+        )
+        self.assertEqual(replay["status"], "verified")
+        self.assertEqual(replay["source_receipt_ref"], run["receipt_ref"])
+        self.assertEqual(replay["source_result_ref"], run["session_ref"])
+        self.assertEqual(replay["replayed_receipt_ref"], run["receipt_ref"])
+        self.assertEqual(replay["replayed_result_ref"], run["session_ref"])
+        self.assertTrue(replay["result_identity_match"])
+        self.assertTrue(replay["receipt_identity_match"])
+        self.assertTrue(replay["isolated_replay"])
+        self.assertEqual(replay["source_world_write_effect"], "none")
+        self.assertEqual(replay["authority_effect"], "none")
+        self.assertEqual(replay["evidence_effect"], "none")
+        self.assertEqual(set(api.world._objects), before)
+
+    def test_generalized_replay_rejects_missing_presence_direct_input(self) -> None:
+        api = PackageNexusAPI()
+        run = api.handle(
+            {
+                "operation": "council.run",
+                "question": "Presence must remain available for replay.",
+                "members": self._mock_members(),
+            }
+        )
+        self.assertEqual(run["status"], "ok")
+        presence_ref = run["world_presence_ref"]
+        api.world._objects.pop(presence_ref)
+
+        verified = api.handle({"operation": "receipt.verify", "receipt_ref": run["receipt_ref"]})
+        self.assertEqual(verified["status"], "failed")
+        self.assertIn(presence_ref, verified["missing_refs"])
+
+        replay = api.handle({"operation": "receipt.replay", "receipt_ref": run["receipt_ref"]})
+        self.assertEqual(replay["status"], "error")
+        self.assertEqual(replay["error"]["code"], "replay_context_not_reconstructible")
+        self.assertIn("world presence", replay["error"]["message"].casefold())
+
+    def test_generalized_replay_accepts_empty_mock_profile_admitted_by_council(self) -> None:
+        api = PackageNexusAPI()
+        run = api.handle(
+            {
+                "operation": "council.run",
+                "question": "An empty mock profile is still an admitted exact string.",
+                "members": self._mock_members(first_profile=""),
+            }
+        )
+        self.assertEqual(run["status"], "ok")
+        self.assertTrue(run["execution_replayable"])
+        replay = api.handle({"operation": "receipt.replay", "receipt_ref": run["receipt_ref"]})
+        self.assertEqual(replay["status"], "verified")
+        self.assertEqual(replay["replayed_result_ref"], run["session_ref"])
+        self.assertEqual(replay["replayed_receipt_ref"], run["receipt_ref"])
+
+    def test_manual_2_1_1_dispatch_is_pinned_to_certified_pr61_merge(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "nexus-2.1.1-release-candidate.yml").read_text(
+            encoding="utf-8"
+        )
+        certified = "a5fea299fbe682c9672dc577d2e683cebdb9f8f4"
+        self.assertIn(f"NEXUS_211_CERTIFIED_MERGE: {certified}", workflow)
+        self.assertIn(
+            f"ref: ${{{{ github.event_name == 'workflow_dispatch' && '{certified}' || github.sha }}}}",
+            workflow,
+        )
+        self.assertIn("Checkout exact candidate subject", workflow)
+        self.assertIn("Confirm exact candidate subject", workflow)
+        self.assertIn('test "$(git rev-parse HEAD)" = "$NEXUS_211_EXPECT"', workflow)
+        self.assertIn('test "$NEXUS_211_EXPECT" = "$NEXUS_211_CERTIFIED_MERGE"', workflow)
+        self.assertIn('--expect-commit "$NEXUS_211_EXPECT"', workflow)
+        self.assertNotIn('--expect-commit "$GITHUB_SHA"', workflow)
+
+    def test_generalized_replay_fails_closed_for_non_replayable_and_unknown_receipts(self) -> None:
+        api = PackageNexusAPI()
+        non_replayable = api.world.create_object(
+            "receipt",
+            {
+                "operation": "council.run",
+                "input_refs": [],
+                "result_ref": "object:" + "0" * 64,
+                "replayable": False,
+                "protocol": PROTOCOL_VERSION,
+            },
+            {"actor": "nexus"},
+        )
+        denied = api.handle(
+            {"operation": "receipt.replay", "receipt_ref": non_replayable.object_id}
+        )
+        self.assertEqual(denied["status"], "error")
+        self.assertEqual(denied["error"]["code"], "replay_not_replayable")
+
+        unsupported = api.world.create_object(
+            "receipt",
+            {
+                "operation": "world.create",
+                "input_refs": [],
+                "result_ref": "object:" + "1" * 64,
+                "replayable": True,
+                "protocol": PROTOCOL_VERSION,
+            },
+            {"actor": "nexus"},
+        )
+        rejected = api.handle(
+            {"operation": "receipt.replay", "receipt_ref": unsupported.object_id}
+        )
+        self.assertEqual(rejected["status"], "error")
+        self.assertEqual(rejected["error"]["code"], "replay_unsupported_operation")
+
+    def test_generalized_replay_does_not_reconstruct_discarded_secret_question_source(self) -> None:
+        api = PackageNexusAPI()
+        secret = "sk-" + "A" * 32
+        run = api.handle(
+            {
+                "operation": "council.run",
+                "question": f"Do not retain this raw secret {secret}",
+                "members": [
+                    {"member_id": "A", "model_id": "mock-a", "adapter_id": "mock"},
+                    {"member_id": "B", "model_id": "mock-b", "adapter_id": "mock"},
+                    {"member_id": "C", "model_id": "mock-c", "adapter_id": "mock"},
+                ],
+            }
+        )
+        self.assertEqual(run["status"], "ok")
+        self.assertTrue(run["secret_scrub"]["changed"])
+        replay = api.handle(
+            {"operation": "receipt.replay", "receipt_ref": run["receipt_ref"]}
+        )
+        self.assertEqual(replay["status"], "error")
+        self.assertEqual(
+            replay["error"]["code"],
+            "replay_context_not_reconstructible",
         )
 
     def test_release_version_triplet_and_protocol_are_aligned(self) -> None:
