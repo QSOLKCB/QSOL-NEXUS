@@ -186,7 +186,7 @@ class GrokPR49AuditClosureTests(unittest.TestCase):
         self.assertIn("path", observed)
         self.assertFalse(observed["path"].parent.exists())
 
-    def test_workflow_uses_runner_temp_uploads_report_and_uses_shallow_checkout(self) -> None:
+    def test_workflow_uses_runner_temp_report_and_frozen_history_checkout(self) -> None:
         workflow = (ROOT / ".github" / "workflows" / "release-hardening.yml").read_text(
             encoding="utf-8"
         )
@@ -194,8 +194,11 @@ class GrokPR49AuditClosureTests(unittest.TestCase):
         self.assertIn("$GITHUB_ENV", workflow)
         self.assertIn("actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02", workflow)
         self.assertNotIn("/tmp/nexus-release-hardening.json", workflow)
-        self.assertNotIn("fetch-depth: 0", workflow)
-        self.assertIn("fetch-depth: 1", workflow)
+        self.assertIn("fetch-depth: 0", workflow)
+        self.assertIn("fetch-tags: true", workflow)
+        self.assertIn("git worktree add --detach", workflow)
+        self.assertIn("cc6b4ffee26760e8d7c3bc88a2fcb877559e5d6a", workflow)
+        self.assertIn('--expect-commit "$HARDENING_EXPECT"', workflow)
 
     def test_rust_toolchain_is_pinned_to_pr49_reviewed_version(self) -> None:
         with (ROOT / "rust-toolchain.toml").open("rb") as handle:
