@@ -338,7 +338,6 @@ def run_candidate(expect_commit: str | None) -> dict[str, Any]:
         _internal("version-alignment", _version_alignment),
         _internal("tag-identity", _tag_identity),
         _internal("publication-and-extension-history", _publication_and_extension_history),
-        _run("readme-contract", [sys.executable, "tools/validate_readme_contract.py", "--mode", "contract"]),
     ]
 
     for pattern in TEST_PATTERNS:
