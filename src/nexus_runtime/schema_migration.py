@@ -5,7 +5,7 @@ import re
 from collections.abc import Mapping
 from typing import Any
 
-from .canonical import sha256_ref
+from .canonical import canonical_json, sha256_ref
 from .version import PROTOCOL_VERSION, RUNTIME_VERSION
 
 
@@ -25,6 +25,7 @@ _RUNTIME_RE = re.compile(
     r"(?P<patch>0|[1-9][0-9]{0,8})"
     r"(?:-(?P<prerelease>[0-9A-Za-z.-]{1,64}))?$"
 )
+_PRERELEASE_IDENTIFIER_RE = re.compile(r"^[0-9A-Za-z-]+$")
 _OBJECT_REF_RE = re.compile(r"^object:[0-9a-f]{64}$")
 
 
@@ -48,7 +49,7 @@ def schema_migration_policy_snapshot() -> dict[str, Any]:
         "identity_kinds": sorted(_KINDS),
         "schema_identity_rule": "family/major where major is an exact non-negative integer",
         "protocol_identity_rule": "nexus/major.minor with exact integer components",
-        "runtime_identity_rule": "semantic-version core major.minor.patch with optional bounded prerelease",
+        "runtime_identity_rule": "SemVer major.minor.patch with optional bounded SemVer prerelease",
         "validator_precedence_rule": "subsystem closed-shape validators outrank generic compatibility classification",
         "same_major_rule": "same major never implies automatic compatibility; explicit validator support is still required",
         "unknown_major_rule": "reject unless a separately reviewed exact migration adapter is registered",
@@ -74,6 +75,34 @@ def _require_text(value: Any, field: str) -> str:
     if not isinstance(value, str) or not value:
         raise _fail("schema_migration_invalid", f"{field} must be non-empty text")
     return value
+
+
+def _parse_prerelease(value: str | None) -> tuple[tuple[bool, int | str], ...] | None:
+    if value is None:
+        return None
+    identifiers = value.split(".")
+    if any(not identifier for identifier in identifiers):
+        raise _fail(
+            "schema_migration_invalid_identity",
+            "runtime prerelease must contain non-empty dot-separated SemVer identifiers",
+        )
+    parsed: list[tuple[bool, int | str]] = []
+    for identifier in identifiers:
+        if _PRERELEASE_IDENTIFIER_RE.fullmatch(identifier) is None:
+            raise _fail(
+                "schema_migration_invalid_identity",
+                "runtime prerelease identifiers may contain only ASCII alphanumerics and hyphens",
+            )
+        if identifier.isdigit():
+            if len(identifier) > 1 and identifier.startswith("0"):
+                raise _fail(
+                    "schema_migration_invalid_identity",
+                    "numeric runtime prerelease identifiers must not contain leading zeroes",
+                )
+            parsed.append((True, int(identifier)))
+        else:
+            parsed.append((False, identifier))
+    return tuple(parsed)
 
 
 def _parse_identity(kind: str, identity: str) -> dict[str, Any]:
@@ -109,8 +138,10 @@ def _parse_identity(kind: str, identity: str) -> dict[str, Any]:
         if match is None:
             raise _fail(
                 "schema_migration_invalid_identity",
-                "runtime identity must use bounded semantic-version major.minor.patch syntax",
+                "runtime identity must use bounded SemVer major.minor.patch syntax",
             )
+        prerelease = match.group("prerelease")
+        _parse_prerelease(prerelease)
         return {
             "kind": kind,
             "identity": identity,
@@ -118,13 +149,46 @@ def _parse_identity(kind: str, identity: str) -> dict[str, Any]:
             "major": int(match.group("major")),
             "minor": int(match.group("minor")),
             "patch": int(match.group("patch")),
-            "prerelease": match.group("prerelease"),
+            "prerelease": prerelease,
         }
     raise _fail("schema_migration_invalid_kind", f"unsupported version identity kind: {kind}")
 
 
 def _runtime_core(parsed: Mapping[str, Any]) -> tuple[int, int, int]:
     return int(parsed["major"]), int(parsed["minor"]), int(parsed["patch"])
+
+
+def _compare_prerelease(source: str | None, target: str | None) -> int:
+    if source is None and target is None:
+        return 0
+    if source is None:
+        return 1
+    if target is None:
+        return -1
+    left = _parse_prerelease(source)
+    right = _parse_prerelease(target)
+    assert left is not None and right is not None
+    for left_identifier, right_identifier in zip(left, right):
+        if left_identifier == right_identifier:
+            continue
+        left_numeric, left_value = left_identifier
+        right_numeric, right_value = right_identifier
+        if left_numeric and not right_numeric:
+            return -1
+        if right_numeric and not left_numeric:
+            return 1
+        return -1 if left_value < right_value else 1
+    if len(left) == len(right):
+        return 0
+    return -1 if len(left) < len(right) else 1
+
+
+def _compare_runtime(source: Mapping[str, Any], target: Mapping[str, Any]) -> int:
+    source_core = _runtime_core(source)
+    target_core = _runtime_core(target)
+    if source_core != target_core:
+        return -1 if source_core < target_core else 1
+    return _compare_prerelease(source.get("prerelease"), target.get("prerelease"))
 
 
 def classify_version_change(kind: str, source: str, target: str) -> dict[str, Any]:
@@ -150,19 +214,31 @@ def classify_version_change(kind: str, source: str, target: str) -> dict[str, An
             migration_required = False
             adapter_required = False
             reason = "schema families differ; migration cannot silently reinterpret one family as another"
+        elif source_parsed["major"] > target_parsed["major"]:
+            classification = "SCHEMA_DOWNGRADE_UNSUPPORTED"
+            compatible = False
+            migration_required = False
+            adapter_required = False
+            reason = "generic schema downgrade is not admitted"
         else:
             classification = "SCHEMA_MAJOR_MIGRATION_REQUIRED"
             compatible = False
             migration_required = True
             adapter_required = True
-            reason = "schema major differs and requires an exact separately reviewed migration adapter"
+            reason = "schema major advanced and requires an exact separately reviewed migration adapter"
     elif kind == _KIND_PROTOCOL:
-        if source_parsed["major"] != target_parsed["major"]:
+        if source_parsed["major"] > target_parsed["major"]:
+            classification = "PROTOCOL_DOWNGRADE_UNSUPPORTED"
+            compatible = False
+            migration_required = False
+            adapter_required = False
+            reason = "generic protocol downgrade is not admitted"
+        elif source_parsed["major"] < target_parsed["major"]:
             classification = "PROTOCOL_MAJOR_INCOMPATIBLE"
             compatible = False
             migration_required = True
             adapter_required = True
-            reason = "protocol major differs"
+            reason = "protocol major advanced and requires separately reviewed compatibility or migration"
         elif source_parsed["minor"] < target_parsed["minor"]:
             classification = "PROTOCOL_MINOR_FORWARD_REVIEW_REQUIRED"
             compatible = False
@@ -176,32 +252,25 @@ def classify_version_change(kind: str, source: str, target: str) -> dict[str, An
             adapter_required = False
             reason = "generic protocol downgrade is not admitted"
     else:
-        source_core = _runtime_core(source_parsed)
-        target_core = _runtime_core(target_parsed)
-        if source_core == target_core:
-            classification = "RUNTIME_PRERELEASE_IDENTITY_CHANGE"
-            compatible = False
-            migration_required = False
-            adapter_required = False
-            reason = "runtime build identity changed; durable artifact compatibility remains validator-owned"
-        elif source_parsed["major"] != target_parsed["major"]:
-            classification = "RUNTIME_MAJOR_REVIEW_REQUIRED"
-            compatible = False
-            migration_required = True
-            adapter_required = True
-            reason = "runtime major changed; durable artifact migration must be reviewed per subsystem"
-        elif source_core < target_core:
-            classification = "RUNTIME_FORWARD_CHANGE_VALIDATOR_OWNED"
-            compatible = False
-            migration_required = False
-            adapter_required = False
-            reason = "runtime advanced; no durable object is migrated solely because package version changed"
-        else:
+        direction = _compare_runtime(source_parsed, target_parsed)
+        if direction > 0:
             classification = "RUNTIME_DOWNGRADE_UNSUPPORTED"
             compatible = False
             migration_required = False
             adapter_required = False
             reason = "generic runtime downgrade is not admitted"
+        elif source_parsed["major"] < target_parsed["major"]:
+            classification = "RUNTIME_MAJOR_REVIEW_REQUIRED"
+            compatible = False
+            migration_required = True
+            adapter_required = True
+            reason = "runtime major advanced; durable artifact migration must be reviewed per subsystem"
+        else:
+            classification = "RUNTIME_FORWARD_CHANGE_VALIDATOR_OWNED"
+            compatible = False
+            migration_required = False
+            adapter_required = False
+            reason = "runtime advanced by SemVer precedence; durable artifact compatibility remains subsystem-validator-owned"
 
     return {
         "policy": SCHEMA_MIGRATION_POLICY_ID,
@@ -217,6 +286,7 @@ def classify_version_change(kind: str, source: str, target: str) -> dict[str, An
         "validator_precedence": "subsystem_validator",
         "reason": reason,
         "authority_effect": "none",
+        "evidence_effect": "none",
     }
 
 
@@ -291,10 +361,18 @@ def verify_migration_plan(plan: Mapping[str, Any]) -> dict[str, Any]:
         _require_text(plan.get("target_identity"), "target_identity"),
         source_ref=plan.get("source_ref"),
     )
-    if dict(plan) != expected:
+    try:
+        supplied_bytes = canonical_json(dict(plan))
+        expected_bytes = canonical_json(expected)
+    except (TypeError, ValueError, RecursionError) as exc:
         raise _fail(
             "schema_migration_invalid_plan",
-            "migration plan does not reproduce under the current policy",
+            "migration plan must contain finite canonical JSON values",
+        ) from exc
+    if supplied_bytes != expected_bytes:
+        raise _fail(
+            "schema_migration_invalid_plan",
+            "migration plan does not reproduce byte-for-byte under the current policy",
         )
     return {
         "status": "verified",
