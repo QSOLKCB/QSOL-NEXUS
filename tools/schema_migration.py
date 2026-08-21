@@ -29,6 +29,15 @@ class _DuplicateKey(ValueError):
     pass
 
 
+class _ArgumentError(ValueError):
+    pass
+
+
+class _JSONArgumentParser(argparse.ArgumentParser):
+    def error(self, message: str) -> None:
+        raise _ArgumentError(message)
+
+
 def _closed_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -65,7 +74,7 @@ def _emit(value: Any) -> None:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="NEXUS schema/version migration policy tool")
+    parser = _JSONArgumentParser(description="NEXUS schema/version migration policy tool")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     subparsers.add_parser("policy", help="print the current migration policy")
@@ -86,8 +95,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
     try:
+        args = build_parser().parse_args(argv)
         if args.command == "policy":
             result = schema_migration_policy_snapshot()
         elif args.command == "classify":
@@ -103,12 +112,18 @@ def main(argv: list[str] | None = None) -> int:
             result = verify_migration_plan(_read_plan_stdin())
         _emit(result)
         return 0
-    except (SchemaMigrationError, ValueError, json.JSONDecodeError, _DuplicateKey) as exc:
+    except (_ArgumentError, SchemaMigrationError, ValueError, json.JSONDecodeError, _DuplicateKey) as exc:
         _emit(
             {
                 "status": "error",
                 "error": {
-                    "code": getattr(exc, "code", "schema_migration_invalid"),
+                    "code": getattr(
+                        exc,
+                        "code",
+                        "schema_migration_invalid_arguments"
+                        if isinstance(exc, _ArgumentError)
+                        else "schema_migration_invalid",
+                    ),
                     "message": str(exc),
                 },
             }
