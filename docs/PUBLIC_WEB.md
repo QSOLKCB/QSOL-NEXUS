@@ -6,6 +6,29 @@ The \`docs/index.html\` GitHub Pages entry point is a **public, static, read-onl
 
 The eight source links are **repository references**, not discovered peers, running service health assertions, or endorsements of semantic truth.
 
+## Authenticated operator gateway (separate Render origin)
+
+A read-only QSOL-CONTROL operator gateway was deployed from reviewed
+QSOL-CONTROL PR #16 on 5 November 2026 (Adelaide time):
+
+`https://qsol-control-edge.onrender.com/`
+
+GitHub Pages contains a **plain navigation link**, not a live API connection.
+It never fetches gateway status, transfers credentials, stores tokens or
+exposes local JSONL/stdio endpoints. Operators authenticate only at Render's
+separate HTTPS origin; the Free service can spin down and its audit filesystem
+is ephemeral. This listing reports a recorded deployment, **not** a live
+heartbeat or production availability guarantee.
+
+The authenticated gateway offers read-only, source-pinned NEXUS operation
+discovery, FED SDK conformance, ORACLE exact-subject ledger queries and
+CONTROL health/capabilities. Council execution, persistent shared-world writes,
+FED peer networking, ORACLE ledger writes and the local CONTROL WebUI remain
+unavailable through the public edge.
+
+`DEPLOYED / SEPARATE LOGIN` refers to that external service;
+`PAGES: STATIC / NO RUNTIME API CONNECTION` remains accurate for this site.
+
 ## GitHub Pages configuration
 
 Preferred, simplest deployment (no build system or package manager):
@@ -26,7 +49,7 @@ The interactive viewer uses the published \`qsol-3x3x3-sierpinski-derived-memory
 
 Canonical implementation: \`QSOLKCB/LATTICE\`, \`lattice/core.py\`.
 
-## Internet-facing runtime gate — NOT SATISFIED
+## Internet-facing governance and persistent federation gate — NOT SATISFIED
 
 - NEXUS 2.x is a **Python JSONL/stdio** control plane and Rust local operator shell, not an authenticated HTTP public service.
 - CONTROL's WebUI is **loopback-only**, with explicitly deferred multi-user authentication and remote deployment.
@@ -37,7 +60,7 @@ Do not put a public reverse proxy in front of those services or make unrestricte
 
 Before any future interactive cloud upgrade, separately implement/review: explicit public operation allowlist; strong operator authentication; per-record authorization and classification; CSRF/CORS/Origin policy; input/output bounds and rate limits; secret isolation; persistent-store retention/backup; request audit; canonical receipt provenance; and adversarial regression proving that remote requests cannot bypass Council, witness, federation or recovery governance.
 
-No code in this PR configures or triggers a Render deploy, manipulates the existing game service or changes persistent storage. Render instance retirement is a separate operation, with disk preservation/export considered before deletion.
+This Pages-only update changes no Render configuration, triggers no deployment, manipulates no game service and modifies no persistent storage. It only links to the already deployed, separately authenticated operator gateway.
 
 ## Local validation
 
