@@ -1,0 +1,35 @@
+name: Public QSOL observatory smoke tests
+
+on:
+  pull_request:
+    paths:
+      - 'docs/index.html'
+      - 'docs/portal.css'
+      - 'docs/portal.js'
+      - 'docs/PUBLIC_WEB.md'
+      - 'index.html'
+      - 'web_tests/**'
+      - '.github/workflows/public-observatory.yml'
+  push:
+    branches:
+      - main
+    paths:
+      - 'docs/index.html'
+      - 'docs/portal.css'
+      - 'docs/portal.js'
+      - 'docs/PUBLIC_WEB.md'
+      - 'index.html'
+      - 'web_tests/**'
+      - '.github/workflows/public-observatory.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  public-portal:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Validate read-only source inventory and LATTICE traversal
+        run: python3 -m unittest discover -s web_tests -p 'test_public_web.py' -v
