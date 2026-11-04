@@ -54,8 +54,21 @@ class TestPublicWeb(unittest.TestCase):
                           "localstorage", "sessionstorage", "innerhtml", "eval("):
             self.assertNotIn(forbidden, script)
         page = PAGE.read_text(encoding="utf-8")
-        self.assertIn("NEXUS RUNTIME: NOT CONNECTED", page)
+        self.assertIn("PAGES: STATIC / NO RUNTIME API CONNECTION", page)
         self.assertIn("Internet-facing", (ROOT / "docs" / "PUBLIC_WEB.md").read_text(encoding="utf-8"))
+
+    def test_gateway_is_external_navigation_not_an_embedded_api(self):
+        html = PAGE.read_text(encoding="utf-8")
+        self.assertIn('href="https://qsol-control-edge.onrender.com/"', html)
+        self.assertIn("DEPLOYED / SEPARATE LOGIN", html)
+        self.assertNotIn("NOT CONNECTED</strong>", html)
+        self.assertIn("GitHub Pages does not access its API", html)
+        parser = PageParser()
+        parser.feed(html)
+        self.assertIn("connect-src 'none'", parser.csp)
+        script = SCRIPT.read_text(encoding="utf-8").lower()
+        for forbidden in ("fetch(", "xmlhttprequest", "websocket("):
+            self.assertNotIn(forbidden, script)
 
     def test_lattice_mapping_and_phi_coverage(self):
         script = SCRIPT.read_text(encoding="utf-8")
