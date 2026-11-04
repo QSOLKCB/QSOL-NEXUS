@@ -44,7 +44,7 @@ No code in this PR configures or triggers a Render deploy, manipulates the exist
 From repository root:
 
 \`\`\`sh
-python3 -m unittest discover -s tests -p 'test_public_web.py' -v
+python3 -m unittest discover -s web_tests -p 'test_public_web.py' -v
 \`\`\`
 
 Optional manual browser smoke test: open \`docs/index.html\`, filter eight cards, switch traversals, click cell \`L[2,0,1]\`, and verify the coordinate roles. Repeat on a mobile viewport and without external network access.
