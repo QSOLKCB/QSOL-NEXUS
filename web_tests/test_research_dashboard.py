@@ -47,6 +47,10 @@ class TestNotionResearch(unittest.TestCase):
         with self.assertRaises(export.ExportError):
             export.make_snapshot([r])
         r = record()
+        r["properties"]["Source URL"] = f("url", "https://github.com/QSOLKCB/../foreign")
+        with self.assertRaises(export.ExportError):
+            export.make_snapshot([r])
+        r = record()
         r["properties"]["Source Commit"] = f("rich_text", [])
         with self.assertRaises(export.ExportError):
             export.make_snapshot([r])
