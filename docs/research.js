@@ -13,7 +13,10 @@
         "source_commit", "source_url", "last_verified"].every(function (key) {
         return typeof r[key] === "string";
       }) &&
-      /^https:\/\/github\.com\/QSOLKCB\/[A-Za-z0-9._/-]+$/.test(r.source_url);
+      /^https:\/\/github\.com\/QSOLKCB\/[A-Za-z0-9._/-]+$/.test(r.source_url) &&
+      r.source_url.slice("https://github.com/".length).split("/").every(function (s) {
+        return s !== "" && s !== "." && s !== "..";
+      });
   };
   if (!snapshot || snapshot.schema !== "qsol-nexus-public-observatory/1" ||
       !Array.isArray(snapshot.records) || snapshot.records.length > 200 ||
