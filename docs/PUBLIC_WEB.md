@@ -62,6 +62,10 @@ Before any future interactive cloud upgrade, separately implement/review: explic
 
 This Pages-only update changes no Render configuration, triggers no deployment, manipulates no game service and modifies no persistent storage. It only links to the already deployed, separately authenticated operator gateway.
 
+## Research dashboard (static Notion export)
+
+The companion docs/research.html page renders a committed, editorially approved snapshot from a private Notion research database. It does not contact Notion or the local NEXUS, CONTROL, ORACLE or FED runtime from the browser. The initial snapshot intentionally contains zero public records. See docs/NOTION_OBSERVATORY.md for the private-token export procedure, allowlist and threat model.
+
 ## Local validation
 
 From repository root:
