@@ -66,6 +66,7 @@ def source_url(props: dict) -> str:
     if (parsed.scheme != "https" or parsed.netloc != "github.com" or
         not parsed.path.startswith("/QSOLKCB/") or
         not re.fullmatch(r"/QSOLKCB/[A-Za-z0-9._/-]+", parsed.path) or
+        any(segment in ("", ".", "..") for segment in parsed.path.split("/")[1:]) or
         parsed.query or parsed.fragment or parsed.username or parsed.password):
         raise ExportError("unapproved public source URL")
     return value
