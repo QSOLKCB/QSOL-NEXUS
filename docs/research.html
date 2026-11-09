@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<meta name="description" content="QSOL-NEXUS public research snapshot dashboard">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; img-src 'none'; font-src 'none'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>QSOL-NEXUS // Research Dashboard</title>
+<link rel="stylesheet" href="./portal.css"><link rel="stylesheet" href="./research.css">
+<script defer src="./research-data.js"></script><script defer src="./research.js"></script>
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="site-header"><div class="shell header-inner">
+<a class="brand" href="./index.html"><span class="brand-glyph" aria-hidden="true">◇</span>QSOL<span class="brand-divider">/</span>NEXUS</a>
+<nav class="main-nav" aria-label="Primary"><a href="./index.html">Systems</a><a href="#records">Research</a><a href="#boundary">Boundaries</a></nav>
+<span class="header-state">PUBLIC / STATIC SNAPSHOT</span>
+</div></header>
+<main class="shell" id="main">
+<section class="research-hero">
+<p class="eyebrow">09 / research observatory</p>
+<h1>Research <em>ledger.</em></h1>
+<p class="lead">A curated, read-only projection of reviewed Notion research records. Source links and editorial status are not evidence of scientific truth, Council execution, or live service availability.</p>
+<p class="research-warning">NO NOTION TOKEN • NO LIVE RUNTIME CONNECTION • NO PRIVATE WORLDSTORE ACCESS</p>
+</section>
+<section class="research-stats" aria-label="Public snapshot summary">
+<div><span>APPROVED RECORDS</span><strong id="count">0</strong></div>
+<div><span>SYSTEMS INDEXED</span><strong id="systems">0</strong></div>
+<div><span>EXPORT FINGERPRINT</span><strong id="digest">NOT EXPORTED</strong></div>
+</section>
+<section class="research-section" id="records">
+<div class="section-head"><div><p class="eyebrow">01 / source-linked evidence</p><h2>Published records</h2></div></div>
+<div class="research-controls">
+<label>SEARCH<input id="search" type="search" placeholder="Search records" autocomplete="off"></label>
+<label>SYSTEM<select id="system"><option value="">All systems</option></select></label>
+<label>STATUS<select id="status"><option value="">All statuses</option></select></label>
+</div>
+<p id="result-status" role="status" aria-live="polite">No public records have been exported.</p>
+<div id="records-grid" class="research-grid"></div>
+<p id="empty-state" class="research-empty">Nothing is published yet. Private records remain private until explicitly approved and exported.</p>
+</section>
+<section class="research-section" id="boundary">
+<p class="eyebrow">02 / trust contract</p><h2>Publication is not authority.</h2>
+<div class="research-boundaries">
+<article><strong>WORLDSTORE</strong><p>Canonical runtime history and verified receipts.</p></article>
+<article><strong>NOTION</strong><p>Editorial research index; no Council or governance permissions.</p></article>
+<article><strong>THIS WEBSITE</strong><p>Committed, reviewed static export only.</p></article>
+</div>
+<p class="research-warning">REVIEWED ≠ VERIFIED • SHA-256 ≠ TRUTH • DEPLOYED ≠ LIVE</p>
+<a class="research-link" href="https://github.com/QSOLKCB/QSOL-NEXUS/blob/main/docs/NOTION_OBSERVATORY.md" target="_blank" rel="noopener noreferrer">Inspect the export contract ↗</a>
+</section>
+</main>
+<footer class="site-footer"><div class="shell footer-inner"><span>QSOL-NEXUS / RESEARCH</span><a href="./index.html">Back to the observatory</a></div></footer>
+</body>
+</html>
